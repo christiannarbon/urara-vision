@@ -1,0 +1,86 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: urara-vision
+
+resources:
+  - ../../base
+
+# One of each; a dev cluster does not need redundancy.
+replicas:
+  - name: backend
+    count: 1
+  - name: frontend
+    count: 1
+
+patches:
+  - path: dev-resources.yaml
+  # HPAs fight the single-replica settings above, so they are dropped here.
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: backend
+    patch: |
+      $patch: delete
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: backend
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: frontend
+    patch: |
+      $patch: delete
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: frontend
+  # A single replica cannot satisfy minAvailable: 1 during a rollout.
+  - target:
+      kind: PodDisruptionBudget
+      name: backend
+    patch: |
+      $patch: delete
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: backend
+  - target:
+      kind: PodDisruptionBudget
+      name: frontend
+    patch: |
+      $patch: delete
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: frontend
+
+# Development credentials, committed on purpose so `kubectl apply -k` works
+# with no setup. The prod overlay expects an externally managed secret.
+secretGenerator:
+  - name: relviz-postgres
+    literals:
+      - username=relviz
+      - password=relviz-dev-password
+      - database=relviz
+      - dsn=postgres://relviz:relviz-dev-password@postgres:5432/relviz?sslmode=disable
+  - name: relviz-neo4j
+    literals:
+      - password=relviz-dev-password
+  # A fixed dev token, committed for the same reason as the passwords above:
+  # `kubectl apply -k` should work with no setup. Prod generates its own.
+  - name: relviz-api
+    literals:
+      - token=relviz-dev-token-not-for-production
+
+generatorOptions:
+  # A stable name keeps the Deployment's secretKeyRef valid; without this
+  # kustomize appends a content hash and the reference breaks.
+  disableNameSuffixHash: true
+
+images:
+  - name: urara-vision/backend
+    newName: urara-vision/backend
+    newTag: dev
+  - name: urara-vision/frontend
+    newName: urara-vision/frontend
+    newTag: dev

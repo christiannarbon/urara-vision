@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: urara-vision
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: urara-vision
+    includeSelectors: false
+
+resources:
+  - namespace.yaml
+  - postgres.yaml
+  - neo4j.yaml
+  - backend.yaml
+  - frontend.yaml
+  - ingress.yaml
+  - network-policy.yaml
+  - hpa.yaml
+
+images:
+  - name: urara-vision/backend
+    newTag: latest
+  - name: urara-vision/frontend
+    newTag: latest

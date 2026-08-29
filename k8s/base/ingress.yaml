@@ -1,0 +1,23 @@
+# Everything enters through the frontend, which serves the SPA and proxies
+# /api to the backend. That keeps the browser on one origin.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: urara-vision
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "64m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "180"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "180"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: urara-vision.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  name: http

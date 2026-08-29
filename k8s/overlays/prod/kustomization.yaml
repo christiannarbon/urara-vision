@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: urara-vision
+
+resources:
+  - ../../base
+
+replicas:
+  - name: backend
+    count: 3
+  - name: frontend
+    count: 2
+
+patches:
+  - path: prod-ingress.yaml
+  - path: prod-storage.yaml
+
+# Production credentials are NOT generated here. Create the two secrets out of
+# band -- from a sealed secret, an external-secrets ExternalSecret, or a one-off
+# `kubectl create secret` -- before applying this overlay. See k8s/README.md.
+#
+# Required keys:
+#   relviz-postgres: username, password, database, dsn
+#   relviz-neo4j:    password
+
+images:
+  - name: urara-vision/backend
+    newTag: v0.1.0
+  - name: urara-vision/frontend
+    newTag: v0.1.0
