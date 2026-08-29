@@ -1,0 +1,150 @@
+# Go build, unit tests and integration tests.
+#
+# Path-filtered so a frontend-only change never starts a Go runner. Every job
+# is runnable locally with `make ci-backend`, which drives the same file
+# through nektos/act.
+name: backend
+
+on:
+  pull_request:
+    paths:
+      - backend/**
+      # The demo suites parse the sample documentation sets, so a change to
+      # those is a change to the tests' input.
+      - docs/demo/**
+      - .github/workflows/backend.yml
+  push:
+    branches:
+      - main
+    paths:
+      - backend/**
+      - docs/demo/**
+      - .github/workflows/backend.yml
+  workflow_dispatch:
+
+# Read-only by default; no job here needs more.
+permissions:
+  contents: read
+
+# A new push supersedes the run in flight. Only on pull requests: a push to
+# main should finish, so main's status reflects every commit.
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    working-directory: backend
+
+jobs:
+  check:
+    name: build and unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # The toolchain is whatever go.mod asks for, so CI cannot drift from
+          # the version the Dockerfile pins.
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::these files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: build
+        run: go build ./...
+
+      # The integration suites are behind a build tag, so vet never sees them
+      # unless it is asked to.
+      - name: go vet (integration build tag)
+        run: go vet -tags=integration ./tests/integration/...
+
+      - name: unit tests
+        run: go test -race -count=1 ./tests/unit/...
+
+  integration:
+    name: integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: relviz
+          POSTGRES_PASSWORD: relviz
+          POSTGRES_DB: relviz_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U relviz -d relviz_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      neo4j:
+        image: neo4j:5-community
+        env:
+          NEO4J_AUTH: neo4j/relviz-dev-password
+          NEO4J_server_memory_heap_max__size: 1G
+          NEO4J_server_memory_pagecache_size: 256m
+        ports:
+          - 7687:7687
+          - 7474:7474
+        options: >-
+          --health-cmd "wget -q -O /dev/null http://localhost:7474 || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      # Without these the suites skip themselves rather than fail, so an
+      # accidental rename here would quietly stop testing anything. The count
+      # check below is what makes that loud.
+      - name: integration tests
+        env:
+          TEST_POSTGRES_DSN: postgres://relviz:relviz@localhost:5432/relviz_test?sslmode=disable
+          TEST_NEO4J_URI: bolt://localhost:7687
+          TEST_NEO4J_USER: neo4j
+          TEST_NEO4J_PASSWORD: relviz-dev-password
+        run: |
+          # GitHub's default shell sets pipefail and act's does not, so without
+          # this the pipe into tee reports success for a failing test run --
+          # green here and red on GitHub, which is the worse way round.
+          set -o pipefail
+          go test -tags=integration -count=1 -v ./tests/integration/... | tee integration.log
+
+      - name: fail if the suites skipped
+        run: |
+          if grep -q -- "--- SKIP" integration.log; then
+            echo "::error::integration tests skipped -- the datastores were not reachable"
+            grep -- "--- SKIP" integration.log
+            exit 1
+          fi
