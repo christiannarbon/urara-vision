@@ -17,7 +17,7 @@ func TestSearchIsAPrefixMatch(t *testing.T) {
 	pg := harness.Postgres(t)
 	m := harness.SavedModel(t, ctx, pg)
 
-	hits, err := pg.Search(ctx, m.Snapshot.ID, "rid", 50)
+	hits, err := pg.Search(ctx, m.Snapshot.ID, "prim", 50)
 	if err != nil {
 		t.Fatalf("Search: %v", err)
 	}
@@ -28,7 +28,7 @@ func TestSearchIsAPrefixMatch(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Errorf("searching %q did not find fact_primary: %+v", "rid", hits)
+		t.Errorf("searching %q did not find fact_primary: %+v", "prim", hits)
 	}
 }
 
