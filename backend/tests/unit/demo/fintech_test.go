@@ -28,7 +28,7 @@ func TestFintechStats(t *testing.T) {
 		{"domains", s.Domains, 6},
 		{"tables", s.Tables, 10},
 		{"columns", s.Columns, 108},
-		{"conformed instances", s.Conformed, 2},
+		{"conformed instances", s.Conformed, 3}, // dim_customer twice, and the kernel's declared dim_date
 		{"declared relationships", s.Relationships, 21},
 		{"normalised edges", len(graph.Edges(m)), 12},
 		{"lineage edges", s.LineageEdges, 104},

@@ -172,7 +172,7 @@ Expected totals, pinned by `fintech_test.go`:
 ```
 files parsed   16 (skipped 0)
 domains        6
-tables         10  (conformed instances 2)
+tables         10  (conformed instances 3)
 columns        108
 relationships  21 declared -> 12 normalised edges
 lineage edges  104 across 10 source tables
@@ -228,7 +228,7 @@ Expected totals, pinned by `eshop_test.go`:
 ```
 files parsed   17 (skipped 0)
 domains        6
-tables         11  (conformed instances 2)
+tables         11  (conformed instances 3)
 columns        101
 relationships  22 declared -> 12 normalised edges
 lineage edges  89 across 13 source tables
