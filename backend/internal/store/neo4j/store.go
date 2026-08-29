@@ -5,7 +5,9 @@ package neo4j
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/neo4j/neo4j-go-driver/v5/neo4j"
@@ -36,7 +38,17 @@ func (s *Store) Close(ctx context.Context) error { return s.driver.Close(ctx) }
 func (s *Store) Ping(ctx context.Context) error { return s.driver.VerifyConnectivity(ctx) }
 
 // EnsureConstraints creates the uniqueness constraints and indexes the
-// projection relies on. It is idempotent.
+// projection relies on. It is idempotent, and safe to run from several
+// processes at once: the deployment starts more than one replica, and the
+// integration suites run their packages in parallel, so concurrent callers are
+// the normal case rather than the exception.
+//
+// Concurrency is why each statement runs in its own managed transaction. Two
+// clients creating the same schema rule at the same moment deadlock in the
+// server's schema locks -- a transient error the driver's retry policy handles
+// only for a managed transaction -- and the loser of the race can still be told
+// the rule already exists, despite the IF NOT EXISTS. Both mean the schema is
+// there, which is all a caller asked for.
 func (s *Store) EnsureConstraints(ctx context.Context) error {
 	stmts := []string{
 		`CREATE CONSTRAINT table_key IF NOT EXISTS
@@ -52,9 +64,30 @@ func (s *Store) EnsureConstraints(ctx context.Context) error {
 	defer func() { _ = session.Close(ctx) }()
 
 	for _, stmt := range stmts {
-		if _, err := session.Run(ctx, stmt, nil); err != nil {
+		_, err := session.ExecuteWrite(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+			res, err := tx.Run(ctx, stmt, nil)
+			if err != nil {
+				return nil, err
+			}
+			// Consume inside the transaction so a failure is this statement's
+			// rather than the next one's.
+			return res.Consume(ctx)
+		})
+		if err != nil && !alreadyExists(err) {
 			return fmt.Errorf("ensure constraint: %w", err)
 		}
 	}
 	return nil
+}
+
+// alreadyExists reports whether an error says the schema rule a statement asked
+// for is already present, which a concurrent creation can produce even under
+// IF NOT EXISTS.
+func alreadyExists(err error) bool {
+	var nerr *neo4j.Neo4jError
+	if !errors.As(err, &nerr) {
+		return false
+	}
+	return strings.HasPrefix(nerr.Code, "Neo.ClientError.Schema.") &&
+		strings.HasSuffix(nerr.Code, "AlreadyExists")
 }

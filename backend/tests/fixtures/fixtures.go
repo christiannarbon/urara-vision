@@ -90,7 +90,7 @@ const SampleTableDoc = "# fact_demo\n" +
 // ingest it and then assert against what the stores return.
 func StarSchema() []parser.File {
 	return []parser.File{
-		File("domain_one/index.md", "# Domain One Domain\n\n## Description\n\nThe domain_one domain.\n\n"+
+		File("domain_one.md", "# Domain One Domain\n\n## Description\n\nThe domain_one domain.\n\n"+
 			"## Lineage\n\n| Proposed Table | Source Model(s) |\n| :--- | :--- |\n"+
 			"| `fact_primary` | `warehouse.upstream_model` |\n"),
 		File("domain_one/fact_primary.md", "# fact_primary\n## Overview\n\n| Property | Value |\n|---|---|\n"+
@@ -109,7 +109,7 @@ func StarSchema() []parser.File {
 			"## Notes / Caveats\n\n- Excludes cancelled rows.\n"),
 		File("domain_one/dim_alpha.md", Doc("dim_alpha", "Dimension", "Domain One",
 			[]string{"alpha_id", "created_at"}, "")),
-		File("domain_two/index.md", "# Domain Two Domain\n\n## Description\n\nThe domain_two domain.\n"),
+		File("domain_two.md", "# Domain Two Domain\n\n## Description\n\nThe domain_two domain.\n"),
 		File("domain_two/dim_beta.md", Doc("dim_beta", "Dimension", "Conformed",
 			[]string{"beta_id", "beta_name"}, "")),
 	}

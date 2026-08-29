@@ -127,7 +127,7 @@ func TestIngestThenReadEverything(t *testing.T) {
 	})
 
 	t.Run("search", func(t *testing.T) {
-		hits, _ := get(t, base, snap+"/search?q=rid")["hits"].([]any)
+		hits, _ := get(t, base, snap+"/search?q=prim")["hits"].([]any)
 		if len(hits) == 0 {
 			t.Error("a prefix search found nothing")
 		}

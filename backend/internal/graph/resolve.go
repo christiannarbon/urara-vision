@@ -9,7 +9,6 @@ package graph
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"urara-vision/backend/internal/model"
 )
@@ -91,11 +90,8 @@ func resolveRelationships(m *model.Model, reg *registry) int {
 // so the sides are matched against the tables' real column lists instead.
 //
 // pickConformed chooses which instance of a cross-domain table a reference
-// binds to. Preference order: a document that explicitly labels its domain
-// "Conformed", then the richest definition (most columns), then alphabetical.
-// Matching requires the word "conformed" specifically -- a domain merely named
-// something like "Domain Four & Cross-Domain Reporting" is not claiming to be the
-// conformed authority.
+// binds to. Preference order: a document that declares itself conformed, then
+// the richest definition (most columns), then alphabetical.
 func pickConformed(candidates []string, byID map[string]*model.Table) string {
 	type scored struct {
 		id       string
@@ -108,10 +104,9 @@ func pickConformed(candidates []string, byID map[string]*model.Table) string {
 		if !ok {
 			continue
 		}
-		label := strings.ToLower(t.DomainLabel + " " + t.KindRaw)
 		ranked = append(ranked, scored{
 			id:       id,
-			declared: strings.Contains(label, "conformed"),
+			declared: declaresConformed(t),
 			columns:  len(t.Columns),
 		})
 	}
