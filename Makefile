@@ -172,13 +172,32 @@ k8s-status: ## Show what is running in the cluster
 	fi
 
 .PHONY: k8s-down
-k8s-down: ## Tear the Kubernetes stack down (deletes its PVCs and data)
+k8s-down: ## Tear the Kubernetes stack down, keeping its volumes and data
+	@$(MAKE) --no-print-directory k8s-untunnel
+	@if ! kubectl get ns $(NS) >/dev/null 2>&1; then \
+	  echo "not deployed -- nothing to tear down"; exit 0; \
+	fi
+	@# Everything except the namespace itself, which is what holds the PVCs:
+	@# deleting it would take the ingested snapshots with it. The namespace is
+	@# ours alone, so --all needs no label selector to be exact.
+	kubectl -n $(NS) delete statefulset,deploy,svc,ingress,networkpolicy,hpa,pdb --all --ignore-not-found
+	@rm -f $(PF_LOG)
+	@echo
+	@echo "Urara Vision removed. These volumes stayed behind, and 'make k8s-up'"
+	@echo "will pick them up again:"
+	@kubectl -n $(NS) get pvc --no-headers \
+	  -o custom-columns=NAME:.metadata.name,SIZE:.status.capacity.storage 2>/dev/null | sed 's/^/  /'
+	@echo
+	@echo "  delete the data too:   make k8s-clean"
+
+.PHONY: k8s-clean
+k8s-clean: ## Tear the stack down and delete its volumes with it
 	@$(MAKE) --no-print-directory k8s-untunnel
 	kubectl delete -k k8s/overlays/dev --ignore-not-found --wait=false
 	@echo "==> waiting for the namespace to finish deleting"
 	@kubectl wait --for=delete ns/$(NS) --timeout=180s 2>/dev/null || true
 	@rm -f $(PF_LOG)
-	@echo "Urara Vision removed. The minikube cluster itself is still running."
+	@echo "Urara Vision removed, volumes and all. The minikube cluster itself is still running."
 
 .PHONY: k8s-validate
 k8s-validate: ## Render and schema-check both overlays
