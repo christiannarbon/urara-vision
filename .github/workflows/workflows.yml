@@ -1,0 +1,57 @@
+# Lints the workflows themselves.
+#
+# ghalint enforces the security posture -- pinned action SHAs, per-job
+# permissions, no credential-persisting checkout -- and actionlint catches the
+# ordinary mistakes: bad expressions, unknown keys, broken shell in `run`.
+name: workflows
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/**
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workflows-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: ghalint and actionlint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Deliberately not the project's toolchain, which every other workflow
+      # takes from backend/go.mod. setup-go exports GOTOOLCHAIN=local, so the
+      # Go it installs is the only one available -- and ghalint needs a newer
+      # one than the backend targets. Nothing of this project is compiled here,
+      # so tracking stable costs nothing.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: stable
+
+      # Pinned to the version `make ci-lint` runs locally, so the two cannot
+      # disagree about what passes.
+      - name: ghalint
+        run: go run github.com/suzuki-shunsuke/ghalint/cmd/ghalint@v1.5.6 run
+
+      # The image carries shellcheck and pyflakes, which actionlint shells out
+      # to for `run:` blocks.
+      - name: actionlint
+        run: |
+          docker run --rm -v "$PWD:/repo" -w /repo \
+            rhysd/actionlint:1.7.12 -color

@@ -1,0 +1,28 @@
+# Defaults for nektos/act, so `act` and `make ci-*` behave the same for
+# everyone. See the "Running CI locally" section of the README.
+
+# The medium image carries the toolchain the setup-* actions expect. The
+# default micro image does not, and every job fails on it.
+-P ubuntu-latest=catthehacker/ubuntu:act-latest
+
+# act reuses the container between steps within a job, which is what makes a
+# second run fast. `make ci-clean` drops them.
+--reuse
+
+# Bind the working tree instead of copying it in. Steps that shell out to
+# `docker run -v "$PWD/...":...` mount through the *host* daemon, so the path
+# they hand it has to exist on the host -- which it only does when the workspace
+# is bound. On a GitHub runner the job is not containerised and $PWD is already a
+# host path, so this is what makes the two environments agree.
+#
+# The cost is that a run writes into your real working tree rather than a copy.
+# Anything a workflow generates is gitignored; `git status` after a run will tell
+# you if that stops being true.
+--bind
+
+
+# Skip act's cache service. The setup-* actions try to save a toolchain cache on
+# the way out and spend minutes failing to reach it; --reuse already keeps the
+# module and npm caches warm inside the job container between runs. GitHub's own
+# caching is unaffected -- it is configured in the workflows, not here.
+--no-cache-server
