@@ -1,0 +1,134 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/component: api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/component: api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backend
+        app.kubernetes.io/component: api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: urara-vision/backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: relviz-backend-config
+          env:
+            - name: POSTGRES_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: relviz-postgres
+                  key: dsn
+            - name: NEO4J_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: relviz-neo4j
+                  key: password
+            # The shared bearer token for /api/v1. The dev overlay generates
+            # one; prod expects the secret to exist already. Removing this
+            # block leaves the API unauthenticated, which the server logs a
+            # warning about on startup.
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: relviz-api
+                  key: token
+          # The process waits for both datastores on startup, so a generous
+          # startup probe keeps a cold cluster from crash-looping while the
+          # liveness probe stays tight once it is serving.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: relviz-backend-config
+data:
+  APP_ADDR: ":8080"
+  NEO4J_URI: "bolt://neo4j:7687"
+  NEO4J_USER: "neo4j"
+  LOG_LEVEL: "info"
+  MAX_UPLOAD_BYTES: "67108864"
+  MAX_FILES: "5000"
+  # The frontend proxies /api to this service, so requests arrive same-origin
+  # and CORS never applies. The list is kept for direct-access debugging.
+  CORS_ORIGINS: "http://localhost:5173,http://localhost:8081"
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: backend
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend
