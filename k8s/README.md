@@ -92,6 +92,21 @@ Both datastores are `StatefulSet`s with `volumeClaimTemplates`:
 | `data` (neo4j) | 8Gi | 50Gi | Graph projection |
 | `logs` (neo4j) | 2Gi | 5Gi | Neo4j server logs |
 
+Both carry `persistentVolumeClaimRetentionPolicy: Retain` for `whenDeleted` and
+`whenScaled`. That is the default, and it is spelled out because the teardown
+relies on it: `make k8s-down` deletes the StatefulSets and leaves the namespace
+standing, so the claims survive and the next `make k8s-up` rebinds them with
+everything that was ingested still in place. `make k8s-clean` is the one that
+deletes the namespace, and the volumes go with it.
+
+Deleting by hand has the same split -- deleting the StatefulSet keeps its
+claims, deleting the namespace does not:
+
+```bash
+kubectl -n urara-vision delete statefulset postgres   # data survives
+kubectl delete ns urara-vision                        # data does not
+```
+
 `volumeClaimTemplates` are immutable once a StatefulSet exists. Resizing a live
 install means either editing the PVCs directly (if your storage class allows
 expansion) or recreating the StatefulSet with `--cascade=orphan` so the pods

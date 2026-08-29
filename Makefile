@@ -152,7 +152,7 @@ k8s-up: ## Bring the whole Kubernetes stack up and open a tunnel to it
 	  echo "  already ingested:      $$(echo "$$ingested" | paste -sd', ' -)"; \
 	fi
 	@echo "  logs:                  make k8s-logs"
-	@echo "  shut down:             make k8s-down"
+	@echo "  shut down, keep data:  make k8s-down"
 
 .PHONY: k8s-tunnel
 k8s-tunnel: ## (Re)start the background port-forward
