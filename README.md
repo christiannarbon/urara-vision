@@ -27,31 +27,6 @@ third-normal-form schema, or a vocabulary of roles it has never met.
 
 ---
 
-## Quick start
-
-```bash
-docker compose up -d --build
-open http://localhost:8081
-```
-
-Then click **Choose folder…** and select your documentation directory. Every
-`.md` file beneath it is read in the browser and posted to the parser; nothing
-is written back to disk.
-
-No documentation of your own to hand? Seven complete sample sets ship under
-[`docs/demo/`](docs/demo/README.md) — a star, a snowflake, a Data Vault, a
-hybrid and a third-normal-form schema among them — each with deliberate flaws
-so every diagnostic has something to find.
-
-```bash
-make demo-docs                    # parse all seven on the command line
-make demo-docs SET=eshop-ddd      # or just one
-```
-
-Full walkthrough: [getting started](docs/usage/getting-started.md).
-
----
-
 ## Documentation
 
 | | |
@@ -97,61 +72,6 @@ for its description, grain, columns, column-level lineage, joins and caveats.
 
 ---
 
-## How it fits together
-
-```
-Browser ──pick folder──▶ Vue 3 app
-                          │ reads .md client-side
-                          ▼
-                    POST /api/v1/ingest        (JSON or multipart)
-                          │
-                    ┌─────▼──────┐
-                    │ Go backend │  parse ─▶ resolve ─▶ project
-                    └──┬──────┬──┘
-                       │      │
-              ┌────────▼─┐  ┌─▼──────────────┐
-              │ Postgres │  │ Neo4j          │
-              │ system   │  │ graph          │
-              │ of record│  │ projection     │
-              └──────────┘  └────────────────┘
-```
-
-Postgres is the system of record and carries the weighted full-text index;
-Neo4j holds the projected graph and answers the traversals that are a single
-Cypher clause and an awkward recursive CTE in SQL — neighbourhoods, shortest
-join paths, and shared-source siblings. The parse and resolve stages touch
-neither, which is why [`relctl`](docs/usage/cli.md) can lint a documentation
-tree with no server and no database.
-
-→ [architecture](docs/tech/architecture/overview.md)
-
----
-
-## Working on it
-
-```bash
-make test              # backend unit tests, frontend typecheck and unit tests
-make test-integration  # backend against real Postgres and Neo4j
-make ci                # what a pull request runs, locally, through act
-make k8s-up            # build, deploy to minikube, and tunnel to it
-make help              # everything else
-```
-
-```
-backend/    Go: parser, resolver, both stores, HTTP API, relctl
-frontend/   Vue 3 + Pinia + Cytoscape, no Tailwind
-k8s/        kustomize base and dev/prod overlays
-docs/       usage guides, technical documentation, demo sets
-```
-
-Every workflow runs on your machine through [nektos/act], so a broken one costs
-no Actions minutes to find. → [CI](docs/tech/design/ci.md) ·
-[testing](docs/tech/design/testing.md)
-
-[nektos/act]: https://github.com/nektos/act
-
----
-
 ## Why it is called that
 
 This is a passion project. Nobody asked for it, it is not on a roadmap, and the
@@ -184,3 +104,28 @@ by someone who is pleased you showed up, and who is going to tell you about the
 
 You can switch the theme. The [eight paintings](docs/usage/themes.md) are still
 there. But this is the one it opens on.
+
+---
+
+## Quick start
+
+```bash
+docker compose up -d --build
+open http://localhost:8081
+```
+
+Then click **Choose folder…** and select your documentation directory. Every
+`.md` file beneath it is read in the browser and posted to the parser; nothing
+is written back to disk.
+
+No documentation of your own to hand? Seven complete sample sets ship under
+[`docs/demo/`](docs/demo/README.md) — a star, a snowflake, a Data Vault, a
+hybrid and a third-normal-form schema among them — each with deliberate flaws
+so every diagnostic has something to find.
+
+```bash
+make demo-docs                    # parse all seven on the command line
+make demo-docs SET=eshop-ddd      # or just one
+```
+
+Full walkthrough: [getting started](docs/usage/getting-started.md).
