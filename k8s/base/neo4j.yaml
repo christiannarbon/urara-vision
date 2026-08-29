@@ -1,0 +1,121 @@
+# Neo4j holds the projected graph and answers the traversal queries: table
+# neighbourhoods, join paths and lineage.
+apiVersion: v1
+kind: Service
+metadata:
+  name: neo4j
+  labels:
+    app.kubernetes.io/name: neo4j
+    app.kubernetes.io/component: graph-database
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: neo4j
+  ports:
+    - name: bolt
+      port: 7687
+      targetPort: bolt
+    - name: http
+      port: 7474
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: neo4j
+  labels:
+    app.kubernetes.io/name: neo4j
+    app.kubernetes.io/component: graph-database
+spec:
+  serviceName: neo4j
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: neo4j
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: neo4j
+        app.kubernetes.io/component: graph-database
+    spec:
+      securityContext:
+        fsGroup: 7474
+        runAsUser: 7474
+        runAsGroup: 7474
+      containers:
+        - name: neo4j
+          image: neo4j:5-community
+          ports:
+            - name: bolt
+              containerPort: 7687
+            - name: http
+              containerPort: 7474
+          env:
+            # NEO4J_AUTH wants "neo4j/<password>" as a single value, assembled
+            # here rather than stored pre-joined so the secret keeps one key
+            # that the backend can also read.
+            #
+            # The holding variable must NOT be named NEO4J_*: the entrypoint
+            # turns every NEO4J_-prefixed variable into a server setting, so
+            # NEO4J_PASSWORD becomes a setting called "PASSWORD" and strict
+            # config validation refuses to start.
+            - name: RELVIZ_NEO4J_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: relviz-neo4j
+                  key: password
+            - name: NEO4J_AUTH
+              value: "neo4j/$(RELVIZ_NEO4J_PASSWORD)"
+            - name: NEO4J_server_memory_heap_initial__size
+              value: "512m"
+            - name: NEO4J_server_memory_heap_max__size
+              value: "1G"
+            - name: NEO4J_server_memory_pagecache_size
+              value: "512m"
+            - name: NEO4J_server_default__listen__address
+              value: "0.0.0.0"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: logs
+              mountPath: /logs
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            tcpSocket:
+              port: bolt
+            initialDelaySeconds: 90
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+            limits:
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 8Gi
+    - metadata:
+        name: logs
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 2Gi
