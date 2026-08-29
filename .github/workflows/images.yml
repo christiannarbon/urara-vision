@@ -1,0 +1,81 @@
+# Builds both container images. Nothing is pushed and nothing is uploaded --
+# this only answers "does it still build", which is the part that breaks when a
+# base image is repinned or a COPY path moves.
+name: images
+
+on:
+  pull_request:
+    paths:
+      - backend/Dockerfile
+      - backend/.dockerignore
+      - backend/go.mod
+      - backend/go.sum
+      - frontend/Dockerfile
+      - frontend/nginx.conf
+      - frontend/nginx-security-headers.conf
+      - frontend/package-lock.json
+      - .github/workflows/images.yml
+  push:
+    branches:
+      - main
+    paths:
+      - backend/Dockerfile
+      - backend/.dockerignore
+      - frontend/Dockerfile
+      - frontend/nginx.conf
+      - frontend/nginx-security-headers.conf
+      - .github/workflows/images.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: build ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      # One broken image should not hide the other's result.
+      fail-fast: false
+      matrix:
+        image:
+          - backend
+          - frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: ./${{ matrix.image }}
+          # Load into the local daemon so the checks below can run against it.
+          # Never pushed: this workflow has no registry credentials.
+          load: true
+          push: false
+          tags: urara-vision/${{ matrix.image }}:ci
+          # The layer cache lives with the run rather than in the repository's
+          # cache, so nothing is uploaded.
+          cache-from: type=gha
+          cache-to: type=gha,mode=min
+
+      # A root-running container would be a regression against the securityContext
+      # the k8s manifests set, and the manifests would fail at deploy time rather
+      # than here.
+      - name: image runs as a non-root user
+        run: |
+          user=$(docker image inspect --format '{{.Config.User}}' "urara-vision/${{ matrix.image }}:ci")
+          echo "configured user: ${user:-<empty>}"
+          if [ "${{ matrix.image }}" = "backend" ] && [ -z "$user" ]; then
+            echo "::error::the backend image does not set USER, but the pod spec requires runAsNonRoot"
+            exit 1
+          fi

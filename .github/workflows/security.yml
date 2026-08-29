@@ -1,0 +1,95 @@
+# Dependency scanning.
+#
+# On a schedule rather than on every pull request: these scans catch newly
+# disclosed vulnerabilities in code that has not changed, and running them per
+# PR would burn minutes re-checking the same lockfile. They also run whenever a
+# dependency manifest moves, which is when a scan result can actually change.
+name: security
+
+on:
+  pull_request:
+    paths:
+      - backend/go.mod
+      - backend/go.sum
+      - frontend/package.json
+      - frontend/package-lock.json
+      - .github/workflows/security.yml
+  push:
+    branches:
+      - main
+    paths:
+      - backend/go.mod
+      - backend/go.sum
+      - frontend/package.json
+      - frontend/package-lock.json
+      - .github/workflows/security.yml
+  schedule:
+    # Monday 09:00 JST (00:00 UTC), so a fresh advisory is waiting at the start
+    # of the week rather than arriving mid-review.
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  go:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      # The tool is pinned; the vulnerability database it reads is fetched at
+      # run time, so a pinned tool still reports today's advisories.
+      - name: govulncheck
+        working-directory: backend
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+
+  npm:
+    name: npm audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+
+      # No `npm ci` first: audit reads the lockfile, and installing would only
+      # add a minute and run the dependencies' install scripts.
+      - name: npm audit
+        working-directory: frontend
+        run: npm audit --audit-level=high
+
+      # Everything should come from the public registry. A substituted resolved
+      # URL is the shape a dependency-confusion or mirror-poisoning attack takes,
+      # and it is invisible to `npm audit`.
+      - name: every dependency resolves to the public registry
+        working-directory: frontend
+        run: |
+          foreign=$(grep -o '"resolved": "[^"]*"' package-lock.json \
+            | grep -v 'https://registry.npmjs.org/' || true)
+          if [ -n "$foreign" ]; then
+            echo "::error::lockfile entries resolve somewhere other than registry.npmjs.org:"
+            echo "$foreign"
+            exit 1
+          fi

@@ -1,0 +1,68 @@
+# Renders both kustomize overlays and schema-checks the result.
+#
+# This is `make k8s-validate` with the same two images, so a failure here
+# reproduces locally with one command.
+name: manifests
+
+on:
+  pull_request:
+    paths:
+      - k8s/**
+      - .github/workflows/manifests.yml
+  push:
+    branches:
+      - main
+    paths:
+      - k8s/**
+      - .github/workflows/manifests.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manifests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  validate:
+    name: kustomize and kubeconform
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Both tools run from pinned images rather than whatever the runner
+      # happens to ship, so the local and CI results cannot disagree.
+      #
+      # Only one host path is ever mounted -- the repo, read by kustomize.
+      # kubeconform is fed on stdin instead of being pointed at a mounted output
+      # directory: the nested `docker run` talks to the host daemon, so a path
+      # produced inside the job would not resolve for it. That is invisible on a
+      # GitHub runner and fails immediately under act, and stdin sidesteps it in
+      # both.
+      - name: render and schema-check both overlays
+        run: |
+          for overlay in dev prod; do
+            echo "==> $overlay"
+            docker run --rm -v "$PWD:/work" -w /work \
+              registry.k8s.io/kustomize/kustomize:v5.7.1 \
+              build "k8s/overlays/$overlay" > "$overlay.yaml"
+
+            docker run --rm -i \
+              ghcr.io/yannh/kubeconform:v0.8.0 \
+              -strict -summary -kubernetes-version 1.33.0 - < "$overlay.yaml"
+          done
+
+      # The prod overlay must never carry the committed dev credentials. A
+      # rendered secret here would mean the dev generator leaked across.
+      - name: prod overlay carries no generated secrets
+        run: |
+          if grep -qE "relviz-dev-password|relviz-dev-token" prod.yaml; then
+            echo "::error::the prod overlay rendered a development credential"
+            exit 1
+          fi
