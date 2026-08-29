@@ -1,0 +1,50 @@
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*~
+
+# --- frontend -------------------------------------------------------------
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/.vite/
+frontend/*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- backend --------------------------------------------------------------
+# Compiled binaries from `go build` in the module root.
+backend/server
+backend/relctl
+backend/*.test
+backend/*.out
+backend/coverage.out
+backend/coverage.html
+
+# --- local run state ------------------------------------------------------
+# Written by the Makefile's k8s port-forward targets.
+.k8s-portforward.pid
+.k8s-portforward.log
+
+# Scratch output.
+*.local.yaml
+
+# --- CI -------------------------------------------------------------------
+# Rendered manifests, written by the manifests workflow.
+/dev.yaml
+/prod.yaml
+# Test output tee'd by the backend workflow's integration step.
+backend/integration.log
+
+# Environment overrides; the committed defaults live in docker-compose.yml.
+.env
+.env.*
+!.env.example
