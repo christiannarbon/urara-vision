@@ -11,6 +11,14 @@ PF_PORT  ?= 18081
 PF_PID   := .k8s-portforward.pid
 PF_LOG   := .k8s-portforward.log
 
+# The documentation sets already ingested into the cluster, one name per line.
+# Read straight out of Postgres rather than over the API: no tunnel, no bearer
+# token, and it answers before the frontend is up. The inner quotes reach the
+# container's shell, so the credentials come from the pod's own environment.
+K8S_INGESTED = kubectl -n $(NS) exec postgres-0 -- sh -c \
+  'psql -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -tAc \
+   "SELECT name FROM snapshots ORDER BY created_at"' 2>/dev/null
+
 .PHONY: help
 help: ## Show this help
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -120,6 +128,15 @@ k8s-up: ## Bring the whole Kubernetes stack up and open a tunnel to it
 	@minikube addons list 2>/dev/null | grep -qE 'ingress .*enabled' || minikube addons enable ingress
 	@echo "==> images"
 	@$(MAKE) --no-print-directory k8s-load
+	@echo "==> storage"
+	@if [ -n "$$(kubectl -n $(NS) get pvc -o name 2>/dev/null)" ]; then \
+	  echo "    reusing the volumes a previous run left behind:"; \
+	  kubectl -n $(NS) get pvc --no-headers \
+	    -o custom-columns=NAME:.metadata.name,STATUS:.status.phase,SIZE:.status.capacity.storage \
+	    | sed 's/^/      /'; \
+	else \
+	  echo "    no volumes yet -- the datastores will start empty"; \
+	fi
 	@echo "==> deploy"
 	kubectl apply -k k8s/overlays/dev
 	@echo "==> waiting for pods (first boot takes a minute or two)"
@@ -130,8 +147,12 @@ k8s-up: ## Bring the whole Kubernetes stack up and open a tunnel to it
 	@$(MAKE) --no-print-directory k8s-tunnel
 	@echo
 	@echo "  Urara Vision is up:  http://localhost:$(PF_PORT)"
+	@ingested=$$($(K8S_INGESTED)); \
+	if [ -n "$$ingested" ]; then \
+	  echo "  already ingested:      $$(echo "$$ingested" | paste -sd', ' -)"; \
+	fi
 	@echo "  logs:                  make k8s-logs"
-	@echo "  shut down:             make k8s-down"
+	@echo "  shut down, keep data:  make k8s-down"
 
 .PHONY: k8s-tunnel
 k8s-tunnel: ## (Re)start the background port-forward
@@ -162,6 +183,10 @@ k8s-logs: ## Follow backend logs in the cluster
 k8s-status: ## Show what is running in the cluster
 	@if kubectl get ns $(NS) >/dev/null 2>&1; then \
 		kubectl -n $(NS) get pods,pvc,ingress; \
+		ingested=$$($(K8S_INGESTED)); \
+		if [ -n "$$ingested" ]; then \
+			echo; echo "ingested: $$(echo "$$ingested" | paste -sd', ' -)"; \
+		fi; \
 		if [ -f $(PF_PID) ] && kill -0 $$(cat $(PF_PID)) 2>/dev/null; then \
 			echo; echo "tunnel: http://localhost:$(PF_PORT) (pid $$(cat $(PF_PID)))"; \
 		else \
@@ -172,13 +197,32 @@ k8s-status: ## Show what is running in the cluster
 	fi
 
 .PHONY: k8s-down
-k8s-down: ## Tear the Kubernetes stack down (deletes its PVCs and data)
+k8s-down: ## Tear the Kubernetes stack down, keeping its volumes and data
+	@$(MAKE) --no-print-directory k8s-untunnel
+	@if ! kubectl get ns $(NS) >/dev/null 2>&1; then \
+	  echo "not deployed -- nothing to tear down"; exit 0; \
+	fi
+	@# Everything except the namespace itself, which is what holds the PVCs:
+	@# deleting it would take the ingested snapshots with it. The namespace is
+	@# ours alone, so --all needs no label selector to be exact.
+	kubectl -n $(NS) delete statefulset,deploy,svc,ingress,networkpolicy,hpa,pdb --all --ignore-not-found
+	@rm -f $(PF_LOG)
+	@echo
+	@echo "Urara Vision removed. These volumes stayed behind, and 'make k8s-up'"
+	@echo "will pick them up again:"
+	@kubectl -n $(NS) get pvc --no-headers \
+	  -o custom-columns=NAME:.metadata.name,SIZE:.status.capacity.storage 2>/dev/null | sed 's/^/  /'
+	@echo
+	@echo "  delete the data too:   make k8s-clean"
+
+.PHONY: k8s-clean
+k8s-clean: ## Tear the stack down and delete its volumes with it
 	@$(MAKE) --no-print-directory k8s-untunnel
 	kubectl delete -k k8s/overlays/dev --ignore-not-found --wait=false
 	@echo "==> waiting for the namespace to finish deleting"
 	@kubectl wait --for=delete ns/$(NS) --timeout=180s 2>/dev/null || true
 	@rm -f $(PF_LOG)
-	@echo "Urara Vision removed. The minikube cluster itself is still running."
+	@echo "Urara Vision removed, volumes and all. The minikube cluster itself is still running."
 
 .PHONY: k8s-validate
 k8s-validate: ## Render and schema-check both overlays

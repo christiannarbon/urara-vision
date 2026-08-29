@@ -104,6 +104,14 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+  # The data outlives the workload. Deleting the StatefulSet -- which is what
+  # `make k8s-down` does -- leaves these claims behind, so bringing the stack
+  # back up rebinds the same volumes and the snapshots ingested before the
+  # teardown are still there. Retain is the default, but this is the whole
+  # reason a teardown is safe, so it is written down rather than inherited.
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
   volumeClaimTemplates:
     - metadata:
         name: data

@@ -475,7 +475,7 @@ Two commands, tested on minikube:
 
 ```bash
 make k8s-up      # build, load into the cluster, deploy, wait, open a tunnel
-make k8s-down    # tear it all down again
+make k8s-down    # tear it down again, keeping the data
 ```
 
 `k8s-up` starts minikube and enables the ingress addon if needed, so it works
@@ -485,12 +485,29 @@ commands are idempotent; re-running `k8s-up` on a live stack changes nothing
 and does not restart pods.
 
 ```bash
-make k8s-status  # pods, volumes, ingress, tunnel state
+make k8s-status  # pods, volumes, ingress, ingested sets, tunnel state
 make k8s-logs    # follow backend logs in-cluster
 ```
 
-`k8s-down` deletes the namespace, which takes its PVCs with it — the ingested
-data does not survive. Re-ingesting takes seconds.
+`k8s-down` leaves the volumes behind. It deletes the workloads and keeps the
+namespace, so the claims holding Postgres and the graph projection survive and
+the next `k8s-up` rebinds them — the documentation sets you ingested are still
+there, and it says which ones as it comes up:
+
+```
+==> storage
+    reusing the volumes a previous run left behind:
+      data-neo4j-0      Bound   8Gi
+      data-postgres-0   Bound   8Gi
+      logs-neo4j-0      Bound   2Gi
+...
+  Urara Vision is up:  http://localhost:18081
+  already ingested:      sakila-oltp-ddd
+```
+
+To start genuinely clean, `make k8s-clean` deletes the namespace and takes the
+volumes with it — the same pairing as `make down` and `make clean` on the
+compose stack.
 
 Full detail, including the two image-specific gotchas the live deploy exposed,
 is in [`k8s/README.md`](k8s/README.md).
