@@ -7,6 +7,10 @@
  */
 import { nextTick, ref, watch } from 'vue'
 
+import { useI18n } from '../i18n'
+
+const { t } = useI18n()
+
 const props = defineProps<{ busy?: boolean }>()
 const emit = defineEmits<{ (e: 'submit', token: string): void }>()
 
@@ -40,14 +44,13 @@ defineExpose({ markRejected })
 <template>
   <div class="gate">
     <form class="card" @submit.prevent="submit">
-      <h1>This instance needs a token</h1>
+      <h1>{{ t('gate.title') }}</h1>
       <p class="muted">
-        The API is protected by a shared token. Ask whoever runs this deployment for it —
-        it is the <code>API_TOKEN</code> the backend was started with.
+        {{ t('gate.intro.before') }} <code>API_TOKEN</code> {{ t('gate.intro.after') }}
       </p>
 
       <label class="field">
-        <span class="label">API token</span>
+        <span class="label">{{ t('gate.field') }}</span>
         <input
           ref="input"
           v-model="token"
@@ -55,21 +58,17 @@ defineExpose({ markRejected })
           autocomplete="off"
           spellcheck="false"
           :aria-invalid="rejected"
-          placeholder="Paste the token"
+          :placeholder="t('gate.placeholder')"
         />
       </label>
 
-      <p v-if="rejected" class="error" role="alert">
-        That token was not accepted. Check it for a missing or trailing character.
-      </p>
+      <p v-if="rejected" class="error" role="alert">{{ t('gate.rejected') }}</p>
 
       <button class="btn btn--primary" type="submit" :disabled="!token.trim() || busy">
-        {{ busy ? 'Checking…' : 'Continue' }}
+        {{ busy ? t('gate.checking') : t('gate.continue') }}
       </button>
 
-      <p class="faint tiny note">
-        It is kept in this browser's local storage so you are not asked on every visit.
-      </p>
+      <p class="faint tiny note">{{ t('gate.storage') }}</p>
     </form>
   </div>
 </template>

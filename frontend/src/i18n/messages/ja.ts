@@ -23,6 +23,45 @@ import type { Messages } from './en'
 export const messages: Messages = {
   'locale.en': 'English',
   'locale.ja': '日本語',
+
+  'app.title': 'Urara Vision — データモデルエクスプローラ',
+
+  // Topbar
+  'topbar.home': '取り込み一覧に戻る',
+  'topbar.search': '検索',
+  'topbar.search.title': '検索（⌘K）',
+  'topbar.diagnostics': '診断',
+  'topbar.diagnostics.title': '診断',
+  'topbar.diagnostics.titleAttention': '診断 — 確認したほうがよい項目があります',
+  'topbar.diagnostics.flag': '診断に確認が必要です',
+  'topbar.newIngest': '新しい取り込み',
+
+  // The banners under the topbar
+  'banner.dismiss': '閉じる',
+  'banner.review': '確認する',
+  'banner.parseFailures.one': '{n} 件のドキュメントを解析できず、スキップしました。',
+  'banner.parseFailures.other': '{n} 件のドキュメントを解析できず、スキップしました。',
+  'banner.parseFailuresDetail.one': 'そこに記載されている内容は、このモデルには含まれていません。',
+  'banner.parseFailuresDetail.other': 'そこに記載されている内容は、このモデルには含まれていません。',
+
+  // Theme picker
+  'theme.label': 'テーマ',
+  'theme.current': 'テーマ：{name}',
+  'theme.paintings': '絵画',
+
+  // API token gate
+  'gate.title': 'このインスタンスにはトークンが必要です',
+  'gate.intro.before':
+    'API は共有トークンで保護されています。このデプロイの運用担当者に問い合わせてください。バックエンドの起動時に指定した',
+  'gate.intro.after': 'です。',
+  'gate.field': 'API トークン',
+  'gate.placeholder': 'トークンを貼り付けてください',
+  'gate.rejected':
+    'このトークンは受け付けられませんでした。文字の欠落や余分な文字がないか確認してください。',
+  'gate.checking': '確認中…',
+  'gate.continue': '続ける',
+  'gate.storage':
+    'トークンはこのブラウザのローカルストレージに保存されるため、毎回入力する必要はありません。',
 }
 
 /** Japanese has no plural forms: one table and forty tables read alike. */
