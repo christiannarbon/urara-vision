@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import TableDetail from '../../src/components/TableDetail.vue'
 import type { TableResponse } from '../../src/api/types'
 import { setLocale } from '../../src/i18n'
+import { setDocumentLanguages } from '../../src/i18n/content'
 import { messages as en } from '../../src/i18n/messages/en'
 import { messages as ja } from '../../src/i18n/messages/ja'
 
@@ -51,7 +52,10 @@ function pane(res: TableResponse | null, loading = false) {
   })
 }
 
-afterEach(() => setLocale('en'))
+afterEach(() => {
+  setLocale('en')
+  setDocumentLanguages(null)
+})
 
 describe('the empty and loading states', () => {
   it('reads from the catalogue', () => {
@@ -127,5 +131,59 @@ describe('counted strings', () => {
     })
     await w.findAll('[role="tab"]')[3].trigger('click')
     expect(w.text()).toContain(ja['detail.lineage.columns.other'].replace('{n}', '4'))
+  })
+})
+
+/**
+ * The document's own words, as opposed to the app's.
+ *
+ * The pane is where nearly all of them land, and the point of reading them out
+ * of the field rather than off the ingest is that switching language redraws
+ * what is already loaded. That is what these assert: same props, same
+ * component instance, different language.
+ */
+describe('prose written in more than one language', () => {
+  const bilingual = () =>
+    detail({
+      description: 'One row per order line. [JP] 受注明細ごとに 1 行。',
+      grain: 'order line [JP] 受注明細',
+      updateFrequency: 'Daily [JP] 毎日',
+      notes: ['Excludes cancelled rows. [JP] キャンセル分を除きます。'],
+      relationshipNote: 'Joins through the date dimension. [JP] 日付ディメンションを経由します。',
+      columns: [
+        {
+          name: 'order_id',
+          type: 'STRING',
+          description: 'This is a column [JP] これはコラムです。',
+          ordinal: 0,
+          isPk: true,
+          isFk: false,
+        },
+      ],
+    })
+
+  it('shows one language at a time, and follows the switch without remounting', async () => {
+    setDocumentLanguages({
+      project: { name: 'p', version: '0.1.0', description: '' },
+      internationalization: { primary: 'EN', supported: ['EN', 'JP'], type: 'inline' },
+    })
+
+    const w = pane(bilingual())
+    expect(w.text()).toContain('One row per order line.')
+    expect(w.text()).not.toContain('受注明細ごとに 1 行。')
+    expect(w.text()).not.toContain('[JP]')
+
+    setLocale('ja')
+    await nextTick()
+    expect(w.text()).toContain('受注明細ごとに 1 行。')
+    expect(w.text()).toContain('毎日')
+    expect(w.text()).toContain('キャンセル分を除きます。')
+    expect(w.text()).not.toContain('One row per order line.')
+    expect(w.text()).not.toContain('[JP]')
+  })
+
+  it('leaves the field alone for a snapshot that declares no languages', () => {
+    setDocumentLanguages(null)
+    expect(pane(bilingual()).text()).toContain('[JP]')
   })
 })

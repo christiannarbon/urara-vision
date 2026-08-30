@@ -6,8 +6,11 @@ import type { TableResponse } from '../api/types'
 import { useRolePalette } from '../composables/useRolePalette'
 import { roleSpec } from '../graph/roles'
 import { useI18n } from '../i18n'
+import { useDocumentText } from '../i18n/content'
 
 const { t, tn } = useI18n()
+// The documents' own words, in whichever language the reader is reading.
+const { dt } = useDocumentText()
 
 const props = defineProps<{
   detail: TableResponse | null
@@ -67,11 +70,14 @@ const filteredColumns = computed(() => {
   const cols = table.value?.columns ?? []
   const q = columnFilter.value.trim().toLowerCase()
   if (!q) return cols
+  // The description is matched as it is displayed: filtering an English pane
+  // on Japanese text the reader cannot see would be a search over a hidden
+  // document.
   return cols.filter(
     (c) =>
       c.name.toLowerCase().includes(q) ||
       c.type.toLowerCase().includes(q) ||
-      c.description.toLowerCase().includes(q),
+      dt(c.description).toLowerCase().includes(q),
   )
 })
 
@@ -189,12 +195,12 @@ function domainOf(id: string): string {
       <div class="body">
         <!-- Overview -->
         <section v-if="tab === 'overview'" class="pane">
-          <p v-if="table.description" class="desc">{{ table.description }}</p>
+          <p v-if="table.description" class="desc">{{ dt(table.description) }}</p>
 
           <dl class="props">
             <template v-if="table.grain">
               <dt>{{ t('detail.grain') }}</dt>
-              <dd>{{ table.grain }}</dd>
+              <dd>{{ dt(table.grain) }}</dd>
             </template>
             <template v-if="table.kindRaw">
               <dt>{{ t('detail.type') }}</dt>
@@ -206,7 +212,7 @@ function domainOf(id: string): string {
             </template>
             <template v-if="table.updateFrequency">
               <dt>{{ t('detail.updated') }}</dt>
-              <dd>{{ table.updateFrequency }}</dd>
+              <dd>{{ dt(table.updateFrequency) }}</dd>
             </template>
             <template v-if="table.layer">
               <dt>{{ t('detail.layer') }}</dt>
@@ -242,7 +248,7 @@ function domainOf(id: string): string {
           <template v-if="table.notes.length">
             <h3 class="section-label">{{ t('detail.notes') }}</h3>
             <ul class="notes">
-              <li v-for="(n, i) in table.notes" :key="i">{{ n }}</li>
+              <li v-for="(n, i) in table.notes" :key="i">{{ dt(n) }}</li>
             </ul>
           </template>
         </section>
@@ -267,7 +273,7 @@ function domainOf(id: string): string {
                 <span v-else-if="c.isFk" class="tag tag--muted">FK</span>
                 <span class="faint mono col-type">{{ c.type }}</span>
               </div>
-              <p v-if="c.description" class="col-desc">{{ c.description }}</p>
+              <p v-if="c.description" class="col-desc">{{ dt(c.description) }}</p>
               <p v-if="lineageByColumn.get(c.name)" class="col-src faint tiny">
                 {{ t('detail.columns.from') }}
                 <code>{{ lineageByColumn.get(c.name)!.source }}</code>.<code>{{
@@ -283,7 +289,7 @@ function domainOf(id: string): string {
 
         <!-- Relationships -->
         <section v-else-if="tab === 'relationships'" class="pane">
-          <p v-if="table.relationshipNote" class="desc small">{{ table.relationshipNote }}</p>
+          <p v-if="table.relationshipNote" class="desc small">{{ dt(table.relationshipNote) }}</p>
 
           <h3 class="section-label">{{ t('detail.joins.declared') }}</h3>
           <p v-if="!resolvedRelationships.length && !unresolvedRelationships.length" class="muted small">

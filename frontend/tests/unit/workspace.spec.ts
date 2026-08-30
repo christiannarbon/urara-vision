@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '../../src/api/client'
 import { setLocale } from '../../src/i18n'
+import { documentText, setDocumentLanguages } from '../../src/i18n/content'
 import { messages as en } from '../../src/i18n/messages/en'
 import { messages as ja } from '../../src/i18n/messages/ja'
 import type { Diagnostic, GraphData, Snapshot, TableSummary } from '../../src/api/types'
@@ -83,9 +84,29 @@ function stubHappyPath(diagnostics: Diagnostic[] = []) {
 beforeEach(() => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
+  // The document languages are module state, like the locale: a spec that
+  // loads a snapshot leaves them set for the next one.
+  setDocumentLanguages(null)
 })
 
 describe('loadSnapshot', () => {
+  it("hands the documents' own languages to whatever renders them", async () => {
+    stubHappyPath()
+    vi.mocked(api.getSnapshot).mockResolvedValue({
+      ...snapshot,
+      project: {
+        project: { name: 'p', version: '0.1.0', description: '' },
+        internationalization: { primary: 'EN', supported: ['EN', 'JP'], type: 'inline' },
+      },
+    })
+
+    const ws = useWorkspace()
+    await ws.loadSnapshot('s1')
+
+    // Nothing else in the app knows what a [JP] tag means until this happens.
+    expect(documentText('This is a column [JP] これはコラムです。')).toBe('This is a column')
+  })
+
   it('populates the model and fetches the graph', async () => {
     stubHappyPath()
     const ws = useWorkspace()
