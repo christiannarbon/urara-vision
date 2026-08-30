@@ -8,9 +8,12 @@
  */
 
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { nextTick } from 'vue'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import DiagnosticsPanel from '../../src/components/DiagnosticsPanel.vue'
+import { setLocale } from '../../src/i18n'
+import { messages as ja } from '../../src/i18n/messages/ja'
 import type { Diagnostic } from '../../src/api/types'
 
 function diag(over: Partial<Diagnostic> & { code: string }): Diagnostic {
@@ -162,5 +165,27 @@ describe('events', () => {
     const w = panel([diag({ code: 'empty_document', docPath: 'domain_one/blank.md' })])
     expect(w.find('.msg.linkish').exists()).toBe(false)
     expect(w.text()).toContain('domain_one/blank.md')
+  })
+})
+
+describe('language', () => {
+  afterEach(() => setLocale('en'))
+
+  it('translates the panel, its sections and its code explanations', async () => {
+    const w = panel([diag({ code: 'empty_document', severity: 'info' })])
+    setLocale('ja')
+    await nextTick()
+
+    expect(w.text()).toContain(ja['diagnostics.title'])
+    expect(w.text()).toContain(ja['diagnostics.unparsed'])
+    expect(w.text()).toContain(ja['diagnostic.empty_document.title'])
+    expect(w.text()).toContain(ja['diagnostic.empty_document.blurb'])
+  })
+
+  it('leaves the backend\'s own message alone, having no translation for it', async () => {
+    const w = panel([diag({ code: 'unresolved_reference', message: 'orders references customer' })])
+    setLocale('ja')
+    await nextTick()
+    expect(w.text()).toContain('orders references customer')
   })
 })

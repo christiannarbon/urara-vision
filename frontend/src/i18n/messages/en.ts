@@ -222,6 +222,63 @@ export const messages = {
   'search.key.open': 'open',
   'search.key.close': 'close',
 
+  // Diagnostics panel
+  'diagnostics.label': 'Documentation diagnostics',
+  'diagnostics.title': 'Diagnostics',
+  'diagnostics.subtitle': 'Problems found while parsing and resolving the documentation.',
+  'diagnostics.close': 'Close diagnostics',
+  'diagnostics.severity.all': 'all',
+  'diagnostics.severity.error': 'error',
+  'diagnostics.severity.warning': 'warning',
+  'diagnostics.severity.info': 'info',
+  'diagnostics.empty':
+    'Nothing to report — every document parsed and every reference resolved cleanly.',
+  'diagnostics.unparsed': 'Documents that could not be parsed',
+  'diagnostics.unparsed.note':
+    'These files were skipped entirely, so nothing they describe reached the model.',
+  'diagnostics.findings': 'Model findings',
+  'diagnostics.findings.note':
+    'Everything below parsed cleanly; the resolver noticed something worth checking.',
+
+  // What each diagnostic code means. The backend can add a code without a
+  // frontend release, and one with no entry here falls back to its own slug --
+  // so this list is the codes we can explain, not the codes that exist.
+  'diagnostic.unresolved_reference.title': 'Unresolved references',
+  'diagnostic.unresolved_reference.blurb':
+    'A relationship points at a table with no document. Either the document is missing or the name is wrong.',
+  'diagnostic.cross_domain_reference.title': 'Cross-domain references',
+  'diagnostic.cross_domain_reference.blurb':
+    'A table joins a dimension that has no document in its own domain, so it was bound to a conformed instance elsewhere.',
+  'diagnostic.conformed_drift.title': 'Conformed drift',
+  'diagnostic.conformed_drift.blurb':
+    'The same table name is documented differently in different domains. Conformed dimensions should agree.',
+  'diagnostic.unmatched_join_key.title': 'Unmatched join keys',
+  'diagnostic.unmatched_join_key.blurb': 'A join key names columns that neither table documents.',
+  'diagnostic.undocumented_lineage.title': 'Undocumented lineage',
+  'diagnostic.undocumented_lineage.blurb':
+    'Columns whose Source Table cell holds prose ("not available", "N/A") rather than a model name. Those columns are excluded from the lineage graph.',
+  'diagnostic.narrative_reference.title': 'Prose references',
+  'diagnostic.narrative_reference.blurb':
+    'A relationship cell holds prose rather than a table name, so it could not be drawn.',
+  'diagnostic.isolated_fact.title': 'Isolated facts',
+  'diagnostic.isolated_fact.blurb':
+    'A fact table declares no resolvable relationship to any dimension.',
+  'diagnostic.missing_domain_index.title': 'Missing domain index',
+  'diagnostic.missing_domain_index.blurb':
+    'A directory has table documents but no index document.',
+  'diagnostic.empty_domain.title': 'Empty domains',
+  'diagnostic.empty_domain.blurb': 'A domain index exists but its directory has no table documents.',
+  'diagnostic.no_columns.title': 'Tables without columns',
+  'diagnostic.no_columns.blurb': 'A table document declares no columns.',
+  'diagnostic.name_filename_mismatch.title': 'Name / filename mismatches',
+  'diagnostic.name_filename_mismatch.blurb':
+    'The declared table name differs from its file name.',
+  'diagnostic.unrecognised_document.title': 'Unrecognised documents',
+  'diagnostic.unrecognised_document.blurb':
+    'A markdown file matched neither a table nor a domain index layout, so it was skipped entirely and nothing it describes reached the model.',
+  'diagnostic.empty_document.title': 'Empty documents',
+  'diagnostic.empty_document.blurb': 'A markdown file had no content, so it was skipped entirely.',
+
   // API token gate
   'gate.title': 'This instance needs a token',
   // Split around the <code>API_TOKEN</code> the sentence names, rather than

@@ -9,6 +9,9 @@
 import { computed, ref } from 'vue'
 import type { Diagnostic } from '../api/types'
 import { codeLabel, splitDiagnostics } from '../diagnostics'
+import { useI18n } from '../i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{ open: boolean; diagnostics: Diagnostic[] }>()
 const emit = defineEmits<{
@@ -51,14 +54,14 @@ const sections = computed(() => {
   return [
     {
       key: 'unparsed',
-      title: 'Documents that could not be parsed',
-      note: 'These files were skipped entirely, so nothing they describe reached the model.',
+      title: t('diagnostics.unparsed'),
+      note: t('diagnostics.unparsed.note'),
       groups: group(unparsed),
     },
     {
       key: 'findings',
-      title: 'Model findings',
-      note: 'Everything below parsed cleanly; the resolver noticed something worth checking.',
+      title: t('diagnostics.findings'),
+      note: t('diagnostics.findings.note'),
       groups: group(findings),
     },
   ].filter((sec) => sec.groups.length > 0)
@@ -83,13 +86,17 @@ const label = codeLabel
 </script>
 
 <template>
-  <div v-if="open" class="drawer" role="region" aria-label="Documentation diagnostics">
+  <div v-if="open" class="drawer" role="region" :aria-label="t('diagnostics.label')">
     <header class="head">
       <div>
-        <h2>Diagnostics</h2>
-        <p class="faint tiny">Problems found while parsing and resolving the documentation.</p>
+        <h2>{{ t('diagnostics.title') }}</h2>
+        <p class="faint tiny">{{ t('diagnostics.subtitle') }}</p>
       </div>
-      <button class="btn btn--ghost btn--sm" aria-label="Close diagnostics" @click="emit('close')">
+      <button
+        class="btn btn--ghost btn--sm"
+        :aria-label="t('diagnostics.close')"
+        @click="emit('close')"
+      >
         ✕
       </button>
     </header>
@@ -102,14 +109,12 @@ const label = codeLabel
         :class="{ 'fchip--on': severityFilter === s, [`fchip--${s}`]: severityFilter === s }"
         @click="severityFilter = s"
       >
-        {{ s }}<span class="fcount">{{ counts[s] }}</span>
+        {{ t(`diagnostics.severity.${s}`) }}<span class="fcount">{{ counts[s] }}</span>
       </button>
     </div>
 
     <div class="body">
-      <p v-if="!sections.length" class="empty muted">
-        Nothing to report — every document parsed and every reference resolved cleanly.
-      </p>
+      <p v-if="!sections.length" class="empty muted">{{ t('diagnostics.empty') }}</p>
 
       <div v-for="sec in sections" :key="sec.key" class="section">
         <header class="shead">

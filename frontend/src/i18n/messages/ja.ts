@@ -225,6 +225,64 @@ export const messages: Messages = {
   'search.key.open': '開く',
   'search.key.close': '閉じる',
 
+  // Diagnostics panel
+  'diagnostics.label': 'ドキュメントの診断',
+  'diagnostics.title': '診断',
+  'diagnostics.subtitle': '解析および解決の過程で見つかった問題です。',
+  'diagnostics.close': '診断を閉じる',
+  'diagnostics.severity.all': 'すべて',
+  'diagnostics.severity.error': 'エラー',
+  'diagnostics.severity.warning': '警告',
+  'diagnostics.severity.info': '情報',
+  'diagnostics.empty':
+    '報告する問題はありません。すべてのドキュメントが解析され、すべての参照が解決されました。',
+  'diagnostics.unparsed': '解析できなかったドキュメント',
+  'diagnostics.unparsed.note':
+    'これらのファイルはすべてスキップされたため、その内容はモデルに反映されていません。',
+  'diagnostics.findings': 'モデルに関する指摘',
+  'diagnostics.findings.note':
+    '以下はすべて正常に解析されています。リゾルバが確認したほうがよい点を検出しました。',
+
+  // What each diagnostic code means
+  'diagnostic.unresolved_reference.title': '未解決の参照',
+  'diagnostic.unresolved_reference.blurb':
+    'リレーションがドキュメントの存在しないテーブルを指しています。ドキュメントが未作成か、名前が誤っています。',
+  'diagnostic.cross_domain_reference.title': 'ドメインをまたぐ参照',
+  'diagnostic.cross_domain_reference.blurb':
+    '自ドメインにドキュメントのないディメンションへジョインしているため、他ドメインの準拠ディメンションに解決されました。',
+  'diagnostic.conformed_drift.title': '準拠ディメンションの不一致',
+  'diagnostic.conformed_drift.blurb':
+    '同じテーブル名がドメインごとに異なる内容で記述されています。準拠ディメンションは一致しているべきです。',
+  'diagnostic.unmatched_join_key.title': '一致しないジョインキー',
+  'diagnostic.unmatched_join_key.blurb':
+    'ジョインキーが、どちらのテーブルにも記載のないカラムを指しています。',
+  'diagnostic.undocumented_lineage.title': '記載のないリネージ',
+  'diagnostic.undocumented_lineage.blurb':
+    'Source Table 欄がモデル名ではなく文章（「not available」「N/A」など）になっているカラムです。これらはリネージグラフから除外されます。',
+  'diagnostic.narrative_reference.title': '文章による参照',
+  'diagnostic.narrative_reference.blurb':
+    'リレーション欄がテーブル名ではなく文章になっているため、描画できませんでした。',
+  'diagnostic.isolated_fact.title': '孤立したファクト',
+  'diagnostic.isolated_fact.blurb':
+    'ファクトテーブルが、解決可能なディメンションへのリレーションを 1 つも宣言していません。',
+  'diagnostic.missing_domain_index.title': 'ドメインインデックスの欠落',
+  'diagnostic.missing_domain_index.blurb':
+    'テーブルドキュメントはあるものの、インデックスドキュメントがないディレクトリがあります。',
+  'diagnostic.empty_domain.title': '空のドメイン',
+  'diagnostic.empty_domain.blurb':
+    'ドメインインデックスは存在しますが、そのディレクトリにテーブルドキュメントがありません。',
+  'diagnostic.no_columns.title': 'カラムのないテーブル',
+  'diagnostic.no_columns.blurb': 'テーブルドキュメントにカラムが 1 つも記載されていません。',
+  'diagnostic.name_filename_mismatch.title': 'テーブル名とファイル名の不一致',
+  'diagnostic.name_filename_mismatch.blurb':
+    '宣言されたテーブル名がファイル名と異なります。',
+  'diagnostic.unrecognised_document.title': '認識できないドキュメント',
+  'diagnostic.unrecognised_document.blurb':
+    'テーブルにもドメインインデックスにも当てはまらない Markdown ファイルです。すべてスキップされ、その内容はモデルに反映されていません。',
+  'diagnostic.empty_document.title': '空のドキュメント',
+  'diagnostic.empty_document.blurb':
+    '内容が空の Markdown ファイルです。すべてスキップされました。',
+
   // API token gate
   'gate.title': 'このインスタンスにはトークンが必要です',
   'gate.intro.before':
