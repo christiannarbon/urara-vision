@@ -52,13 +52,20 @@ func Context(t *testing.T) context.Context {
 // SnapshotID returns a fresh snapshot ID for one test to own.
 func SnapshotID() string { return "test-" + uuid.NewString() }
 
-// Postgres opens a migrated store, or skips the test if no DSN was given.
-func Postgres(t *testing.T) *postgres.Store {
+// PostgresDSN returns where to connect, or skips the test if nothing said.
+func PostgresDSN(t *testing.T) string {
 	t.Helper()
 	dsn := os.Getenv(EnvPostgresDSN)
 	if dsn == "" {
 		t.Skipf("set %s to run this test (see: make test-integration)", EnvPostgresDSN)
 	}
+	return dsn
+}
+
+// Postgres opens a migrated store, or skips the test if no DSN was given.
+func Postgres(t *testing.T) *postgres.Store {
+	t.Helper()
+	dsn := PostgresDSN(t)
 
 	ctx := Context(t)
 	store, err := postgres.New(ctx, dsn)
