@@ -10,9 +10,15 @@ go run ./cmd/uraractl -dir /path/to/model-docs -json     # full model as JSON
 go run ./cmd/uraractl -dir /path/to/model-docs -strict   # exit 1 on any error
 ```
 
+The directory needs its `projectmeta.toml` here too: it is read and validated
+first, so a manifest the server would refuse fails in CI rather than at upload
+time. A missing or invalid one exits 2 and says what is wrong with it.
+
 It prints a summary of what it found, then the diagnostics themselves:
 
 ```
+project        <name> <version>
+languages      <tag> <tag> (primary <tag>, <type>)
 files parsed   <n> (skipped <n>)
 domains        <n>
 tables         <n>  (conformed instances <n>)

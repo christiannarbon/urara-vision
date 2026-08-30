@@ -1,0 +1,11 @@
+[project]
+name = "tpch-vault-ddd"
+version = "0.1.0"
+description = "TPC-H, documented as a Data Vault in AutomateDV conventions"
+
+[internationalization]
+primary = "EN"
+supported = [
+	"EN"
+]
+type = "inline"

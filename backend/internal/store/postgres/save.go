@@ -36,9 +36,22 @@ func (s *Store) SaveSnapshot(ctx context.Context, m *model.Model) error {
 	if created.IsZero() {
 		created = time.Now().UTC()
 	}
+	supported, err := json.Marshal(orEmptyStrings(m.Snapshot.Project.Internationalization.Supported))
+	if err != nil {
+		return err
+	}
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO snapshots (id, name, source_label, created_at, stats) VALUES ($1,$2,$3,$4,$5)`,
-		sid, m.Snapshot.Name, m.Snapshot.SourceLabel, created, stats); err != nil {
+		`INSERT INTO snapshots (id, name, source_label, created_at, stats,
+		                        project_name, project_version, project_description,
+		                        i18n_primary, i18n_supported, i18n_type)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		sid, m.Snapshot.Name, m.Snapshot.SourceLabel, created, stats,
+		m.Snapshot.Project.Project.Name,
+		m.Snapshot.Project.Project.Version,
+		m.Snapshot.Project.Project.Description,
+		m.Snapshot.Project.Internationalization.Primary,
+		supported,
+		m.Snapshot.Project.Internationalization.Type); err != nil {
 		return fmt.Errorf("insert snapshot: %w", err)
 	}
 

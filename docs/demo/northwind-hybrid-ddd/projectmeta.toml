@@ -1,0 +1,11 @@
+[project]
+name = "northwind-hybrid-ddd"
+version = "0.1.0"
+description = "Microsoft's Northwind, documented as a Data Vault feeding a star schema"
+
+[internationalization]
+primary = "EN"
+supported = [
+	"EN"
+]
+type = "inline"

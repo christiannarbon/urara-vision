@@ -12,6 +12,39 @@ import (
 	"urara-vision/backend/internal/parser"
 )
 
+// ProjectMetaTOML is a valid manifest, the file every ingest has to carry. It
+// is deliberately complete: a suite that wants a specific problem writes its
+// own broken one rather than removing a line from this.
+const ProjectMetaTOML = `[project]
+name = "sample-data-modelling-project"
+version = "0.1.0"
+description = "Sample Visual Data Modelling project"
+
+[internationalization]
+primary = "EN"
+supported = [
+	"EN",
+	"JP"
+]
+type = "inline"
+`
+
+// ProjectMeta is what parsing ProjectMetaTOML produces.
+func ProjectMeta() model.ProjectMeta {
+	return model.ProjectMeta{
+		Project: model.Project{
+			Name:        "sample-data-modelling-project",
+			Version:     "0.1.0",
+			Description: "Sample Visual Data Modelling project",
+		},
+		Internationalization: model.Internationalization{
+			Primary:   "EN",
+			Supported: []string{"EN", "JP"},
+			Type:      "inline",
+		},
+	}
+}
+
 // Doc builds a minimal table document: an Overview block, a Columns table and
 // a Relationships table. rels is the pre-rendered body of the relationships
 // table, so a caller can write however many rows it needs.
@@ -52,8 +85,13 @@ func Build(files []parser.File) *model.Model {
 // BuildAs is Build with the snapshot ID chosen by the caller. The integration
 // suites give every test its own ID: both stores are snapshot-scoped and
 // replace on write, so a unique ID is all the isolation they need.
+//
+// The manifest is attached the way handleIngest attaches it, so a model built
+// here carries everything a stored one does.
 func BuildAs(snapshotID string, files []parser.File) *model.Model {
-	return graph.Build(snapshotID, "test", "test", parser.Parse(files))
+	m := graph.Build(snapshotID, "test", "test", parser.Parse(files))
+	m.Snapshot.Project = ProjectMeta()
+	return m
 }
 
 // SampleTableDoc is a fully populated table document: every section the parser

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"urara-vision/backend/internal/projectmeta"
 	"urara-vision/backend/tests/fixtures"
 )
 
@@ -155,5 +156,95 @@ func TestIngestDefaultsTheNameFromTheDirectory(t *testing.T) {
 	}
 	if name == "star-schema" {
 		t.Error("name carries no timestamp, so repeated ingests are indistinguishable")
+	}
+}
+
+// TestIngestWithoutAManifestIs400: the directory has to say what project it is
+// before any of it is read, and the message has to name the file to write.
+func TestIngestWithoutAManifestIs400(t *testing.T) {
+	meta := &fakeMeta{}
+	h := newServer(t, meta, &fakeGraphs{})
+
+	rec := do(t, h, http.MethodPost, "/api/v1/ingest",
+		rawIngestBody(t, "", "", map[string]string{
+			"d/fact_x.md": fixtures.Doc("fact_x", "Fact", "D", []string{"id"}, ""),
+		}), "application/json")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body)
+	}
+	if msg, _ := decode(t, rec.Body.Bytes())["error"].(string); !strings.Contains(msg, projectmeta.FileName) {
+		t.Errorf("error = %q; it should name the file that is missing", msg)
+	}
+	if meta.saved != nil {
+		t.Error("an upload with no manifest still created a snapshot")
+	}
+}
+
+// TestIngestRejectsAManifestBelowTheRoot with a different message: the file
+// exists and the fix is to move it, not to write it.
+func TestIngestRejectsAManifestBelowTheRoot(t *testing.T) {
+	meta := &fakeMeta{}
+	h := newServer(t, meta, &fakeGraphs{})
+
+	rec := do(t, h, http.MethodPost, "/api/v1/ingest",
+		rawIngestBody(t, "", "", map[string]string{
+			"d/fact_x.md":               fixtures.Doc("fact_x", "Fact", "D", []string{"id"}, ""),
+			"d/" + projectmeta.FileName: fixtures.ProjectMetaTOML,
+		}), "application/json")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body)
+	}
+	msg, _ := decode(t, rec.Body.Bytes())["error"].(string)
+	if !strings.Contains(msg, "d/"+projectmeta.FileName) {
+		t.Errorf("error = %q; it should say where the manifest actually is", msg)
+	}
+	if meta.saved != nil {
+		t.Error("a misplaced manifest still created a snapshot")
+	}
+}
+
+// TestIngestRejectsAnInvalidManifest, reporting what is wrong with it rather
+// than that something is.
+func TestIngestRejectsAnInvalidManifest(t *testing.T) {
+	meta := &fakeMeta{}
+	h := newServer(t, meta, &fakeGraphs{})
+
+	rec := do(t, h, http.MethodPost, "/api/v1/ingest",
+		rawIngestBody(t, "", "", map[string]string{
+			"d/fact_x.md":        fixtures.Doc("fact_x", "Fact", "D", []string{"id"}, ""),
+			projectmeta.FileName: "[project]\nname = \"p\"\n",
+		}), "application/json")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body)
+	}
+	msg, _ := decode(t, rec.Body.Bytes())["error"].(string)
+	if !strings.Contains(msg, "project.version is required") {
+		t.Errorf("error = %q; it should say which field is wrong", msg)
+	}
+	if meta.saved != nil {
+		t.Error("an invalid manifest still created a snapshot")
+	}
+}
+
+// TestManifestIsNotADocument: it is read as metadata, so it neither becomes a
+// table nor counts towards the file limit that protects the parser.
+func TestManifestIsNotADocument(t *testing.T) {
+	meta := &fakeMeta{}
+	h := newServerWithMaxFiles(t, meta, &fakeGraphs{}, 1)
+
+	rec := do(t, h, http.MethodPost, "/api/v1/ingest",
+		ingestBody(t, "", "", map[string]string{
+			"d/fact_x.md": fixtures.Doc("fact_x", "Fact", "D", []string{"id"}, ""),
+		}), "application/json")
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body)
+	}
+	for _, tb := range meta.saved.Tables {
+		if strings.Contains(tb.DocPath, projectmeta.FileName) {
+			t.Errorf("the manifest was parsed as a document: %q", tb.DocPath)
+		}
+	}
+	if n := meta.saved.Snapshot.Stats.FilesParsed; n != 1 {
+		t.Errorf("files parsed = %d, want 1", n)
 	}
 }

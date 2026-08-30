@@ -1,6 +1,10 @@
 // Command uraractl parses a directory of data model documentation and reports
 // what it found, without needing the server or any datastore. It is useful for
 // checking documentation in CI: a non-zero exit means unresolved references.
+//
+// The directory has to carry a projectmeta.toml, exactly as an upload does. It
+// is read first and a bad one stops the run, so a manifest that would be
+// refused by the server is refused here too, before anything is ingested.
 package main
 
 import (
@@ -15,6 +19,7 @@ import (
 	"urara-vision/backend/internal/graph"
 	"urara-vision/backend/internal/model"
 	"urara-vision/backend/internal/parser"
+	"urara-vision/backend/internal/projectmeta"
 )
 
 func main() {
@@ -23,8 +28,14 @@ func main() {
 	strict := flag.Bool("strict", false, "exit non-zero when any error diagnostic is present")
 	flag.Parse()
 
+	meta, err := readMeta(*dir)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+
 	var files []parser.File
-	err := filepath.WalkDir(*dir, func(p string, d os.DirEntry, err error) error {
+	err = filepath.WalkDir(*dir, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -48,6 +59,7 @@ func main() {
 	}
 
 	m := graph.Build("local", filepath.Base(*dir), *dir, parser.Parse(files))
+	m.Snapshot.Project = meta
 	edges := graph.Edges(m)
 
 	if *asJSON {
@@ -61,6 +73,11 @@ func main() {
 	}
 
 	s := m.Snapshot.Stats
+	fmt.Printf("project        %s %s\n", meta.Project.Name, meta.Project.Version)
+	fmt.Printf("languages      %s (primary %s, %s)\n",
+		strings.Join(meta.Internationalization.Supported, " "),
+		meta.Internationalization.Primary,
+		meta.Internationalization.Type)
 	fmt.Printf("files parsed   %d (skipped %d)\n", s.FilesParsed, s.FilesSkipped)
 	fmt.Printf("domains        %d\n", s.Domains)
 	fmt.Printf("tables         %d  (conformed instances %d)\n", s.Tables, s.Conformed)
@@ -116,4 +133,16 @@ func main() {
 	if *strict && counts[model.SeverityError] > 0 {
 		os.Exit(1)
 	}
+}
+
+// readMeta reads and validates the directory's manifest.
+func readMeta(dir string) (model.ProjectMeta, error) {
+	b, err := os.ReadFile(filepath.Join(dir, projectmeta.FileName))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return model.ProjectMeta{}, fmt.Errorf("%s: %w", dir, projectmeta.ErrMissing)
+		}
+		return model.ProjectMeta{}, err
+	}
+	return projectmeta.Parse(string(b))
 }

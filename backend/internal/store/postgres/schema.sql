@@ -9,8 +9,31 @@ CREATE TABLE IF NOT EXISTS snapshots (
     name         TEXT        NOT NULL,
     source_label TEXT        NOT NULL DEFAULT '',
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    stats        JSONB       NOT NULL DEFAULT '{}'::jsonb
+    stats        JSONB       NOT NULL DEFAULT '{}'::jsonb,
+    -- What the directory declared about itself in projectmeta.toml. Columns
+    -- rather than one document, because these are the fields worth asking a
+    -- question of: which projects are on which version, and which of them are
+    -- documented in a given language.
+    project_name        TEXT  NOT NULL DEFAULT '',
+    project_version     TEXT  NOT NULL DEFAULT '',
+    project_description TEXT  NOT NULL DEFAULT '',
+    i18n_primary        TEXT  NOT NULL DEFAULT '',
+    i18n_supported      JSONB NOT NULL DEFAULT '[]'::jsonb,
+    i18n_type           TEXT  NOT NULL DEFAULT ''
 );
+
+-- The manifest arrived after the first release, so a database created before it
+-- has the table above without these columns. Adding them here as well keeps
+-- Migrate a single idempotent script: a fresh database gets them from the
+-- CREATE, an existing one from the ALTER, and neither needs to know which it is.
+ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS project_name        TEXT  NOT NULL DEFAULT '';
+ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS project_version     TEXT  NOT NULL DEFAULT '';
+ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS project_description TEXT  NOT NULL DEFAULT '';
+ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS i18n_primary        TEXT  NOT NULL DEFAULT '';
+ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS i18n_supported      JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE snapshots ADD COLUMN IF NOT EXISTS i18n_type           TEXT  NOT NULL DEFAULT '';
+
+CREATE INDEX IF NOT EXISTS snapshots_project_idx ON snapshots (project_name);
 
 CREATE TABLE IF NOT EXISTS domains (
     snapshot_id TEXT NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,

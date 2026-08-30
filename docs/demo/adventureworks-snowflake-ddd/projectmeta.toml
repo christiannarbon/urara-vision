@@ -1,0 +1,11 @@
+[project]
+name = "adventureworks-snowflake-ddd"
+version = "0.1.0"
+description = "Microsoft's AdventureWorksDW, documented as a snowflake schema"
+
+[internationalization]
+primary = "EN"
+supported = [
+	"EN"
+]
+type = "inline"
