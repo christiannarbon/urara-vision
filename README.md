@@ -120,13 +120,13 @@ Then click **Choose folder…** and select your documentation directory. Every
 with the [`projectmeta.toml`](docs/usage/documentation-format.md#the-manifest)
 the directory must carry; nothing is written back to disk.
 
-No documentation of your own to hand? Seven complete sample sets ship under
+No documentation of your own to hand? Nine complete sample sets ship under
 [`docs/demo/`](docs/demo/README.md) — a star, a snowflake, a Data Vault, a
 hybrid and a third-normal-form schema among them — each with deliberate flaws
 so every diagnostic has something to find.
 
 ```bash
-make demo-docs                    # parse all seven on the command line
+make demo-docs                    # parse all nine on the command line
 make demo-docs SET=eshop-ddd      # or just one
 ```
 

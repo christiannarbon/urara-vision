@@ -75,7 +75,7 @@ suite skips, so a rename cannot quietly stop testing the stores.
 
 ## A demo suite fails after you edited a sample set
 
-The seven sets under `docs/demo` are pinned by `backend/tests/unit/demo` —
+The nine sets under `docs/demo` are pinned by `backend/tests/unit/demo` —
 statistics, diagnostic counts by code, and the specific case each set exists to
 demonstrate. Tidying up a deliberate flaw fails the suite on purpose. If the
 edit was intended, update the pin in the same commit, and the totals in

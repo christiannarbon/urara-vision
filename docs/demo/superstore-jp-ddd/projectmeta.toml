@@ -1,0 +1,12 @@
+[project]
+name = "superstore-jp-ddd"
+version = "0.1.0"
+description = "The Superstore sample retail schema, documented in Japanese and translated into English inline"
+
+[internationalization]
+primary = "JP"
+supported = [
+	"EN",
+	"JP"
+]
+type = "inline"

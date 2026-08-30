@@ -13,6 +13,6 @@ comes back. Nothing here assumes you intend to work on the tool itself; that is
 | [Themes](themes.md) | The ten palettes and how the choice is remembered |
 | [The `uraractl` CLI](cli.md) | Parsing a directory without a server, and linting docs in CI |
 
-No documentation of your own to hand? Seven complete sample sets ship under
+No documentation of your own to hand? Nine complete sample sets ship under
 [`docs/demo/`](../demo/README.md), each with deliberate flaws so every
 diagnostic has something to find.

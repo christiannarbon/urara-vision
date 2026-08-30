@@ -44,5 +44,5 @@ thing they describe:
   image-specific gotchas the live deploy exposed
 - [`backend/tests/README.md`](../../backend/tests/README.md) — running the
   suites, and why the tests sit outside the packages they test
-- [`docs/demo/README.md`](../demo/README.md) — the seven sample sets and what
+- [`docs/demo/README.md`](../demo/README.md) — the nine sample sets and what
   each one is built to demonstrate

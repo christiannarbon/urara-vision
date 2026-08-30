@@ -13,7 +13,7 @@ Tests live in a dedicated tree, split by what they need to run:
 backend/tests/unit/          no databases; runs anywhere
 backend/tests/integration/   real Postgres and Neo4j, behind a build tag
 backend/tests/fixtures/      the model documents both suites parse
-backend/tests/unit/demo/     the seven shipped sample sets in docs/demo, pinned
+backend/tests/unit/demo/     the nine shipped sample sets in docs/demo, pinned
 frontend/tests/unit/         pure functions and the store, API client mocked
 frontend/tests/integration/  the real client over a stubbed network, and
                              mounted components
@@ -37,7 +37,7 @@ that goes red.
 statistics, diagnostic counts by code, and the case that set exists to
 demonstrate — so a sample whose flaws get tidied up fails rather than quietly
 leaving a check uncovered. It is also the closest thing to an end-to-end test of
-the parser and resolver: seven real documentation sets, 90-odd tables, no
+the parser and resolver: nine real documentation sets, 100-odd tables, no
 mocks.
 
 ## Isolation

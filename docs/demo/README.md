@@ -1,13 +1,15 @@
 # Demo documentation sets
 
-Seven complete, self-contained OKF documentation sets you can point the app at
+Nine complete, self-contained OKF documentation sets you can point the app at
 without having any real model documentation to hand.
 
-They divide into two groups. The first three are star schemas and were the
-original samples. The last four exist because the tool is not a star schema
+They divide into three groups. The first three are star schemas and were the
+original samples. The next four exist because the tool is not a star schema
 tool: between them they cover snowflake, Data Vault, a hybrid of vault and star,
 and plain third normal form, and every one of them resolves through exactly the
-same code path.
+same code path. The last two are bilingual, and exist to demonstrate
+[inline translations](../usage/documentation-format.md#writing-in-more-than-one-language)
+in both directions.
 
 | Set | Modelled on | Modelling style | Contexts | Tables |
 |---|---|---|---|---|
@@ -18,10 +20,12 @@ same code path.
 | [`tpch-vault-ddd/`](#tpch-vault-ddd) | [TPC-H][tpch], in [AutomateDV][adv] conventions | Data Vault | 6 | 11 |
 | [`northwind-hybrid-ddd/`](#northwind-hybrid-ddd) | Microsoft's [Northwind][nw] | Vault + star | 6 | 13 |
 | [`sakila-oltp-ddd/`](#sakila-oltp-ddd) | MySQL's [Sakila][sakila] | 3NF | 6 | 14 |
+| [`chinook-bilingual-ddd/`](#chinook-bilingual-ddd) | [Chinook][chinook] | Star, EN with JP inline | 4 | 8 |
+| [`superstore-jp-ddd/`](#superstore-jp-ddd) | the [Superstore][superstore] sample | Star, JP with EN inline | 4 | 5 |
 
 ```bash
 # from the repo root
-make demo-docs                    # parse all seven
+make demo-docs                    # parse all nine
 make demo-docs SET=tpch-vault-ddd # or just one
 
 # or directly
@@ -38,11 +42,13 @@ cd backend && go run ./cmd/uraractl -dir ../docs/demo/eshop-ddd
 [adv]: https://automate-dv.readthedocs.io/
 [nw]: https://learn.microsoft.com/en-us/dotnet/framework/data/adonet/sql/linq/downloading-sample-databases
 [sakila]: https://dev.mysql.com/doc/sakila/en/
+[chinook]: https://github.com/lerocha/chinook-database
+[superstore]: https://www.tableau.com/blog/superstore-sales-dataset
 
 Every set carries its own `projectmeta.toml`, because an ingest without one is
 refused; the sets are English-only, so each declares `EN` alone.
 
-All seven are built the same way and to the same contract. The tables come from
+All nine are built the same way and to the same contract. The tables come from
 a real project, so the column names, the upstream models and the grains are real
 rather than invented; what is added on top is the *organisation*, because
 splitting a flat `marts/` folder into bounded contexts is the arrangement this
@@ -52,7 +58,7 @@ check has something to find, and noted in the `Notes / Caveats` of the document
 it lives in so nobody mistakes it for an accident.
 
 Each set carries exactly one **error** diagnostic, so `uraractl -strict` exits 1
-on all seven and the severity filter in the UI has something to separate.
+on all nine and the severity filter in the UI has something to separate.
 
 Every set's totals are pinned by a suite in `backend/tests/unit/demo/`. A
 well-meant edit that "fixes" one of the flaws fails those tests rather than
@@ -77,6 +83,21 @@ merely stated:
 Two of them also cover `isolated_table`, the generalisation of `isolated_fact`
 to connective tables that are not facts: a Data Vault link in one, a junction
 table in the other.
+
+### What the two bilingual sets are for
+
+The other seven are documented in English and say nothing about language. These
+two carry their translations inline, in opposite directions, so the language
+switch has something real to switch:
+
+| Set | What it proves |
+|---|---|
+| `chinook-bilingual-ddd` | A project documented in English and translated into Japanese: 115 translated fields, plus one field written only in Japanese and one left untranslated |
+| `superstore-jp-ddd` | The mirror — documented in Japanese and translated into English — so the rules hold whichever language is primary |
+
+They are smaller than the other seven on purpose. What they demonstrate is the
+format rather than a modelling style, and a bilingual document is twice the
+prose to read.
 
 ---
 
@@ -477,6 +498,89 @@ diagnostics    error=1 warning=16 info=4
 
 ---
 
+## chinook-bilingual-ddd
+
+The tables are [Chinook][chinook], the digital music store used as a sample
+database almost everywhere, arranged as four bounded contexts. What is added on
+top is the language: every field a reader reads as a sentence is written in
+English and translated into Japanese in the same field, after a `[JP]` tag.
+
+| Bounded context | Aggregate root | Tables |
+|---|---|---|
+| `shared_kernel` | — (reference data) | `dim_date`, `dim_employee` |
+| `catalog` | Track | `dim_track`, `dim_artist`, `dim_genre` |
+| `sales` | Invoice | `fact_invoice_line`, `dim_invoice` |
+| `customer` | Customer | `dim_customer` |
+
+| What the set does | What it should produce |
+|---|---|
+| Every description, grain, note and column description carries both languages | 115 translated fields; each reader sees one language, and switching redraws rather than refetches |
+| `dim_genre` is documented only in Japanese, with no tag anywhere in it | Both readers see the Japanese. An untagged field is primary-language text whatever script it is in |
+| `dim_employee`'s description is left untranslated | Both readers see the English. A field with no translation is shown as written |
+| A note on `dim_customer` opens with a `[JP]` tag | `missing_primary_language` — the English reader falls back to the Japanese, which is the documented behaviour |
+| `dim_date`'s description tags Japanese twice | `duplicate_language_tag` — the two parts are joined in the order they appear rather than one being dropped |
+| `fact_invoice_line` references `dim_promotion`, a feed that has not shipped | `unresolved_reference` — the only **error** |
+| Every dimension `fact_invoice_line` reads is owned by another context | `cross_domain_reference` |
+| `fact_invoice_line` writes its `dim_date` join key dimension-column-first on a `Many-to-one` row | The orientation rule recovers it from the column lists |
+
+Expected totals, pinned by `bilingual_test.go`:
+
+```
+project        chinook-bilingual-ddd 0.1.0
+languages      EN JP (primary EN, inline)
+translated     115 prose fields
+files parsed   12 (skipped 0)
+domains        4
+tables         8  (conformed instances 1)
+columns        42
+relationships  13 declared -> 9 normalised edges
+lineage edges  41 across 10 source tables
+roles          dimension=7 fact=1
+diagnostics    error=1 warning=7 info=2
+```
+
+---
+
+## superstore-jp-ddd
+
+The mirror of the set above: the [Superstore][superstore] retail sample,
+documented in Japanese and translated into English after an `[EN]` tag. Its
+manifest declares `primary = "JP"`, and everything the format does is the same
+the other way round.
+
+| Bounded context | Aggregate root | Tables |
+|---|---|---|
+| `shared_kernel` | — (reference data) | `dim_date` |
+| `sales` | Order | `fact_order_line`, `dim_ship_mode` |
+| `product` | Product | `dim_product` |
+| `customer` | Customer | `dim_customer` |
+
+| What the set does | What it should produce |
+|---|---|
+| Every prose field is Japanese first, with the English after an `[EN]` tag | 75 translated fields, read in either language |
+| A note on `dim_product` is written in English only | Both readers see the English — an untranslated field in a Japanese-primary set behaves exactly as one does in an English-primary set |
+| Section headings and `Overview` property names stay English | The document parses. The structure is the format's; only the prose is the author's language |
+| `fact_order_line` references `dim_region`, which nobody has documented | `unresolved_reference` — the only **error** |
+| Three contexts own no fact and join to `fact_order_line` across the boundary | `cross_domain_reference` |
+
+Expected totals, pinned by `bilingual_test.go`:
+
+```
+project        superstore-jp-ddd 0.1.0
+languages      EN JP (primary JP, inline)
+translated     75 prose fields
+files parsed   9 (skipped 0)
+domains        4
+tables         5  (conformed instances 1)
+columns        29
+relationships  9 declared -> 4 normalised edges
+lineage edges  28 across 5 source tables
+roles          dimension=4 fact=1
+diagnostics    error=1 warning=6 info=1
+```
+
+---
+
 ## Format
 
 Each context is a root-level index document (`ordering.md`) beside a directory
@@ -501,6 +605,6 @@ The `Type` property is what decides a table's role. It is matched against the
 alias table in `backend/internal/parser/normalise.go`, which covers the Kimball,
 Data Vault and relational vocabularies; a `Type` matching none of them is
 slugified and becomes a role in its own right rather than collapsing to
-`unknown`. None of these seven sets exercises that last case — they are all
+`unknown`. None of these nine sets exercises that last case — they are all
 written in vocabularies the tool knows — but `backend/tests/unit/parser/roles_test.go`
 does.
