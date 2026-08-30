@@ -29,6 +29,12 @@ release follow it as `ADD COLUMN IF NOT EXISTS`, which is idempotent in the same
 way: a fresh database takes them from the `CREATE`, an existing one from the
 `ALTER`, and neither has to know which it is.
 
+Applying it takes an advisory lock for the length of the transaction. `IF NOT
+EXISTS` is idempotent but not concurrency-safe — two sessions both find a table
+absent, both create it, and the loser fails on a duplicate key in `pg_type` —
+and the backend runs more than one replica, each migrating as it starts, so a
+rollout has them arriving together.
+
 An ingest is one transaction: the snapshot row is deleted and rewritten, and
 every child table is bulk-loaded with `COPY`. A snapshot is therefore wholly
 present or wholly absent, never half-written.

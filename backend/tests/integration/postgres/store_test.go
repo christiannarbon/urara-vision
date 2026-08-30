@@ -7,9 +7,16 @@
 package postgres_test
 
 import (
+	"context"
 	"errors"
+	"net/url"
 	"reflect"
+	"strings"
+	"sync"
 	"testing"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"urara-vision/backend/internal/store/postgres"
 	"urara-vision/backend/tests/fixtures"
@@ -22,6 +29,77 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	if err := pg.Migrate(ctx); err != nil {
 		t.Fatalf("second Migrate: %v", err)
 	}
+}
+
+// TestMigrateIsSafeConcurrently: `CREATE TABLE IF NOT EXISTS` is not safe
+// against a concurrent identical statement -- both sessions find nothing, both
+// create, and the loser gets a duplicate key on pg_type. Two backend replicas
+// start together and both migrate, and these suites migrate from three packages
+// at once, so this is a race that happens rather than one that could.
+//
+// It only races against an empty schema, which the shared test database is not,
+// so the test gives the migrators one of their own to fight over.
+func TestMigrateIsSafeConcurrently(t *testing.T) {
+	ctx := harness.Context(t)
+	dsn := harness.PostgresDSN(t)
+
+	schema := "migrate_race_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	admin, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		t.Fatalf("connect postgres: %v", err)
+	}
+	// Registered before the drop below, so it runs after it: cleanups are
+	// last-in-first-out, and a closed connection cannot drop anything.
+	t.Cleanup(func() { _ = admin.Close(context.Background()) })
+
+	if _, err := admin.Exec(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatalf("create schema: %v", err)
+	}
+	t.Cleanup(func() {
+		if _, err := admin.Exec(context.Background(), "DROP SCHEMA "+schema+" CASCADE"); err != nil {
+			t.Errorf("drop schema %s: %v", schema, err)
+		}
+	})
+
+	const migrators = 8
+	errs := make(chan error, migrators)
+	var start sync.WaitGroup
+	start.Add(1)
+	for i := 0; i < migrators; i++ {
+		go func() {
+			store, err := postgres.New(ctx, inSchema(t, dsn, schema))
+			if err != nil {
+				errs <- err
+				return
+			}
+			defer store.Close()
+			// All eight wait here, so they reach the schema together rather
+			// than one after another as they connect.
+			start.Wait()
+			errs <- store.Migrate(ctx)
+		}()
+	}
+	start.Done()
+
+	for i := 0; i < migrators; i++ {
+		if err := <-errs; err != nil {
+			t.Errorf("concurrent Migrate: %v", err)
+		}
+	}
+}
+
+// inSchema points a DSN at one schema, so a connection made with it creates
+// and reads tables there rather than in public.
+func inSchema(t *testing.T, dsn, schema string) string {
+	t.Helper()
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatalf("parse dsn: %v", err)
+	}
+	q := u.Query()
+	q.Set("search_path", schema)
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 func TestSaveAndReadBackSnapshot(t *testing.T) {
