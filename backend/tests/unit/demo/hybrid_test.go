@@ -119,7 +119,7 @@ func TestHybridDiagnostics(t *testing.T) {
 		"empty_domain":           1, // shipping.md has no directory
 		"narrative_reference":    1, // "Every Fact Table in the Presentation Layer"
 		"undocumented_lineage":   3, // prose in the Source Table column
-	}, 1) // exactly one error, so `relctl -strict` on the demo exits non-zero
+	}, 1) // exactly one error, so `uraractl -strict` on the demo exits non-zero
 }
 
 // TestHybridJoinKeyOrientation is the same case the star sets carry, checked

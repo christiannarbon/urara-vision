@@ -23,7 +23,7 @@ pnpm-debug.log*
 # --- backend --------------------------------------------------------------
 # Compiled binaries from `go build` in the module root.
 backend/server
-backend/relctl
+backend/uraractl
 backend/*.test
 backend/*.out
 backend/coverage.out

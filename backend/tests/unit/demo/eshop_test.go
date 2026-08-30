@@ -46,7 +46,7 @@ func TestEshopDiagnostics(t *testing.T) {
 		"isolated_fact":          1, // fact_stock_movements
 		"narrative_reference":    2, // "Various Fact Tables", "Catalog Dimensions"
 		"undocumented_lineage":   2, // prose in the Source Table column
-	}, 1) // exactly one error, so `relctl -strict` on this set exits non-zero
+	}, 1) // exactly one error, so `uraractl -strict` on this set exits non-zero
 }
 
 // TestEshopJoinKeyOrientation is this sample's headline case: fact_orders

@@ -94,7 +94,7 @@ func TestOLTPDiagnostics(t *testing.T) {
 		"isolated_table":         1,  // film_category names its parents in prose
 		"narrative_reference":    2,  // "Every Address Table", "The Category Tables"
 		"undocumented_lineage":   2,  // prose in the Source Table column
-	}, 1) // exactly one error, so `relctl -strict` on the demo exits non-zero
+	}, 1) // exactly one error, so `uraractl -strict` on the demo exits non-zero
 }
 
 // TestOLTPIsolatedAssociativeIsReportedLikeAnIsolatedFact is the generalisation

@@ -1,5 +1,5 @@
-// Command relctl parses a directory of data model documentation and reports what
-// it found, without needing the server or any datastore. It is useful for
+// Command uraractl parses a directory of data model documentation and reports
+// what it found, without needing the server or any datastore. It is useful for
 // checking documentation in CI: a non-zero exit means unresolved references.
 package main
 

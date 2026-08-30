@@ -103,13 +103,13 @@ test-frontend: ## Frontend unit and component tests
 .PHONY: lint-docs
 lint-docs: ## Parse a documentation directory and report diagnostics (make lint-docs DOCS=...)
 	docker run --rm -v "$(PWD)/backend":/src -v "$(DOCS)":/docs:ro -w /src \
-	  golang:1.25-alpine go run ./cmd/relctl -dir /docs
+	  golang:1.25-alpine go run ./cmd/uraractl -dir /docs
 
 .PHONY: demo-docs
 demo-docs: ## Parse every shipped demo documentation set (make demo-docs SET=jaffle-shop-ddd for one)
 	@for set in $(or $(SET),$(notdir $(patsubst %/,%,$(dir $(wildcard docs/demo/*/.))))); do \
 	  echo "== $$set =="; \
-	  (cd backend && go run ./cmd/relctl -dir ../docs/demo/$$set) || exit $$?; \
+	  (cd backend && go run ./cmd/uraractl -dir ../docs/demo/$$set) || exit $$?; \
 	done
 
 .PHONY: images

@@ -18,14 +18,14 @@ RUN --mount=type=cache,target=/go/pkg/mod \
       -trimpath \
       -ldflags="-s -w -X main.version=${VERSION}" \
       -o /out/server ./cmd/server && \
-    CGO_ENABLED=0 GOOS=linux go build -trimpath -o /out/relctl ./cmd/relctl
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -o /out/uraractl ./cmd/uraractl
 
 # --- runtime -------------------------------------------------------------
 FROM gcr.io/distroless/static-debian12:nonroot
 
 WORKDIR /app
 COPY --from=build /out/server /app/server
-COPY --from=build /out/relctl /app/relctl
+COPY --from=build /out/uraractl /app/uraractl
 
 USER nonroot:nonroot
 EXPOSE 8080

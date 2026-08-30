@@ -1,13 +1,13 @@
-# The `relctl` CLI
+# The `uraractl` CLI
 
-`relctl` parses a directory without needing the server or any datastore, which
+`uraractl` parses a directory without needing the server or any datastore, which
 makes it useful as a documentation linter in CI:
 
 ```bash
 cd backend
-go run ./cmd/relctl -dir /path/to/model-docs
-go run ./cmd/relctl -dir /path/to/model-docs -json     # full model as JSON
-go run ./cmd/relctl -dir /path/to/model-docs -strict   # exit 1 on any error
+go run ./cmd/uraractl -dir /path/to/model-docs
+go run ./cmd/uraractl -dir /path/to/model-docs -json     # full model as JSON
+go run ./cmd/uraractl -dir /path/to/model-docs -strict   # exit 1 on any error
 ```
 
 It prints a summary of what it found, then the diagnostics themselves:
@@ -23,11 +23,11 @@ roles          <role>=<n> <role>=<n> ...
 diagnostics    error=<n> warning=<n> info=<n>
 ```
 
-The same binary ships inside the backend image at `/app/relctl`, so a CI job
+The same binary ships inside the backend image at `/app/uraractl`, so a CI job
 that already pulls the image needs nothing else installed:
 
 ```bash
-docker run --rm -v "$PWD/docs:/docs" --entrypoint /app/relctl \
+docker run --rm -v "$PWD/docs:/docs" --entrypoint /app/uraractl \
   urara-vision/backend:dev -dir /docs/data-modelling -strict
 ```
 

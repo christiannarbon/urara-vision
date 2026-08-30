@@ -53,7 +53,7 @@ func TestDemoDiagnostics(t *testing.T) {
 		"isolated_fact":          1, // fact_supply_cost_snapshot
 		"narrative_reference":    2, // "Various Fact Tables", "Product Catalog Dimensions"
 		"undocumented_lineage":   2, // prose in the Source Table column
-	}, 1) // exactly one error, so `relctl -strict` on the demo exits non-zero
+	}, 1) // exactly one error, so `uraractl -strict` on the demo exits non-zero
 }
 
 // TestDemoJoinKeyOrientation is the sample's headline case: fact_orders writes

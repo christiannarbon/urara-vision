@@ -1,4 +1,4 @@
-// Loading a shipped demo documentation set the way relctl and the frontend do.
+// Loading a shipped demo documentation set the way uraractl and the frontend do.
 //
 // Three sets ship under docs/demo, and each has its own suite pinning what it
 // resolves to. The walk is identical for all of them, so it lives here rather
@@ -17,7 +17,7 @@ import (
 )
 
 // loadSet walks one demo directory and resolves it. The snapshot ID and name
-// are the directory's base name, matching what relctl produces.
+// are the directory's base name, matching what uraractl produces.
 func loadSet(t *testing.T, dir string) *model.Model {
 	t.Helper()
 	var files []parser.File
