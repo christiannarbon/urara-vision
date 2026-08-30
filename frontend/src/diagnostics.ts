@@ -13,6 +13,8 @@
  */
 
 import type { Diagnostic } from './api/types'
+import { translate as t } from './i18n'
+import type { MessageKey } from './i18n'
 
 /** Codes meaning a document could not be turned into model data at all. */
 export const PARSE_FAILURE_CODES = new Set(['empty_document', 'unrecognised_document'])
@@ -31,68 +33,52 @@ export function splitDiagnostics(diagnostics: Diagnostic[]) {
   return { unparsed, findings }
 }
 
-/** Human-readable explanations, so a reader does not have to infer what a
- *  machine-generated code means. */
-export const CODE_LABELS: Record<string, { title: string; blurb: string }> = {
-  unresolved_reference: {
-    title: 'Unresolved references',
-    blurb:
-      'A relationship points at a table with no document. Either the document is missing or the name is wrong.',
-  },
-  cross_domain_reference: {
-    title: 'Cross-domain references',
-    blurb:
-      'A table joins a dimension that has no document in its own domain, so it was bound to a conformed instance elsewhere.',
-  },
-  conformed_drift: {
-    title: 'Conformed drift',
-    blurb:
-      'The same table name is documented differently in different domains. Conformed dimensions should agree.',
-  },
-  unmatched_join_key: {
-    title: 'Unmatched join keys',
-    blurb: 'A join key names columns that neither table documents.',
-  },
-  undocumented_lineage: {
-    title: 'Undocumented lineage',
-    blurb:
-      'Columns whose Source Table cell holds prose ("not available", "N/A") rather than a model name. Those columns are excluded from the lineage graph.',
-  },
-  narrative_reference: {
-    title: 'Prose references',
-    blurb: 'A relationship cell holds prose rather than a table name, so it could not be drawn.',
-  },
-  isolated_fact: {
-    title: 'Isolated facts',
-    blurb: 'A fact table declares no resolvable relationship to any dimension.',
-  },
-  missing_domain_index: {
-    title: 'Missing domain index',
-    blurb: 'A directory has table documents but no index document.',
-  },
-  empty_domain: {
-    title: 'Empty domains',
-    blurb: 'A domain index exists but its directory has no table documents.',
-  },
-  no_columns: {
-    title: 'Tables without columns',
-    blurb: 'A table document declares no columns.',
-  },
-  name_filename_mismatch: {
-    title: 'Name / filename mismatches',
-    blurb: 'The declared table name differs from its file name.',
-  },
-  unrecognised_document: {
-    title: 'Unrecognised documents',
-    blurb:
-      'A markdown file matched neither a table nor a domain index layout, so it was skipped entirely and nothing it describes reached the model.',
-  },
-  empty_document: {
-    title: 'Empty documents',
-    blurb: 'A markdown file had no content, so it was skipped entirely.',
-  },
+/**
+ * The codes this frontend has an explanation for.
+ *
+ * Not the codes that exist: the backend can add one without a frontend
+ * release, and `codeLabel` falls back to the slug for anything not listed
+ * here. The two `diagnostic.<code>.title` / `.blurb` entries every code below
+ * needs are checked against the catalogue at compile time, in `labelKeys`.
+ */
+export const DIAGNOSTIC_CODES = [
+  'unresolved_reference',
+  'cross_domain_reference',
+  'conformed_drift',
+  'unmatched_join_key',
+  'undocumented_lineage',
+  'narrative_reference',
+  'isolated_fact',
+  'missing_domain_index',
+  'empty_domain',
+  'no_columns',
+  'name_filename_mismatch',
+  'unrecognised_document',
+  'empty_document',
+] as const
+
+export type DiagnosticCode = (typeof DIAGNOSTIC_CODES)[number]
+
+const EXPLAINED = new Set<string>(DIAGNOSTIC_CODES)
+
+/** The `satisfies` is the check: a code with no catalogue entry fails here. */
+function labelKeys(code: DiagnosticCode) {
+  return {
+    title: `diagnostic.${code}.title` satisfies MessageKey,
+    blurb: `diagnostic.${code}.blurb` satisfies MessageKey,
+  }
 }
 
-export function codeLabel(code: string) {
-  return CODE_LABELS[code] ?? { title: code.replace(/_/g, ' '), blurb: '' }
+/**
+ * A readable title and explanation for a diagnostic code, so a reader does not
+ * have to infer what a machine-generated slug means.
+ *
+ * A code with no entry keeps its own slug, spaced out. That is deliberately
+ * not translated: the alternative is showing nothing for a finding the backend
+ * knows about and this build does not.
+ */
+export function codeLabel(code: string): { title: string; blurb: string } {
+  if (!EXPLAINED.has(code)) return { title: code.replace(/_/g, ' '), blurb: '' }
+  const keys = labelKeys(code as DiagnosticCode)
+  return { title: t(keys.title), blurb: t(keys.blurb) }
 }

@@ -7,15 +7,17 @@
  * frontend does not know about still has to render.
  */
 
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import {
-  CODE_LABELS,
+  DIAGNOSTIC_CODES,
   PARSE_FAILURE_CODES,
   codeLabel,
   isParseFailure,
   splitDiagnostics,
 } from '../../src/diagnostics'
+import { setLocale } from '../../src/i18n'
+import { messages as ja } from '../../src/i18n/messages/ja'
 import type { Diagnostic } from '../../src/api/types'
 
 function diag(code: string, severity: Diagnostic['severity'] = 'warning'): Diagnostic {
@@ -68,11 +70,21 @@ describe('splitDiagnostics', () => {
 })
 
 describe('codeLabel', () => {
+  afterEach(() => setLocale('en'))
+
   it('gives a title and an explanation for every known code', () => {
-    for (const code of Object.keys(CODE_LABELS)) {
+    for (const code of DIAGNOSTIC_CODES) {
       const { title, blurb } = codeLabel(code)
       expect(title).not.toBe('')
       expect(blurb).not.toBe('')
+    }
+  })
+
+  it('gives both in every language, not only the one it was written in', () => {
+    setLocale('ja')
+    for (const code of DIAGNOSTIC_CODES) {
+      expect(codeLabel(code).title).toBe(ja[`diagnostic.${code}.title`])
+      expect(codeLabel(code).blurb).toBe(ja[`diagnostic.${code}.blurb`])
     }
   })
 
@@ -83,9 +95,16 @@ describe('codeLabel', () => {
     expect(blurb).toBe('')
   })
 
+  it('leaves an unknown code as its own slug in every language', () => {
+    // Better a slug than nothing: the alternative is a finding the backend
+    // knows about disappearing from the panel in one language.
+    setLocale('ja')
+    expect(codeLabel('some_new_backend_code').title).toBe('some new backend code')
+  })
+
   it('has a label for both parse-failure codes, which are the ones shown first', () => {
     for (const code of PARSE_FAILURE_CODES) {
-      expect(CODE_LABELS[code]).toBeDefined()
+      expect(DIAGNOSTIC_CODES).toContain(code)
     }
   })
 })

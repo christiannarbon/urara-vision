@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** Application shell: header, three-pane workspace, overlays. */
-import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watchEffect } from 'vue'
 import { storeToRefs } from 'pinia'
 
 import ApiTokenGate from './components/ApiTokenGate.vue'
@@ -11,7 +11,16 @@ import SearchOverlay from './components/SearchOverlay.vue'
 import TableDetail from './components/TableDetail.vue'
 import ThemePicker from './components/ThemePicker.vue'
 import WelcomeScreen from './components/WelcomeScreen.vue'
+import { useI18n } from './i18n'
 import { useWorkspace } from './stores/workspace'
+
+const { t, tn } = useI18n()
+
+// index.html carries an English title for the first paint; from here the tab
+// follows the reader's language like everything else.
+watchEffect(() => {
+  document.title = t('app.title')
+})
 
 const store = useWorkspace()
 const {
@@ -69,17 +78,11 @@ const marker = computed(() => {
   return null
 })
 
-const parseNotice = computed(() => {
-  const n = parseFailures.value.length
-  if (n === 1) return '1 document could not be parsed and was skipped.'
-  return `${n} documents could not be parsed and were skipped.`
-})
+const parseNotice = computed(() => tn('banner.parseFailures', parseFailures.value.length))
 
 /** Spelled out separately so the sentence agrees in number. */
 const parseNoticeDetail = computed(() =>
-  parseFailures.value.length === 1
-    ? 'Anything it documents is missing from this model.'
-    : 'Anything they document is missing from this model.',
+  tn('banner.parseFailuresDetail', parseFailures.value.length),
 )
 
 function reviewParseFailures() {
@@ -154,7 +157,7 @@ function backToPicker() {
         class="brand"
         :class="{ 'brand--link': hasSnapshot }"
         :disabled="!hasSnapshot"
-        :title="hasSnapshot ? 'Back to your ingests' : undefined"
+        :title="hasSnapshot ? t('topbar.home') : undefined"
         @click="backToPicker"
       >
         <span class="mark" aria-hidden="true" />
@@ -169,25 +172,27 @@ function backToPicker() {
       <div class="spacer" />
 
       <template v-if="hasSnapshot">
-        <button class="btn btn--ghost btn--sm" title="Search (⌘K)" @click="searchOpen = true">
-          Search <kbd>⌘K</kbd>
+        <button class="btn btn--ghost btn--sm" :title="t('topbar.search.title')" @click="searchOpen = true">
+          {{ t('topbar.search') }} <kbd>⌘K</kbd>
         </button>
         <button
           class="btn btn--ghost btn--sm"
           :aria-expanded="diagnosticsOpen"
-          :title="hasDiagnostics ? 'Diagnostics — something may need a look' : 'Diagnostics'"
+          :title="hasDiagnostics ? t('topbar.diagnostics.titleAttention') : t('topbar.diagnostics.title')"
           @click="diagnosticsOpen = !diagnosticsOpen"
         >
-          Diagnostics
+          {{ t('topbar.diagnostics') }}
           <span
             v-if="marker"
             class="mark-flag"
             :class="`mark-flag--${marker}`"
-            aria-label="Diagnostics need attention"
+            :aria-label="t('topbar.diagnostics.flag')"
             >!</span
           >
         </button>
-        <button class="btn btn--ghost btn--sm" @click="backToPicker">New ingest</button>
+        <button class="btn btn--ghost btn--sm" @click="backToPicker">
+          {{ t('topbar.newIngest') }}
+        </button>
       </template>
 
       <ThemePicker />
@@ -195,7 +200,9 @@ function backToPicker() {
 
     <p v-if="error" class="banner" role="alert">
       {{ error }}
-      <button class="btn btn--ghost btn--sm" @click="store.dismissError">Dismiss</button>
+      <button class="btn btn--ghost btn--sm" @click="store.dismissError">
+        {{ t('banner.dismiss') }}
+      </button>
     </p>
 
     <p v-if="hasSnapshot && needsParseNotice" class="banner banner--notice" role="alert">
@@ -204,9 +211,11 @@ function backToPicker() {
         {{ parseNoticeDetail }}
       </span>
       <span class="banner-actions">
-        <button class="btn btn--ghost btn--sm" @click="reviewParseFailures">Review</button>
+        <button class="btn btn--ghost btn--sm" @click="reviewParseFailures">
+          {{ t('banner.review') }}
+        </button>
         <button class="btn btn--ghost btn--sm" @click="store.acknowledgeParseFailures">
-          Dismiss
+          {{ t('banner.dismiss') }}
         </button>
       </span>
     </p>
