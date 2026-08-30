@@ -2,6 +2,7 @@
 /** First-run screen: pick a documentation directory, or reopen a past ingest. */
 import { computed, ref } from 'vue'
 import type { Snapshot } from '../api/types'
+import type { PickedDirectory } from '../composables/useDirectoryPicker'
 import { supportsNativePicker, useDirectoryPicker } from '../composables/useDirectoryPicker'
 import { useI18n } from '../i18n'
 
@@ -28,7 +29,7 @@ const disabled = computed(() => props.busy || picker.reading.value)
 
 async function chooseNative() {
   const picked = await picker.pickNative()
-  if (picked) submit(picked.name, picked.files)
+  if (picked) submit(picked)
 }
 
 function chooseFallback() {
@@ -40,15 +41,20 @@ async function onInput(e: Event) {
   const picked = await picker.readFileList(input.files)
   // Reset so choosing the same directory twice still fires a change event.
   input.value = ''
-  if (picked) submit(picked.name, picked.files)
+  if (picked) submit(picked)
 }
 
-function submit(name: string, files: { path: string; content: string }[]) {
-  if (!files.length) {
+/** The manifest travels with the documents, as one more file in the upload. */
+function submit(picked: PickedDirectory) {
+  if (!picked.files.length) {
     picker.error.value = t('picker.error.noMarkdown')
     return
   }
-  emit('ingest', { name, sourceLabel: name, files })
+  emit('ingest', {
+    name: picked.name,
+    sourceLabel: picked.name,
+    files: [picked.manifest, ...picked.files],
+  })
 }
 
 /** An ingest's timestamp, in the conventions of the language on screen. */
@@ -84,6 +90,10 @@ function formatDate(iso: string): string {
             {{ t('welcome.dropzone.hint.before') }} <code>.md</code>
             {{ t('welcome.dropzone.hint.after') }}
           </p>
+          <p class="faint tiny dz-manifest">
+            {{ t('welcome.dropzone.manifest.before') }} <code>projectmeta.toml</code>
+            {{ t('welcome.dropzone.manifest.after') }}
+          </p>
 
           <div class="actions">
             <button v-if="native" class="btn btn--primary" @click="chooseNative">
@@ -117,6 +127,9 @@ function formatDate(iso: string): string {
             <button class="snap" :disabled="disabled" @click="emit('open', s.id)">
               <span class="snap-name">{{ s.name }}</span>
               <span class="faint tiny">
+                <template v-if="s.project?.project.name">
+                  {{ s.project.project.name }} {{ s.project.project.version }} ·
+                </template>
                 {{ tn('welcome.stats.tables', s.stats.tables) }} ·
                 {{ tn('welcome.stats.domains', s.stats.domains) }} ·
                 {{ formatDate(s.createdAt) }}
@@ -169,7 +182,8 @@ function formatDate(iso: string): string {
 .dropzone--busy { border-style: solid; }
 
 .dz-title { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
-.dz-sub { font-size: 12.5px; max-width: 42ch; margin: 0 auto 18px; line-height: 1.55; }
+.dz-sub { font-size: 12.5px; max-width: 42ch; margin: 0 auto 8px; line-height: 1.55; }
+.dz-manifest { max-width: 42ch; margin: 0 auto 18px; line-height: 1.55; }
 
 .actions { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
 .note { margin-top: 12px; }

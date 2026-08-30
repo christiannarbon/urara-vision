@@ -58,6 +58,9 @@ export const messages = {
   'welcome.dropzone.hint.before': 'Every',
   'welcome.dropzone.hint.after':
     'file beneath it is read in your browser and sent to the parser. Nothing is written back to disk.',
+  // Split around the <code>projectmeta.toml</code> it names, as the hint is.
+  'welcome.dropzone.manifest.before': 'The directory must also carry a',
+  'welcome.dropzone.manifest.after': 'at its root, declaring what the project is.',
   'welcome.choose': 'Choose folder…',
   'welcome.useFileInput': 'Use file input instead',
   'welcome.noPicker':
@@ -79,6 +82,8 @@ export const messages = {
   'picker.error.open': 'Could not open the directory picker.',
   'picker.error.read': 'Failed to read the selected directory.',
   'picker.error.noMarkdown': 'That directory contains no markdown files.',
+  'picker.error.noManifest':
+    'That directory has no projectmeta.toml at its root. Every documentation directory declares its project in one.',
   'picker.error.tooManyFiles':
     'This directory holds more than {max} markdown files. Select a narrower subtree.',
   'picker.error.tooLarge': 'The selected documents exceed the {mb} MB upload limit.',

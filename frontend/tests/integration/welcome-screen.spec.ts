@@ -59,6 +59,11 @@ describe('the introduction', () => {
   it('leaves the file extension it names outside the sentence', () => {
     expect(screen().find('code').text()).toBe('.md')
   })
+
+  it('names the manifest the directory has to carry', () => {
+    const codes = screen().findAll('code').map((c) => c.text())
+    expect(codes).toContain('projectmeta.toml')
+  })
 })
 
 describe('the previous-ingest list', () => {
@@ -81,6 +86,20 @@ describe('the previous-ingest list', () => {
     const many = screen([snap({ tables: 3, domains: 2 })])
     await nextTick()
     expect(many.text()).toContain('テーブル 3 件')
+  })
+
+  it('names the project an ingest documented, where it declared one', () => {
+    const withProject = snap()
+    withProject.project = {
+      project: { name: 'sample-project', version: '0.1.0', description: '' },
+      internationalization: { primary: 'EN', supported: ['EN'], type: 'inline' },
+    }
+    expect(screen([withProject]).text()).toContain('sample-project 0.1.0')
+  })
+
+  it('says nothing about a project for an ingest older than the manifest', () => {
+    const line = screen([snap()]).find('.snap .faint').text()
+    expect(line.startsWith('3 tables')).toBe(true)
   })
 
   it('formats the timestamp in the conventions of the active language', async () => {
