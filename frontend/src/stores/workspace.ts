@@ -6,6 +6,7 @@ import { computed, ref } from 'vue'
 import { api, ApiError, setApiToken } from '../api/client'
 import { splitDiagnostics } from '../diagnostics'
 import { translate as t, translateCount as tn } from '../i18n'
+import { setDocumentLanguages } from '../i18n/content'
 import type { MessageKey } from '../i18n'
 import type { LayoutMode } from '../graph/layout'
 import type {
@@ -173,6 +174,9 @@ export const useWorkspace = defineStore('workspace', () => {
         api.diagnostics(sid),
       ])
       snapshot.value = snap
+      // The documents' own languages, which decide what is a translation tag
+      // and what is an ordinary bracket in the prose about to be rendered.
+      setDocumentLanguages(snap.project)
       domains.value = dom.domains
       tables.value = tbl.tables
       diagnostics.value = diag.diagnostics
@@ -329,6 +333,7 @@ export const useWorkspace = defineStore('workspace', () => {
       await api.deleteSnapshot(sid)
       if (snapshot.value?.id === sid) {
         snapshot.value = null
+        setDocumentLanguages(null)
         domains.value = []
         tables.value = []
         diagnostics.value = []

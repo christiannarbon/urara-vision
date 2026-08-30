@@ -70,6 +70,13 @@ function detectLocale(): Locale {
 const locale = ref<Locale>(detectLocale())
 
 /**
+ * The language on screen, for modules that read it outside a component --
+ * `content.ts` picks a document's language with it. Read-only on purpose:
+ * `setLocale` is the one way in.
+ */
+export const activeLocale = computed(() => locale.value)
+
+/**
  * Keeps the document's own language in step.
  *
  * This is not decoration. Screen readers pick a voice from it, and browsers
@@ -147,7 +154,7 @@ export function setLocale(v: Locale) {
 
 export function useI18n() {
   return {
-    locale: computed(() => locale.value),
+    locale: activeLocale,
     locales: LOCALES,
     t: translate,
     tn: translateCount,

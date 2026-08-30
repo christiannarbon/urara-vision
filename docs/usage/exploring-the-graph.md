@@ -53,6 +53,21 @@ as you type: `prim` finds `fact_primary` before you have finished the word. A
 hit that matched on a column rather than the table name says which column, so
 it can explain itself.
 
+## Language
+
+The picker in the top bar switches the interface between English and Japanese,
+and the choice is remembered per browser.
+
+It switches the documentation with it. Where a document carries
+[inline translations](documentation-format.md#writing-in-more-than-one-language),
+descriptions, grains and notes are shown in the language on screen; where it
+does not, they are shown as written, because an untranslated field is better
+read than blank. Nothing is refetched — both languages arrive with the
+snapshot, so switching redraws what is already loaded.
+
+Names are never translated. A table is called what its document calls it in
+every language, or the graph would be a different graph per reader.
+
 ## Reading the graph
 
 A documentation set where each domain keeps its own copy of the conformed

@@ -8,8 +8,11 @@ import { LAYOUTS, type LayoutMode } from '../graph/layout'
 import { canvasTheme, domainColor, domainIndex, paletteFamily } from '../graph/palette'
 import { roleSpec, rolesPresent } from '../graph/roles'
 import { useI18n } from '../i18n'
+import { useDocumentText } from '../i18n/content'
 
 const { t } = useI18n()
+// Domain titles and table grains are the documents' words, not the app's.
+const { dt } = useDocumentText()
 
 const props = defineProps<{
   snapshot: Snapshot | null
@@ -221,7 +224,7 @@ function toggleGroup(id: string) {
           class="chip chip--domain"
           :class="{ 'chip--on': activeDomains.includes(d.id) }"
           :style="{ '--swatch': domainSwatch.get(d.id) }"
-          :title="d.title"
+          :title="dt(d.title)"
           @click="emit('toggle-domain', d.id)"
         >
           <i class="swatch" />
@@ -260,7 +263,7 @@ function toggleGroup(id: string) {
               <button
                 class="item"
                 :class="{ 'item--on': selectedId === table.id }"
-                :title="table.grain || table.description"
+                :title="dt(table.grain) || dt(table.description)"
                 @click="emit('select', table.id)"
               >
                 <i
