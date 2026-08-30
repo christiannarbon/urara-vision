@@ -45,9 +45,10 @@ code they describe: [`k8s/`](k8s/README.md) for the manifests,
 
 ## What it does
 
-**Parses** a documentation layout it does not own: a domain index per directory
-plus one document per table, each with `Overview`, `Columns`,
-`Column-Level Lineage`, `Relationships` and `Notes / Caveats` sections. The
+**Parses** a documentation layout it does not own: a `projectmeta.toml` saying
+what the project is, a domain index per directory, plus one document per table,
+each with `Overview`, `Columns`, `Column-Level Lineage`, `Relationships` and
+`Notes / Caveats` sections. The
 role vocabulary is open — a `Type` nobody here anticipated keeps its own name,
 shape and colour instead of collapsing into a canvas of identical circles.
 
@@ -115,8 +116,9 @@ open http://localhost:8081
 ```
 
 Then click **Choose folder…** and select your documentation directory. Every
-`.md` file beneath it is read in the browser and posted to the parser; nothing
-is written back to disk.
+`.md` file beneath it is read in the browser and posted to the parser, together
+with the [`projectmeta.toml`](docs/usage/documentation-format.md#the-manifest)
+the directory must carry; nothing is written back to disk.
 
 No documentation of your own to hand? Seven complete sample sets ship under
 [`docs/demo/`](docs/demo/README.md) — a star, a snowflake, a Data Vault, a

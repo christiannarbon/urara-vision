@@ -1,0 +1,11 @@
+[project]
+name = "jaffle-shop-ddd"
+version = "0.1.0"
+description = "dbt's Jaffle Shop, arranged as bounded contexts and documented as a star schema"
+
+[internationalization]
+primary = "EN"
+supported = [
+	"EN"
+]
+type = "inline"

@@ -1,0 +1,11 @@
+[project]
+name = "sakila-oltp-ddd"
+version = "0.1.0"
+description = "MySQL's Sakila, documented as a third-normal-form operational schema"
+
+[internationalization]
+primary = "EN"
+supported = [
+	"EN"
+]
+type = "inline"

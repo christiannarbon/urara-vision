@@ -8,9 +8,11 @@ package postgres_test
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 
 	"urara-vision/backend/internal/store/postgres"
+	"urara-vision/backend/tests/fixtures"
 	"urara-vision/backend/tests/integration/harness"
 )
 
@@ -41,6 +43,13 @@ func TestSaveAndReadBackSnapshot(t *testing.T) {
 		t.Error("CreatedAt was not defaulted on write")
 	}
 
+	// The manifest is the one thing the documentation states rather than the
+	// parser infers, so it has to survive the round trip intact -- including
+	// the language list, which is the only field stored as a document.
+	if got, want := snap.Project, fixtures.ProjectMeta(); !reflect.DeepEqual(got, want) {
+		t.Errorf("project = %+v, want %+v", got, want)
+	}
+
 	// The snapshot must be findable in the list and as the newest entry.
 	all, err := pg.ListSnapshots(ctx)
 	if err != nil {
@@ -50,6 +59,9 @@ func TestSaveAndReadBackSnapshot(t *testing.T) {
 	for _, s := range all {
 		if s.ID == m.Snapshot.ID {
 			found = true
+			if got, want := s.Project, fixtures.ProjectMeta(); !reflect.DeepEqual(got, want) {
+				t.Errorf("listed project = %+v, want %+v", got, want)
+			}
 		}
 	}
 	if !found {
