@@ -43,6 +43,24 @@ if (!globalThis.ResizeObserver) {
   } as never
 }
 
+// jsdom only provides Web Storage for a real origin, and the default test URL
+// is not one. The theme, the API token and the locale all persist there, so
+// the specs that exercise persistence need somewhere for it to land.
+if (!globalThis.localStorage) {
+  const store = new Map<string, string>()
+  const storage: Storage = {
+    get length() {
+      return store.size
+    },
+    key: (i: number) => [...store.keys()][i] ?? null,
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, String(v)),
+    removeItem: (k: string) => void store.delete(k),
+    clear: () => store.clear(),
+  }
+  Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: storage })
+}
+
 if (!globalThis.matchMedia) {
   globalThis.matchMedia = ((query: string) => ({
     matches: false,
@@ -60,8 +78,9 @@ beforeEach(() => {
   // No spec should reach the network by accident; each one that needs fetch
   // installs its own stub.
   vi.restoreAllMocks()
-  // Storage is not guaranteed to exist -- jsdom only provides it for a real
-  // origin -- and a spec that does not touch it should not care either way.
+  // Storage is stubbed above where jsdom does not supply it, but a spec is
+  // still free to replace it with one that throws; clearing must not be the
+  // thing that fails the test.
   try {
     globalThis.localStorage?.clear()
   } catch {
