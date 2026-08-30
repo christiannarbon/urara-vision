@@ -23,6 +23,8 @@ import type { Messages } from './en'
 export const messages: Messages = {
   'locale.en': 'English',
   'locale.ja': '日本語',
+  'language.label': '言語',
+  'language.current': '言語：{name}',
 
   'app.title': 'Urara Vision — データモデルエクスプローラ',
 

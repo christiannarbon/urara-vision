@@ -7,6 +7,7 @@ import ApiTokenGate from './components/ApiTokenGate.vue'
 import DiagnosticsPanel from './components/DiagnosticsPanel.vue'
 import FilterSidebar from './components/FilterSidebar.vue'
 import GraphCanvas from './components/GraphCanvas.vue'
+import LanguagePicker from './components/LanguagePicker.vue'
 import SearchOverlay from './components/SearchOverlay.vue'
 import TableDetail from './components/TableDetail.vue'
 import ThemePicker from './components/ThemePicker.vue'
@@ -195,6 +196,7 @@ function backToPicker() {
         </button>
       </template>
 
+      <LanguagePicker />
       <ThemePicker />
     </header>
 

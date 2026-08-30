@@ -19,6 +19,8 @@
 export const messages = {
   'locale.en': 'English',
   'locale.ja': '日本語',
+  'language.label': 'Language',
+  'language.current': 'Language: {name}',
 
   'app.title': 'Urara Vision — data model explorer',
 
@@ -35,7 +37,7 @@ export const messages = {
   // The banners under the topbar
   'banner.dismiss': 'Dismiss',
   'banner.review': 'Review',
-  'banner.parseFailures.one': '1 document could not be parsed and was skipped.',
+  'banner.parseFailures.one': '{n} document could not be parsed and was skipped.',
   'banner.parseFailures.other': '{n} documents could not be parsed and were skipped.',
   // Spelled out separately so the sentence agrees in number with the one above.
   'banner.parseFailuresDetail.one': 'Anything it documents is missing from this model.',
