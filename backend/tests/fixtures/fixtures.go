@@ -89,9 +89,7 @@ func Build(files []parser.File) *model.Model {
 // The manifest is attached the way handleIngest attaches it, so a model built
 // here carries everything a stored one does.
 func BuildAs(snapshotID string, files []parser.File) *model.Model {
-	m := graph.Build(snapshotID, "test", "test", parser.Parse(files))
-	m.Snapshot.Project = ProjectMeta()
-	return m
+	return graph.Build(snapshotID, "test", "test", ProjectMeta(), parser.Parse(files))
 }
 
 // SampleTableDoc is a fully populated table document: every section the parser

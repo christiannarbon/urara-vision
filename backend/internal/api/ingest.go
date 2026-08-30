@@ -84,9 +84,8 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	snapshotID := uuid.NewString()
 	started := time.Now()
 
-	m := graph.Build(snapshotID, name, up.sourceLabel, parser.Parse(files))
+	m := graph.Build(snapshotID, name, up.sourceLabel, meta, parser.Parse(files))
 	m.Snapshot.CreatedAt = time.Now().UTC()
-	m.Snapshot.Project = meta
 	edges := graph.Edges(m)
 
 	if err := s.pg.SaveSnapshot(ctx, m); err != nil {

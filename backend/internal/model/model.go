@@ -74,6 +74,9 @@ type Stats struct {
 	FilesParsed   int `json:"filesParsed"`
 	FilesSkipped  int `json:"filesSkipped"`
 	Diagnostics   int `json:"diagnostics"`
+	// Translated is how many prose fields carry a language beyond the
+	// project's primary one.
+	Translated int `json:"translated"`
 }
 
 // Domain is one subject area, parsed from a top-level index markdown file.

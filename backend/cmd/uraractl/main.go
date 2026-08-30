@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"urara-vision/backend/internal/graph"
+	"urara-vision/backend/internal/i18ntext"
 	"urara-vision/backend/internal/model"
 	"urara-vision/backend/internal/parser"
 	"urara-vision/backend/internal/projectmeta"
@@ -26,6 +27,7 @@ func main() {
 	dir := flag.String("dir", ".", "documentation directory to parse")
 	asJSON := flag.Bool("json", false, "emit the full model as JSON")
 	strict := flag.Bool("strict", false, "exit non-zero when any error diagnostic is present")
+	lang := flag.String("lang", "", "resolve inline translations to one language, e.g. -lang JP")
 	flag.Parse()
 
 	meta, err := readMeta(*dir)
@@ -58,9 +60,14 @@ func main() {
 		os.Exit(2)
 	}
 
-	m := graph.Build("local", filepath.Base(*dir), *dir, parser.Parse(files))
-	m.Snapshot.Project = meta
+	m := graph.Build("local", filepath.Base(*dir), *dir, meta, parser.Parse(files))
 	edges := graph.Edges(m)
+
+	// One language out, for a consumer that wants the model in the language it
+	// speaks rather than every language the documents carry.
+	if *lang != "" {
+		i18ntext.Resolve(m, *lang)
+	}
 
 	if *asJSON {
 		enc := json.NewEncoder(os.Stdout)
@@ -78,6 +85,7 @@ func main() {
 		strings.Join(meta.Internationalization.Supported, " "),
 		meta.Internationalization.Primary,
 		meta.Internationalization.Type)
+	fmt.Printf("translated     %d prose fields\n", s.Translated)
 	fmt.Printf("files parsed   %d (skipped %d)\n", s.FilesParsed, s.FilesSkipped)
 	fmt.Printf("domains        %d\n", s.Domains)
 	fmt.Printf("tables         %d  (conformed instances %d)\n", s.Tables, s.Conformed)
