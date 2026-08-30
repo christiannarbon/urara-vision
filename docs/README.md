@@ -9,7 +9,7 @@ the themes, and the `uraractl` CLI.
 **[`tech/`](tech/)** — working on the tool. Architecture, low-level design
 notes for each stage, and a troubleshooting guide organised by symptom.
 
-**[`demo/`](demo/README.md)** — seven complete sample documentation sets, each
+**[`demo/`](demo/README.md)** — nine complete sample documentation sets, each
 with deliberate flaws so every diagnostic has something to find. They double as
 the fixtures the demo test suite pins, so they are documentation and test data
 at once.

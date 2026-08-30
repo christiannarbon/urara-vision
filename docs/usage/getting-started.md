@@ -30,7 +30,7 @@ stack works with no setup. They are safe only because that is all they are.
 
 ## Try it without your own documentation
 
-Seven complete sample sets ship under [`docs/demo/`](../demo/README.md), each a
+Nine complete sample sets ship under [`docs/demo/`](../demo/README.md), each a
 real project's tables arranged as DDD bounded contexts, and each with
 deliberate flaws — one per check — so every diagnostic has something to find:
 
@@ -43,11 +43,13 @@ deliberate flaws — one per check — so every diagnostic has something to find
 | `tpch-vault-ddd` | a Data Vault |
 | `northwind-hybrid-ddd` | a vault feeding a star |
 | `sakila-oltp-ddd` | third normal form |
+| `chinook-bilingual-ddd` | a star documented in English, translated into Japanese inline |
+| `superstore-jp-ddd` | a star documented in Japanese, translated into English inline |
 
 Load one through **Choose folder…**, or parse it without the UI at all:
 
 ```bash
-make demo-docs                    # parse all seven
+make demo-docs                    # parse all nine
 make demo-docs SET=eshop-ddd      # or just one
 ```
 

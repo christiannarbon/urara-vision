@@ -83,6 +83,11 @@ Three rules cover everything else:
   is prose; `[JP]` is a tag only because `projectmeta.toml` says `JP` is one of
   this project's languages. Tags are matched case-insensitively.
 
+There is no escape, and backticks are not one: a field that writes `` `[JP]` ``
+to *talk about* the tag has tagged itself. Name the language instead — "tags
+Japanese twice" rather than the tag itself. It is the one place the format
+cannot tell a mention from a use.
+
 It works the same way round for a project that documents in Japanese:
 
 ```toml

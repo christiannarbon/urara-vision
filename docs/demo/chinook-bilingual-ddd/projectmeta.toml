@@ -1,0 +1,12 @@
+[project]
+name = "chinook-bilingual-ddd"
+version = "0.1.0"
+description = "The Chinook digital music store, documented in English and translated into Japanese inline"
+
+[internationalization]
+primary = "EN"
+supported = [
+	"EN",
+	"JP"
+]
+type = "inline"

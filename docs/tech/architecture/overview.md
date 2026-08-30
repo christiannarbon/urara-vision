@@ -106,5 +106,5 @@ k8s/
 docs/
   usage/             guides for people using the tool
   tech/              architecture, design notes, troubleshooting
-  demo/              seven sample documentation sets, pinned by the demo suite
+  demo/              nine sample documentation sets, pinned by the demo suite
 ```
