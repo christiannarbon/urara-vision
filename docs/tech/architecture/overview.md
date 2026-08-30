@@ -36,7 +36,7 @@ no store anywhere near it.
 **Project** writes the result: Postgres first, then Neo4j. A failed projection
 rolls the snapshot back, so the snapshot list never shows a half-working entry.
 
-Because the first two stages touch no database, [`relctl`](../../usage/cli.md)
+Because the first two stages touch no database, [`uraractl`](../../usage/cli.md)
 is the same code with the third stage removed — which is why a documentation
 linter costs nothing to maintain.
 
@@ -88,7 +88,7 @@ recent ingest.
 ```
 backend/
   cmd/server/        HTTP server
-  cmd/relctl/        CLI: parse a directory, print stats and diagnostics
+  cmd/uraractl/      CLI: parse a directory, print stats and diagnostics
   internal/parser/   markdown → structured documents
   internal/graph/    resolution, edge normalisation, drift detection
   internal/store/    postgres (record) + neo4j (graph)
