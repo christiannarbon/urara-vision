@@ -22,6 +22,39 @@ themselves when they are not told where to connect, so an accidental rename of
 an environment variable would otherwise quietly stop testing the stores while
 staying green.
 
+## Dependency updates
+
+[Dependabot] opens them, configured in `.github/dependabot.yml`: the Go module,
+the frontend's npm tree, both Dockerfiles' base images, and the actions the
+workflows pin. Nothing merges itself. An update is an ordinary pull request, so
+the path filters in the table above decide what runs on it — a bumped lockfile
+starts `security.yml`, a bumped base image starts `images.yml`, a bumped action
+starts `workflows.yml`. Sending them through the front door like that is the
+point: the checks that would catch a bad hand-written change catch a bad
+automated one for free.
+
+They arrive Monday 09:00 JST, the slot `security.yml` already runs in, so the
+week opens with the advisory scan and the updates that answer it side by side.
+
+Updates are grouped, so a quiet week is one pull request per ecosystem — two
+for npm, which keeps what ships to a browser apart from what only ever runs on
+a developer's machine. Majors sit outside every group and arrive on their own,
+because they are the ones that need reading rather than merging: a Go major is
+an import path change, and a base image major is a decision about the runtime.
+
+Two couplings to know when reviewing one:
+
+- **The Go toolchain is pinned in two places.** `backend/Dockerfile` names
+  `golang:1.25.14-alpine`, and `backend/go.mod` names `go 1.25.14`. Dependabot
+  moves the image without touching the directive, and the build still passes,
+  because the directive is a minimum rather than a pin. They are meant to
+  agree, so bump the directive in the same pull request.
+- **The runtime image will never show up here.** The backend runs on
+  `gcr.io/distroless/static-debian12:nonroot`, whose tag carries no version to
+  compare, so moving to a newer Debian stays a manual decision.
+
+[Dependabot]: https://docs.github.com/en/code-security/dependabot
+
 ## Running it locally
 
 All of it runs on your machine through [nektos/act], so a broken workflow costs
