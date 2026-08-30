@@ -12,17 +12,24 @@
 package graph
 
 import (
+	"urara-vision/backend/internal/i18ntext"
 	"urara-vision/backend/internal/model"
 	"urara-vision/backend/internal/parser"
 )
 
 // Build resolves a parse result into a model, collecting diagnostics as it goes.
-func Build(snapshotID, name, sourceLabel string, pr *parser.Result) *model.Model {
+//
+// The manifest comes in rather than being attached afterwards because the
+// languages it declares decide how the documents' prose reads: what is a
+// translation tag and what is an ordinary bracket is a question only the
+// project's own language list answers.
+func Build(snapshotID, name, sourceLabel string, meta model.ProjectMeta, pr *parser.Result) *model.Model {
 	m := &model.Model{
 		Domains:     pr.Domains,
 		Tables:      pr.Tables,
 		Diagnostics: append([]model.Diagnostic(nil), pr.Diagnostics...),
 	}
+	m.Snapshot.Project = meta
 
 	reg := newRegistry(m.Tables, snapshotID)
 	conformed := reg.markConformed(m.Tables)
@@ -32,12 +39,15 @@ func Build(snapshotID, name, sourceLabel string, pr *parser.Result) *model.Model
 	flagIsolatedTables(m)
 
 	m.Diagnostics = append(m.Diagnostics, detectConformedDrift(reg.byName, reg.byID)...)
+	languages := i18ntext.Check(m)
+	m.Diagnostics = append(m.Diagnostics, languages.Diagnostics...)
 	sortDiagnostics(m.Diagnostics)
 
 	m.Snapshot = model.Snapshot{
 		ID:          snapshotID,
 		Name:        name,
 		SourceLabel: sourceLabel,
+		Project:     meta,
 		Stats: model.Stats{
 			Domains:       len(m.Domains),
 			Tables:        len(m.Tables),
@@ -49,6 +59,7 @@ func Build(snapshotID, name, sourceLabel string, pr *parser.Result) *model.Model
 			FilesParsed:   pr.Parsed,
 			FilesSkipped:  pr.Skipped,
 			Diagnostics:   len(m.Diagnostics),
+			Translated:    languages.Translated,
 		},
 	}
 	return m

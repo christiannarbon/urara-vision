@@ -58,6 +58,58 @@ metadata the project believes it has.
 The manifest is stored with the snapshot, so every ingest records which project
 and version it came from and which languages that documentation claimed.
 
+## Writing in more than one language
+
+With `type = "inline"`, every language lives in the document itself. A prose
+field carries its translations after a bracketed language tag:
+
+```markdown
+| `order_id` | STRING | This is a column [JP] これはコラムです。 |
+```
+
+The text before the first tag is in the project's **primary** language, and
+each tag runs until the next one. Reading that field in English gives
+`This is a column`; reading it in Japanese gives `これはコラムです。`
+
+Three rules cover everything else:
+
+- **A field with no tag is primary text, whatever script it is written in.**
+  `This is a column` and `これはコラムです。` are both shown to every reader,
+  untranslated. Nothing guesses a language from the characters in a field.
+- **A language the field does not carry falls back to the primary one**, and a
+  field with nothing in the primary language falls back to what it does carry.
+  A reader asking for Japanese is better served English than a blank cell.
+- **Only the languages the manifest lists are tags.** `[TBD]` in a description
+  is prose; `[JP]` is a tag only because `projectmeta.toml` says `JP` is one of
+  this project's languages. Tags are matched case-insensitively.
+
+It works the same way round for a project that documents in Japanese:
+
+```toml
+[internationalization]
+primary = "JP"
+supported = ["EN", "JP"]
+type = "inline"
+```
+
+```markdown
+| `order_id` | STRING | これはコラムです。 [EN] This is a column |
+```
+
+Every field a reader reads as a sentence can be written this way: a domain's
+title and description, and a table's description, grain, update frequency,
+notes, relationship note, column descriptions and column-lineage notes.
+
+Names are not among them, deliberately. A table name that resolved differently
+per language would resolve to a different graph per language, which is a second
+model rather than a translation.
+
+Both languages are stored, and the interface picks between them as the reader
+switches language — no re-ingest, and nothing is lost from the document. Two
+checks watch the format itself:
+[`duplicate_language_tag`](diagnostics.md) and
+[`missing_primary_language`](diagnostics.md).
+
 ## A table document
 
 Five sections, each optional except `Overview` and `Columns` — a document

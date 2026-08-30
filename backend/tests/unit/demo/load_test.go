@@ -47,9 +47,7 @@ func loadSet(t *testing.T, dir string) *model.Model {
 		t.Fatalf("no documents found under %s", dir)
 	}
 	name := filepath.Base(dir)
-	m := graph.Build("demo", name, dir, parser.Parse(files))
-	m.Snapshot.Project = loadManifest(t, dir)
-	return m
+	return graph.Build("demo", name, dir, loadManifest(t, dir), parser.Parse(files))
 }
 
 // loadManifest reads a set's projectmeta.toml, which an ingest of it would
