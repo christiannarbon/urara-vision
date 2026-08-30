@@ -49,6 +49,50 @@ export const messages: Messages = {
   'theme.current': 'テーマ：{name}',
   'theme.paintings': '絵画',
 
+  // The entry screen
+  'welcome.title': 'データモデルビジュアライザ',
+  'welcome.intro':
+    'テーブルドキュメントのディレクトリを指定してください。Markdown を解析してテーブル間のリレーションを解決し、モデルを探索できるグラフとして描画します。',
+  'welcome.working': '処理中…',
+  'welcome.dropzone.title': 'ドキュメントのディレクトリを選択してください',
+  'welcome.dropzone.hint.before': '配下のすべての',
+  'welcome.dropzone.hint.after':
+    'ファイルをブラウザ内で読み取り、パーサーに送信します。ディスクへの書き込みは行いません。',
+  'welcome.choose': 'フォルダを選択…',
+  'welcome.useFileInput': 'ファイル入力を使う',
+  'welcome.noPicker':
+    'お使いのブラウザはディレクトリピッカーに対応していないため、ファイル入力を使用します。動作は同じです。',
+  'welcome.recent': 'これまでの取り込み',
+  'welcome.stats.tables.one': 'テーブル {n} 件',
+  'welcome.stats.tables.other': 'テーブル {n} 件',
+  'welcome.stats.domains.one': 'ドメイン {n} 件',
+  'welcome.stats.domains.other': 'ドメイン {n} 件',
+  'welcome.delete.title': 'このスナップショットを削除',
+  'welcome.delete.label': 'スナップショットを削除',
+
+  // Reading a directory
+  'picker.scanning': 'ディレクトリを走査しています…',
+  'picker.reading': 'ドキュメントを読み込んでいます…',
+  'picker.read.one': '{n} 件のドキュメントを読み込みました…',
+  'picker.read.other': '{n} 件のドキュメントを読み込みました…',
+  'picker.readOf': '{total} 件中 {n} 件のドキュメントを読み込みました…',
+  'picker.error.open': 'ディレクトリピッカーを開けませんでした。',
+  'picker.error.read': '選択したディレクトリを読み取れませんでした。',
+  'picker.error.noMarkdown': 'このディレクトリには Markdown ファイルがありません。',
+  'picker.error.tooManyFiles':
+    'このディレクトリには {max} 件を超える Markdown ファイルがあります。より狭い範囲を選択してください。',
+  'picker.error.tooLarge': '選択したドキュメントはアップロード上限の {mb} MB を超えています。',
+
+  // What the workspace is doing, and what went wrong
+  'status.parsing.one': '{n} 件のドキュメントを解析しています…',
+  'status.parsing.other': '{n} 件のドキュメントを解析しています…',
+  'status.loading': 'モデルを読み込んでいます…',
+  'error.unknown': '問題が発生しました。',
+  'error.unreachable':
+    'バックエンドに接続できません。API が起動していて到達可能か確認してください。',
+  'error.tokenRejected': 'この API にはトークンが必要ですが、指定されたトークンは受け付けられませんでした。',
+  'error.requestFailed': 'リクエストが失敗しました（ステータス {status}）。',
+
   // API token gate
   'gate.title': 'このインスタンスにはトークンが必要です',
   'gate.intro.before':

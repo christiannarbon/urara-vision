@@ -5,6 +5,8 @@ import { computed, ref } from 'vue'
 
 import { api, ApiError, setApiToken } from '../api/client'
 import { splitDiagnostics } from '../diagnostics'
+import { translate as t, translateCount as tn } from '../i18n'
+import type { MessageKey } from '../i18n'
 import type { LayoutMode } from '../graph/layout'
 import type {
   Diagnostic,
@@ -53,8 +55,35 @@ export const useWorkspace = defineStore('workspace', () => {
 
   // --- status ------------------------------------------------------------
   const busy = ref(false)
-  const statusMessage = ref('')
-  const error = ref<string | null>(null)
+
+  /**
+   * The banners hold what to say rather than the words for it, and resolve
+   * through the catalogue on read. Both can sit on screen indefinitely -- an
+   * error until it is dismissed, a status for as long as an ingest takes --
+   * so a string frozen at the moment it was set would survive a language
+   * change that everything around it had followed.
+   */
+  const status = ref<{ key: 'status.parsing'; n: number } | { key: 'status.loading' } | null>(null)
+  const statusMessage = computed(() => {
+    const s = status.value
+    if (!s) return ''
+    return s.key === 'status.parsing' ? tn('status.parsing', s.n) : t('status.loading')
+  })
+
+  /** A catalogue key where the frontend decided what went wrong, or the
+   *  server's own prose where it did not. Never both. */
+  const errorKey = ref<MessageKey | null>(null)
+  const errorParams = ref<Record<string, string | number> | undefined>(undefined)
+  const errorDetail = ref<string | null>(null)
+  const error = computed(() =>
+    errorKey.value ? t(errorKey.value, errorParams.value) : errorDetail.value,
+  )
+
+  function clearError() {
+    errorKey.value = null
+    errorParams.value = undefined
+    errorDetail.value = null
+  }
   /** Set once the backend has answered 401. The app shows the token prompt
    *  rather than an error banner: without a token there is nothing to read, so
    *  a dismissible message would leave the reader stuck on an empty screen. */
@@ -97,23 +126,27 @@ export const useWorkspace = defineStore('workspace', () => {
       // Not a failure to report, a credential to collect. The client has
       // already dropped the rejected token.
       authRequired.value = true
-      error.value = null
+      clearError()
       return
     }
-    if (e instanceof ApiError) {
-      error.value = e.message
+    clearError()
+    if (e instanceof ApiError && e.key) {
+      errorKey.value = e.key
+      // The status is the only thing any of these keys interpolates, and
+      // passing it to the ones that do not is harmless.
+      errorParams.value = { status: e.status }
     } else if (e instanceof Error) {
-      error.value = e.message
+      errorDetail.value = e.message
     } else {
-      error.value = 'Something went wrong.'
+      errorKey.value = 'error.unknown'
     }
   }
 
   /** Uploads a picked directory and loads the resulting snapshot. */
   async function ingest(name: string, sourceLabel: string, files: IngestFile[]) {
     busy.value = true
-    error.value = null
-    statusMessage.value = `Parsing ${files.length} documents…`
+    clearError()
+    status.value = { key: 'status.parsing', n: files.length }
     try {
       const res = await api.ingest(name, sourceLabel, files)
       await loadSnapshot(res.snapshot.id)
@@ -123,15 +156,15 @@ export const useWorkspace = defineStore('workspace', () => {
       return null
     } finally {
       busy.value = false
-      statusMessage.value = ''
+      status.value = null
     }
   }
 
   /** Loads a snapshot's domains, tables, diagnostics and graph. */
   async function loadSnapshot(sid: string) {
     busy.value = true
-    error.value = null
-    statusMessage.value = 'Loading model…'
+    clearError()
+    status.value = { key: 'status.loading' }
     try {
       const [snap, dom, tbl, diag] = await Promise.all([
         api.getSnapshot(sid),
@@ -158,7 +191,7 @@ export const useWorkspace = defineStore('workspace', () => {
       setError(e)
     } finally {
       busy.value = false
-      statusMessage.value = ''
+      status.value = null
     }
   }
 
@@ -311,7 +344,7 @@ export const useWorkspace = defineStore('workspace', () => {
   }
 
   function dismissError() {
-    error.value = null
+    clearError()
   }
 
   return {

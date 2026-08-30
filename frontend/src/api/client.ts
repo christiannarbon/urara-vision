@@ -14,6 +14,7 @@ import type {
   TableResponse,
   TableSummary,
 } from './types'
+import type { MessageKey } from '../i18n'
 
 const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api/v1'
 
@@ -59,11 +60,19 @@ export function clearApiToken(): void {
 }
 
 /** ApiError carries the HTTP status so callers can distinguish a 404 from a
- *  server fault without parsing strings. */
+ *  server fault without parsing strings.
+ *
+ *  It also carries a catalogue key where this client is the one that decided
+ *  what went wrong, so the banner can be rendered in whatever language is on
+ *  screen at the time rather than the one that was active when it was thrown.
+ *  There is no key when the message came from the server, which writes its own
+ *  prose. `message` stays English either way: it is what lands in a console
+ *  and a stack trace, and those have one audience. */
 export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly key?: MessageKey,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -82,13 +91,18 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(
       'Cannot reach the backend. Check that the API is running and reachable.',
       0,
+      'error.unreachable',
     )
   }
 
   if (res.status === 401) {
     // Whatever we hold is wrong or expired. Drop it so the app can ask again.
     clearApiToken()
-    throw new ApiError('This API needs a token, and the one supplied was not accepted.', 401)
+    throw new ApiError(
+      'This API needs a token, and the one supplied was not accepted.',
+      401,
+      'error.tokenRejected',
+    )
   }
 
   if (!res.ok) {
@@ -99,7 +113,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // Response was not JSON; the status text is the best available message.
     }
-    throw new ApiError(detail || `Request failed with status ${res.status}`, res.status)
+    // A key only when the server said nothing usable; its own error text is
+    // prose this client has no translation for.
+    throw new ApiError(
+      detail || `Request failed with status ${res.status}.`,
+      res.status,
+      detail ? undefined : 'error.requestFailed',
+    )
   }
 
   if (res.status === 204) return undefined as T

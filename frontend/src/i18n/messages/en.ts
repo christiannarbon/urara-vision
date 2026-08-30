@@ -46,6 +46,50 @@ export const messages = {
   'theme.current': 'Theme: {name}',
   'theme.paintings': 'Paintings',
 
+  // The entry screen
+  'welcome.title': 'Data model visualiser',
+  'welcome.intro':
+    'Point it at a directory of table documentation. It parses the markdown, resolves the relationships between tables, and draws the model as a graph you can explore.',
+  'welcome.working': 'Working…',
+  'welcome.dropzone.title': 'Select your documentation directory',
+  // Split around the <code>.md</code> it names, as the gate's sentence is.
+  'welcome.dropzone.hint.before': 'Every',
+  'welcome.dropzone.hint.after':
+    'file beneath it is read in your browser and sent to the parser. Nothing is written back to disk.',
+  'welcome.choose': 'Choose folder…',
+  'welcome.useFileInput': 'Use file input instead',
+  'welcome.noPicker':
+    'Your browser does not expose the directory picker, so the file input is used. It behaves the same way.',
+  'welcome.recent': 'Previous ingests',
+  'welcome.stats.tables.one': '{n} table',
+  'welcome.stats.tables.other': '{n} tables',
+  'welcome.stats.domains.one': '{n} domain',
+  'welcome.stats.domains.other': '{n} domains',
+  'welcome.delete.title': 'Delete this snapshot',
+  'welcome.delete.label': 'Delete snapshot',
+
+  // Reading a directory
+  'picker.scanning': 'Scanning directory…',
+  'picker.reading': 'Reading documents…',
+  'picker.read.one': 'Read {n} document…',
+  'picker.read.other': 'Read {n} documents…',
+  'picker.readOf': 'Read {n} of {total} documents…',
+  'picker.error.open': 'Could not open the directory picker.',
+  'picker.error.read': 'Failed to read the selected directory.',
+  'picker.error.noMarkdown': 'That directory contains no markdown files.',
+  'picker.error.tooManyFiles':
+    'This directory holds more than {max} markdown files. Select a narrower subtree.',
+  'picker.error.tooLarge': 'The selected documents exceed the {mb} MB upload limit.',
+
+  // What the workspace is doing, and what went wrong
+  'status.parsing.one': 'Parsing {n} document…',
+  'status.parsing.other': 'Parsing {n} documents…',
+  'status.loading': 'Loading model…',
+  'error.unknown': 'Something went wrong.',
+  'error.unreachable': 'Cannot reach the backend. Check that the API is running and reachable.',
+  'error.tokenRejected': 'This API needs a token, and the one supplied was not accepted.',
+  'error.requestFailed': 'Request failed with status {status}.',
+
   // API token gate
   'gate.title': 'This instance needs a token',
   // Split around the <code>API_TOKEN</code> the sentence names, rather than
