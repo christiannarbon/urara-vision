@@ -105,7 +105,7 @@ func TestSnowflakeDiagnostics(t *testing.T) {
 		"isolated_fact":          1,  // FactSalesQuota names its dimensions in prose
 		"narrative_reference":    2,  // "Both Fact Tables", "The Employee and Date Dimensions"
 		"undocumented_lineage":   2,  // prose in the Source Table column
-	}, 1) // exactly one error, so `relctl -strict` on the demo exits non-zero
+	}, 1) // exactly one error, so `uraractl -strict` on the demo exits non-zero
 }
 
 // TestSnowflakeCrossDomainIsHigherThanAStar records something the set is meant

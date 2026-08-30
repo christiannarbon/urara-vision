@@ -47,7 +47,7 @@ func TestFintechDiagnostics(t *testing.T) {
 		"isolated_fact":          1,  // fact_fraud_alerts
 		"narrative_reference":    2,  // "Various Fact Tables", "Payments Context Facts"
 		"undocumented_lineage":   2,  // prose in the Source Table column
-	}, 1) // exactly one error, so `relctl -strict` on this set exits non-zero
+	}, 1) // exactly one error, so `uraractl -strict` on this set exits non-zero
 }
 
 // TestFintechJoinKeyOrientation is this sample's headline case, and the same

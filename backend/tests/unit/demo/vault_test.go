@@ -74,7 +74,7 @@ func TestVaultDiagnostics(t *testing.T) {
 		"isolated_table":         1, // lnk_part_supplier names its parent in prose
 		"narrative_reference":    2, // "Every Satellite in the Raw Vault", "Part Hubs"
 		"undocumented_lineage":   4, // prose in the Source Table column
-	}, 1) // exactly one error, so `relctl -strict` on the demo exits non-zero
+	}, 1) // exactly one error, so `uraractl -strict` on the demo exits non-zero
 }
 
 // TestVaultIsolatedTableIsNotAFact is the distinction the diagnostic exists to
