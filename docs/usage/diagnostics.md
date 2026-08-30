@@ -57,6 +57,6 @@ join to is ordinary and is left alone.
 In the app, the diagnostics pane lists them by severity and links each one to
 the document that produced it.
 
-Outside the app, [`relctl`](cli.md) prints the same list, and
-`relctl -strict` exits non-zero when any error is present — which makes it a
+Outside the app, [`uraractl`](cli.md) prints the same list, and
+`uraractl -strict` exits non-zero when any error is present — which makes it a
 documentation linter you can put in CI.

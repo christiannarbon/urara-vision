@@ -25,7 +25,7 @@ make demo-docs                    # parse all seven
 make demo-docs SET=tpch-vault-ddd # or just one
 
 # or directly
-cd backend && go run ./cmd/relctl -dir ../docs/demo/eshop-ddd
+cd backend && go run ./cmd/uraractl -dir ../docs/demo/eshop-ddd
 
 # or in the UI: Choose folder… -> docs/demo/<set>
 ```
@@ -48,7 +48,7 @@ every flaw below is a real documentation mistake, placed on purpose so that one
 check has something to find, and noted in the `Notes / Caveats` of the document
 it lives in so nobody mistakes it for an accident.
 
-Each set carries exactly one **error** diagnostic, so `relctl -strict` exits 1
+Each set carries exactly one **error** diagnostic, so `uraractl -strict` exits 1
 on all seven and the severity filter in the UI has something to separate.
 
 Every set's totals are pinned by a suite in `backend/tests/unit/demo/`. A

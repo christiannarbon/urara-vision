@@ -4,7 +4,7 @@ Two halves, by who is reading.
 
 **[`usage/`](usage/)** — using the tool. Running it, what the parser expects
 your markdown to look like, how to read the canvas, what each diagnostic means,
-the themes, and the `relctl` CLI.
+the themes, and the `uraractl` CLI.
 
 **[`tech/`](tech/)** — working on the tool. Architecture, low-level design
 notes for each stage, and a troubleshooting guide organised by symptom.
