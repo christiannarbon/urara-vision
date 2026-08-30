@@ -112,6 +112,14 @@ missing. Counted strings come in `.one`/`.other` pairs read through `tn`, which
 asks the locale which variant a number takes; Japanese does not mark plural and
 answers `other` for everything.
 
+`LanguagePicker` sits in the topbar beside the theme picker and is the same
+control, deliberately — two adjacent settings behaving differently for no
+reason is what makes a toolbar feel arbitrary. It carries no swatch, which is
+the one way it differs: the theme picker's dot *is* the theme, and a language
+is not a colour. Each language is listed under its own name for itself, because
+the reader most likely to reach for the control is the one who cannot read the
+language it is currently in.
+
 The locale comes from a stored choice, else the browser's preference list
 matched on the primary subtag, else English. It persists in `localStorage`
 beside the theme, and is stamped onto `<html lang>` — screen readers pick a
