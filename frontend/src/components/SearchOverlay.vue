@@ -5,6 +5,9 @@ import { api } from '../api/client'
 import type { SearchHit } from '../api/types'
 import { useRolePalette } from '../composables/useRolePalette'
 import { roleSpec } from '../graph/roles'
+import { useI18n } from '../i18n'
+
+const { t } = useI18n()
 
 const props = defineProps<{ open: boolean; snapshotId: string | null }>()
 const emit = defineEmits<{
@@ -93,23 +96,21 @@ function choose(id: string) {
 
 <template>
   <div v-if="open" class="backdrop" @click.self="emit('close')">
-    <div class="palette" role="dialog" aria-modal="true" aria-label="Search tables">
+    <div class="palette" role="dialog" aria-modal="true" :aria-label="t('search.label')">
       <input
         ref="input"
         v-model="query"
         class="q"
         type="search"
-        placeholder="Search tables, columns, descriptions…"
-        aria-label="Search"
+        :placeholder="t('search.placeholder')"
+        :aria-label="t('search.input.label')"
         @keydown="onKeydown"
       />
 
       <div class="results">
-        <p v-if="!query.trim()" class="hint faint">
-          Type to search across table names, grains, descriptions and column names.
-        </p>
-        <p v-else-if="searching" class="hint faint">Searching…</p>
-        <p v-else-if="empty" class="hint faint">No matches.</p>
+        <p v-if="!query.trim()" class="hint faint">{{ t('search.hint') }}</p>
+        <p v-else-if="searching" class="hint faint">{{ t('search.searching') }}</p>
+        <p v-else-if="empty" class="hint faint">{{ t('search.noMatches') }}</p>
 
         <ul v-else>
           <li v-for="(h, i) in hits" :key="h.tableId">
@@ -136,9 +137,9 @@ function choose(id: string) {
       </div>
 
       <footer class="foot faint tiny">
-        <span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>
-        <span><kbd>↵</kbd> open</span>
-        <span><kbd>esc</kbd> close</span>
+        <span><kbd>↑</kbd><kbd>↓</kbd> {{ t('search.key.navigate') }}</span>
+        <span><kbd>↵</kbd> {{ t('search.key.open') }}</span>
+        <span><kbd>esc</kbd> {{ t('search.key.close') }}</span>
       </footer>
     </div>
   </div>
