@@ -60,6 +60,8 @@ export const messages: Messages = {
   'welcome.dropzone.hint.before': '配下のすべての',
   'welcome.dropzone.hint.after':
     'ファイルをブラウザ内で読み取り、パーサーに送信します。ディスクへの書き込みは行いません。',
+  'welcome.dropzone.manifest.before': 'ディレクトリのルートには、プロジェクトを宣言する',
+  'welcome.dropzone.manifest.after': 'も必要です。',
   'welcome.choose': 'フォルダを選択…',
   'welcome.useFileInput': 'ファイル入力を使う',
   'welcome.noPicker':
@@ -81,6 +83,8 @@ export const messages: Messages = {
   'picker.error.open': 'ディレクトリピッカーを開けませんでした。',
   'picker.error.read': '選択したディレクトリを読み取れませんでした。',
   'picker.error.noMarkdown': 'このディレクトリには Markdown ファイルがありません。',
+  'picker.error.noManifest':
+    'このディレクトリのルートに projectmeta.toml がありません。ドキュメントディレクトリはプロジェクトをこのファイルで宣言します。',
   'picker.error.tooManyFiles':
     'このディレクトリには {max} 件を超える Markdown ファイルがあります。より狭い範囲を選択してください。',
   'picker.error.tooLarge': '選択したドキュメントはアップロード上限の {mb} MB を超えています。',
