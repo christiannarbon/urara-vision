@@ -1,0 +1,140 @@
+# Dependency updates.
+#
+# Four ecosystems: the Go module, the frontend's npm tree, the base images the
+# two Dockerfiles pin, and the actions the workflows themselves pin. Everything
+# arrives as an ordinary pull request, so the path filters that gate a human
+# change gate these too -- a bumped lockfile starts `security.yml`, a bumped
+# base image starts `images.yml`, a bumped action starts `workflows.yml`.
+#
+# Monday 09:00 JST, the same slot `security.yml` runs in, so the week opens
+# with the advisory scan and the updates that answer it side by side rather
+# than either landing mid-review.
+#
+# Updates are grouped: a quiet week should be one pull request per ecosystem,
+# not a dozen. Majors are deliberately outside every group -- they arrive on
+# their own, because they are the ones that need reading rather than merging.
+
+version: 2
+
+updates:
+  # --- the actions the workflows pin ----------------------------------------
+  #
+  # ghalint fails the build on anything but a full commit SHA. Dependabot
+  # rewrites the SHA and the `# vX.Y.Z` comment beside it together, so these
+  # stay both pinned and readable, and `workflows.yml` re-lints them on the way
+  # in.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Tokyo
+    commit-message:
+      prefix: ci
+      include: scope
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+
+  # --- the Go module --------------------------------------------------------
+  #
+  # A bumped go.mod or go.sum starts three workflows between them: `backend.yml`
+  # for the unit and integration suites, `security.yml` for govulncheck, and
+  # `images.yml` for the build. That covers the three ways a bump goes wrong --
+  # a behaviour change, a fresh advisory, and code that no longer compiles.
+  #
+  # A Go major is an import path change (`/v5` to `/v6`), so it is never a merge
+  # and always a piece of work. Hence minor and patch only in the group.
+  - package-ecosystem: gomod
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Tokyo
+    commit-message:
+      prefix: build
+      include: scope
+    open-pull-requests-limit: 5
+    groups:
+      go-modules:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+
+  # --- the frontend's npm tree ----------------------------------------------
+  #
+  # Split by dependency type rather than pooled: what ships to a browser and
+  # what only ever runs on a developer's machine fail differently and deserve
+  # separate review. The production group is five packages, four of them
+  # rendering the graph.
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Tokyo
+    commit-message:
+      prefix: build
+      prefix-development: build
+      include: scope
+    open-pull-requests-limit: 5
+    groups:
+      frontend-production:
+        dependency-type: production
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+      frontend-development:
+        dependency-type: development
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
+
+  # --- the Dockerfiles' base images -----------------------------------------
+  #
+  # `images.yml` builds both on any Dockerfile change, which is the whole test
+  # a base image bump needs.
+  #
+  # One coupling to know when reviewing these: backend/Dockerfile pins
+  # `golang:1.25.14-alpine` to match the `go` directive in backend/go.mod, and
+  # Dependabot moves the image without touching go.mod. The build still passes
+  # -- the directive is a minimum, not a pin -- but the two are meant to agree,
+  # so a toolchain bump here is the prompt to bump the directive in the same
+  # pull request.
+  #
+  # `gcr.io/distroless/static-debian12:nonroot` carries no version in its tag,
+  # so nothing here will move it. Watch the Debian release, not this file.
+  - package-ecosystem: docker
+    directories:
+      - /backend
+      - /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: '09:00'
+      timezone: Asia/Tokyo
+    commit-message:
+      prefix: build
+      include: scope
+    open-pull-requests-limit: 5
+    groups:
+      base-images:
+        patterns:
+          - '*'
+        update-types:
+          - minor
+          - patch
