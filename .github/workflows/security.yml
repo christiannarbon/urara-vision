@@ -54,10 +54,13 @@ jobs:
           cache-dependency-path: backend/go.sum
 
       # The tool is pinned; the vulnerability database it reads is fetched at
-      # run time, so a pinned tool still reports today's advisories.
+      # run time, so a pinned tool still reports today's advisories. The pin
+      # does have to keep pace with the toolchain, though: govulncheck parses
+      # the source it scans, so a version older than the `go` directive in
+      # go.mod can meet syntax it does not know and panic rather than report.
       - name: govulncheck
         working-directory: backend
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.1.4 ./...
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 
   npm:
     name: npm audit
