@@ -8,9 +8,13 @@
  */
 
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '../../src/api/client'
+import { setLocale } from '../../src/i18n'
+import { documentText, setDocumentLanguages } from '../../src/i18n/content'
+import { messages as en } from '../../src/i18n/messages/en'
+import { messages as ja } from '../../src/i18n/messages/ja'
 import type { Diagnostic, GraphData, Snapshot, TableSummary } from '../../src/api/types'
 
 // Mocked before the store is imported, since the store closes over the module.
@@ -80,9 +84,29 @@ function stubHappyPath(diagnostics: Diagnostic[] = []) {
 beforeEach(() => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
+  // The document languages are module state, like the locale: a spec that
+  // loads a snapshot leaves them set for the next one.
+  setDocumentLanguages(null)
 })
 
 describe('loadSnapshot', () => {
+  it("hands the documents' own languages to whatever renders them", async () => {
+    stubHappyPath()
+    vi.mocked(api.getSnapshot).mockResolvedValue({
+      ...snapshot,
+      project: {
+        project: { name: 'p', version: '0.1.0', description: '' },
+        internationalization: { primary: 'EN', supported: ['EN', 'JP'], type: 'inline' },
+      },
+    })
+
+    const ws = useWorkspace()
+    await ws.loadSnapshot('s1')
+
+    // Nothing else in the app knows what a [JP] tag means until this happens.
+    expect(documentText('This is a column [JP] これはコラムです。')).toBe('This is a column')
+  })
+
   it('populates the model and fetches the graph', async () => {
     stubHappyPath()
     const ws = useWorkspace()
@@ -129,6 +153,55 @@ describe('loadSnapshot', () => {
     const ws = useWorkspace()
     await ws.loadSnapshot('s1')
     expect(ws.error).toBe('Something went wrong.')
+  })
+})
+
+describe('what the banners say', () => {
+  afterEach(() => setLocale('en'))
+
+  it('keeps the server\'s own wording, which it cannot translate', async () => {
+    vi.mocked(api.getSnapshot).mockRejectedValue(new ApiError('snapshot not found', 404))
+    const ws = useWorkspace()
+    await ws.loadSnapshot('nope')
+    setLocale('ja')
+    expect(ws.error).toBe('snapshot not found')
+  })
+
+  it('translates a failure the client itself diagnosed', async () => {
+    vi.mocked(api.getSnapshot).mockRejectedValue(
+      new ApiError('unreachable', 0, 'error.unreachable'),
+    )
+    const ws = useWorkspace()
+    await ws.loadSnapshot('s1')
+
+    expect(ws.error).toBe(en['error.unreachable'])
+    setLocale('ja')
+    // Resolved on read, so a banner already on screen follows the language.
+    expect(ws.error).toBe(ja['error.unreachable'])
+  })
+
+  it('fills the status placeholder into a failed request', async () => {
+    vi.mocked(api.getSnapshot).mockRejectedValue(new ApiError('', 503, 'error.requestFailed'))
+    const ws = useWorkspace()
+    await ws.loadSnapshot('s1')
+    expect(ws.error).toContain('503')
+  })
+
+  it('translates the ingest status, count and all', async () => {
+    let seen = ''
+    vi.mocked(api.ingest).mockImplementation(async () => {
+      seen = useWorkspace().statusMessage
+      throw new Error('stop here')
+    })
+    setLocale('ja')
+    const ws = useWorkspace()
+    await ws.ingest('n', 'l', [
+      { path: 'a.md', content: '' },
+      { path: 'b.md', content: '' },
+    ])
+
+    expect(seen).toBe(ja['status.parsing.other'].replace('{n}', '2'))
+    expect(ws.statusMessage).toBe('')
   })
 })
 

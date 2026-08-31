@@ -1,0 +1,11 @@
+[project]
+name = "eshop-ddd"
+version = "0.1.0"
+description = "Microsoft's eShop reference application, documented as a star schema"
+
+[internationalization]
+primary = "EN"
+supported = [
+	"EN"
+]
+type = "inline"

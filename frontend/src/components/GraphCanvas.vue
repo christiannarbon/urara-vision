@@ -53,6 +53,7 @@ import {
   type Theme,
 } from '../graph/palette'
 import { useTheme } from '../composables/useTheme'
+import { useI18n } from '../i18n'
 
 cytoscape.use(fcose)
 cytoscape.use(dagre)
@@ -72,6 +73,7 @@ const emit = defineEmits<{
 
 const container = ref<HTMLDivElement | null>(null)
 const hullCanvas = ref<HTMLCanvasElement | null>(null)
+const { t } = useI18n()
 const { art } = useTheme()
 
 let cy: cytoscape.Core | null = null
@@ -786,8 +788,10 @@ const canGroup = computed(() => supportsGrouping(props.layoutMode))
 const hasSources = computed(() => props.data.nodes.some((n) => n.type === 'source'))
 
 const groupTitle = computed(() => {
-  if (!canGroup.value) return 'Grouping is only available in the Force layout'
-  return grouping.value ? 'Ungroup domains' : 'Group by domain'
+  // Named from the layout catalogue rather than spelled out, so the sentence
+  // and the button it points at always say the same word.
+  if (!canGroup.value) return t('canvas.group.unavailable', { layout: t('layout.force') })
+  return grouping.value ? t('canvas.ungroup') : t('canvas.group')
 })
 
 /**
@@ -826,24 +830,40 @@ defineExpose({ fit, relayout, panTo })
       class="canvas"
       :class="{ 'canvas--hidden': busy }"
       role="application"
-      aria-label="Table relationship graph"
+      :aria-label="t('canvas.label')"
     />
 
     <div v-if="busy" class="overlay">
       <div class="spinner" aria-hidden="true" />
-      <span>{{ loading ? 'Building graph…' : 'Laying out…' }}</span>
+      <span>{{ loading ? t('canvas.building') : t('canvas.layingOut') }}</span>
     </div>
 
     <div v-else-if="isEmpty" class="overlay overlay--quiet">
-      <p><strong>Nothing to draw</strong></p>
-      <p class="muted">No tables match the current filters.</p>
+      <p><strong>{{ t('canvas.empty.title') }}</strong></p>
+      <p class="muted">{{ t('canvas.empty.body') }}</p>
     </div>
 
-    <div class="controls" role="group" aria-label="Graph controls">
-      <button class="ctl" title="Zoom in" aria-label="Zoom in" @click="zoomBy(1.35)">+</button>
-      <button class="ctl" title="Zoom out" aria-label="Zoom out" @click="zoomBy(1 / 1.35)">−</button>
-      <button class="ctl" title="Fit to view" aria-label="Fit to view" @click="fit">⤢</button>
-      <button class="ctl" title="Re-run layout" aria-label="Re-run layout" @click="relayout">↻</button>
+    <div class="controls" role="group" :aria-label="t('canvas.controls')">
+      <button class="ctl" :title="t('canvas.zoomIn')" :aria-label="t('canvas.zoomIn')" @click="zoomBy(1.35)">
+        +
+      </button>
+      <button
+        class="ctl"
+        :title="t('canvas.zoomOut')"
+        :aria-label="t('canvas.zoomOut')"
+        @click="zoomBy(1 / 1.35)"
+      >
+        −
+      </button>
+      <button class="ctl" :title="t('canvas.fit')" :aria-label="t('canvas.fit')" @click="fit">⤢</button>
+      <button
+        class="ctl"
+        :title="t('canvas.relayout')"
+        :aria-label="t('canvas.relayout')"
+        @click="relayout"
+      >
+        ↻
+      </button>
       <button
         class="ctl"
         :class="{ 'ctl--on': grouping }"
@@ -857,13 +877,17 @@ defineExpose({ fit, relayout, panTo })
       </button>
     </div>
 
-    <div class="legend" aria-label="Legend">
+    <div class="legend" :aria-label="t('canvas.legend')">
       <span v-for="r in presentRoles" :key="r.id" class="lg">
         <i class="sw" :class="`sw--${r.swatch}`" :style="{ background: legendColor(r) }" />{{ r.label }}
       </span>
-      <span v-if="hasSources" class="lg"><i class="sw sw--src" />Source model</span>
-      <span class="lg"><i class="ln ln--cross" />Cross-domain join</span>
-      <span v-if="grouping" class="lg"><i class="sw sw--cluster" />Domain cluster</span>
+      <span v-if="hasSources" class="lg">
+        <i class="sw sw--src" />{{ t('canvas.legend.source') }}
+      </span>
+      <span class="lg"><i class="ln ln--cross" />{{ t('canvas.legend.crossDomain') }}</span>
+      <span v-if="grouping" class="lg">
+        <i class="sw sw--cluster" />{{ t('canvas.legend.cluster') }}
+      </span>
     </div>
   </div>
 </template>

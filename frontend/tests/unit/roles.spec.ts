@@ -1,10 +1,34 @@
 /** How a role id becomes a shape, a label and a colour. */
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { roleColor, roleLabel, roleSpec, rolesPresent } from '../../src/graph/roles'
+import { setLocale } from '../../src/i18n'
+import { messages as ja } from '../../src/i18n/messages/ja'
 
 const FACT = '#0f766e'
 const DIM = '#b45309'
+
+describe('role names', () => {
+  afterEach(() => setLocale('en'))
+
+  it('names a built-in role in the language on screen', () => {
+    setLocale('ja')
+    expect(roleSpec('fact').label).toBe(ja['role.fact'])
+    expect(roleSpec('satellite').label).toBe(ja['role.satellite'])
+  })
+
+  it('keeps a role read from the documents in the documents\' own word', () => {
+    // There is nothing to translate it against: the word is the model's, and
+    // inventing a Japanese name for it would name something that does not
+    // appear anywhere in the source.
+    setLocale('ja')
+    expect(roleSpec('anchor').label).toBe('Anchor')
+  })
+
+  it('does not leave the catalogue key on the spec', () => {
+    expect(roleSpec('fact')).not.toHaveProperty('labelKey')
+  })
+})
 
 describe('roleSpec', () => {
   it('describes the built-in vocabularies', () => {

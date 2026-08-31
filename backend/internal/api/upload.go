@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"urara-vision/backend/internal/parser"
+	"urara-vision/backend/internal/projectmeta"
 )
 
 // ingestRequest is the JSON body accepted by POST /api/v1/ingest. The frontend
@@ -30,45 +31,71 @@ type ingestRequest struct {
 	} `json:"files"`
 }
 
+// upload is one read request body: the markdown to parse, the manifest that
+// has to come with it, and the labels the snapshot is named from.
+type upload struct {
+	files       []parser.File
+	meta        string
+	metaFound   bool
+	name        string
+	sourceLabel string
+	// nestedMeta holds manifests found below the root. They are not read --
+	// only the root one counts -- but they turn "there is no manifest" into
+	// "the manifest is in the wrong place", which is a different fix.
+	nestedMeta []string
+}
+
+// add files one uploaded file, sorting it into the markdown to parse, the
+// manifest, or neither.
+func (u *upload) add(rawPath, content string) {
+	p := normalisePath(rawPath)
+	switch {
+	case p == "":
+	case strings.EqualFold(p, projectmeta.FileName):
+		u.meta = content
+		u.metaFound = true
+	case strings.EqualFold(path.Base(p), projectmeta.FileName):
+		u.nestedMeta = append(u.nestedMeta, p)
+	case strings.EqualFold(path.Ext(p), ".md"):
+		u.files = append(u.files, parser.File{Path: p, Content: content})
+	}
+}
+
 // readJSON decodes a JSON ingest body.
-func (s *Server) readJSON(r *http.Request) ([]parser.File, string, string, error) {
+func (s *Server) readJSON(r *http.Request) (*upload, error) {
 	var req ingestRequest
 	dec := json.NewDecoder(r.Body)
 	if err := dec.Decode(&req); err != nil {
-		return nil, "", "", fmt.Errorf("invalid JSON body: %w", err)
+		return nil, fmt.Errorf("invalid JSON body: %w", err)
 	}
-	files := make([]parser.File, 0, len(req.Files))
+	up := &upload{
+		files:       make([]parser.File, 0, len(req.Files)),
+		name:        req.Name,
+		sourceLabel: req.SourceLabel,
+	}
 	for _, f := range req.Files {
-		p := normalisePath(f.Path)
-		if p == "" || !strings.EqualFold(path.Ext(p), ".md") {
-			continue
-		}
-		files = append(files, parser.File{Path: p, Content: f.Content})
+		up.add(f.Path, f.Content)
 	}
-	return files, req.Name, req.SourceLabel, nil
+	return up, nil
 }
 
 // readMultipart streams a multipart ingest body. Each file part carries its
 // relative path as the form field name; the "name" and "sourceLabel" fields
 // are plain values.
-func (s *Server) readMultipart(r *http.Request) ([]parser.File, string, string, error) {
+func (s *Server) readMultipart(r *http.Request) (*upload, error) {
 	mr, err := r.MultipartReader()
 	if err != nil {
-		return nil, "", "", fmt.Errorf("invalid multipart body: %w", err)
+		return nil, fmt.Errorf("invalid multipart body: %w", err)
 	}
 
-	var (
-		files       []parser.File
-		name        string
-		sourceLabel string
-	)
+	up := &upload{}
 	for {
 		part, err := mr.NextPart()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return nil, "", "", fmt.Errorf("read multipart part: %w", err)
+			return nil, fmt.Errorf("read multipart part: %w", err)
 		}
 
 		field := part.FormName()
@@ -77,12 +104,12 @@ func (s *Server) readMultipart(r *http.Request) ([]parser.File, string, string, 
 			b, err := io.ReadAll(io.LimitReader(part, 4096))
 			_ = part.Close()
 			if err != nil {
-				return nil, "", "", err
+				return nil, err
 			}
 			if field == "name" {
-				name = string(b)
+				up.name = string(b)
 			} else {
-				sourceLabel = string(b)
+				up.sourceLabel = string(b)
 			}
 			continue
 		}
@@ -95,7 +122,7 @@ func (s *Server) readMultipart(r *http.Request) ([]parser.File, string, string, 
 				p = fp
 			}
 		}
-		if p == "" || !strings.EqualFold(path.Ext(p), ".md") {
+		if !wanted(p) {
 			_ = part.Close()
 			continue
 		}
@@ -103,11 +130,21 @@ func (s *Server) readMultipart(r *http.Request) ([]parser.File, string, string, 
 		b, err := io.ReadAll(part)
 		_ = part.Close()
 		if err != nil {
-			return nil, "", "", fmt.Errorf("read file %q: %w", p, err)
+			return nil, fmt.Errorf("read file %q: %w", p, err)
 		}
-		files = append(files, parser.File{Path: p, Content: string(b)})
+		up.add(p, string(b))
 	}
-	return files, name, sourceLabel, nil
+	return up, nil
+}
+
+// wanted reports whether a multipart part is worth reading into memory at all:
+// the markdown to parse, or a manifest wherever it turned up.
+func wanted(p string) bool {
+	if p == "" {
+		return false
+	}
+	return strings.EqualFold(path.Ext(p), ".md") ||
+		strings.EqualFold(path.Base(p), projectmeta.FileName)
 }
 
 // normalisePath cleans an uploaded relative path and rejects anything that

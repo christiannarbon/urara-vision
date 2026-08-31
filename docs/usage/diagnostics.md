@@ -10,6 +10,7 @@ the list of them.
 | `conformed_drift` | warning | The same dimension documented differently in different domains |
 | `cross_domain_reference` | warning | A domain borrows a dimension it does not document |
 | `unmatched_join_key` | warning | A join key naming columns neither table declares |
+| `duplicate_language_tag` | warning | One prose field tagging the same language twice |
 | `isolated_fact` | warning | A fact with no resolvable join |
 | `isolated_table` | warning | Any other connective table — a link, a junction — joined to nothing |
 | `no_columns` | warning | A table document with no readable Columns table |
@@ -18,6 +19,7 @@ the list of them.
 | `empty_document` | warning | A document with no content, skipped |
 | `narrative_reference` | info | Prose (`Various Fact Tables`) where a table name belongs |
 | `undocumented_lineage` | info | A column whose source is prose rather than a model name |
+| `missing_primary_language` | info | A field translated out of nothing: it opens with a tag, so the primary language has no text of its own |
 | `name_filename_mismatch` | info | A document whose Table Name and filename disagree |
 | `unrecognised_document` | info | A document matching neither layout, ignored |
 
@@ -46,6 +48,16 @@ still resolves — the tables are real — but the key it is drawn with is ficti
 `Various Fact Tables`, `Catalog Dimensions`. Readable, and invisible to
 everything downstream. Filed as info rather than a warning because it is often
 deliberate.
+
+**`duplicate_language_tag`** means one field named a language twice, as in
+`English. [JP] 日本語。 [JP] 続き。`. The parts are joined in the order they
+appear rather than one being dropped — documentation is not worth losing to a
+formatting slip — but the join is rarely what was meant.
+
+**`missing_primary_language`** is a field that opens with a tag, leaving the
+primary language with no text of its own. It still reads: every language falls
+back to whatever the field carries. It is filed as info because the fallback is
+the intended behaviour and the field may simply not be translated yet.
 
 **`isolated_fact`** and **`isolated_table`** flag a table whose whole purpose is
 to join others — a fact, a Data Vault link, a junction table — that resolved no

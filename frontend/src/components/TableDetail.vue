@@ -5,6 +5,12 @@ import { computed, ref, watch } from 'vue'
 import type { TableResponse } from '../api/types'
 import { useRolePalette } from '../composables/useRolePalette'
 import { roleSpec } from '../graph/roles'
+import { useI18n } from '../i18n'
+import { useDocumentText } from '../i18n/content'
+
+const { t, tn } = useI18n()
+// The documents' own words, in whichever language the reader is reading.
+const { dt } = useDocumentText()
 
 const props = defineProps<{
   detail: TableResponse | null
@@ -32,6 +38,17 @@ const emit = defineEmits<{
 }>()
 
 type Tab = 'overview' | 'columns' | 'relationships' | 'lineage'
+
+/** The tab strip, in order, with the catalogue key each one reads under. */
+const TABS = [
+  { id: 'overview', key: 'detail.tab.overview' },
+  { id: 'columns', key: 'detail.tab.columns' },
+  // The tab has always said "joins" rather than "relationships": it is the
+  // shorter word for the same thing, and the strip is narrow.
+  { id: 'relationships', key: 'detail.tab.joins' },
+  { id: 'lineage', key: 'detail.tab.lineage' },
+] as const
+
 const tab = ref<Tab>('overview')
 const columnFilter = ref('')
 
@@ -53,11 +70,14 @@ const filteredColumns = computed(() => {
   const cols = table.value?.columns ?? []
   const q = columnFilter.value.trim().toLowerCase()
   if (!q) return cols
+  // The description is matched as it is displayed: filtering an English pane
+  // on Japanese text the reader cannot see would be a search over a hidden
+  // document.
   return cols.filter(
     (c) =>
       c.name.toLowerCase().includes(q) ||
       c.type.toLowerCase().includes(q) ||
-      c.description.toLowerCase().includes(q),
+      dt(c.description).toLowerCase().includes(q),
   )
 })
 
@@ -102,23 +122,20 @@ function domainOf(id: string): string {
 </script>
 
 <template>
-  <aside class="detail" aria-label="Table detail">
+  <aside class="detail" :aria-label="t('detail.label')">
     <div v-if="loading" class="state">
       <div class="spinner" aria-hidden="true" />
-      <span class="muted">Loading table…</span>
+      <span class="muted">{{ t('detail.loading') }}</span>
     </div>
 
     <div v-else-if="!table && selectedId" class="state">
       <p><strong>{{ shortId(selectedId) }}</strong></p>
-      <p class="muted">
-        This is an upstream source model referenced by column lineage. It has no
-        table document of its own in this snapshot.
-      </p>
+      <p class="muted">{{ t('detail.sourceOnly') }}</p>
     </div>
 
     <div v-else-if="!table" class="state">
-      <p class="muted">Select a table in the graph to see its description, columns and lineage.</p>
-      <p class="faint hint">Double-click a node to centre the graph on it.</p>
+      <p class="muted">{{ t('detail.empty') }}</p>
+      <p class="faint hint">{{ t('detail.empty.hint') }}</p>
     </div>
 
     <template v-else>
@@ -135,68 +152,78 @@ function domainOf(id: string): string {
                 :title="table.kindRaw || role.label"
                 >{{ role.label }}</span
               >
-              <span v-if="table.conformed" class="tag tag--conformed">conformed</span>
+              <span v-if="table.conformed" class="tag tag--conformed">
+                {{ t('detail.conformed') }}
+              </span>
               <span class="tag tag--muted">{{ table.domainId }}</span>
             </div>
           </div>
-          <button class="btn btn--ghost btn--sm close" aria-label="Close detail" @click="emit('close')">
+          <button
+            class="btn btn--ghost btn--sm close"
+            :aria-label="t('detail.close')"
+            @click="emit('close')"
+          >
             ✕
           </button>
         </div>
         <button class="btn btn--sm focus-btn" @click="emit('focus', table.id)">
-          Focus graph here
+          {{ t('detail.focusHere') }}
         </button>
       </header>
 
       <nav class="tabs" role="tablist">
         <button
-          v-for="t in (['overview', 'columns', 'relationships', 'lineage'] as Tab[])"
-          :key="t"
+          v-for="item in TABS"
+          :key="item.id"
           class="tab"
-          :class="{ 'tab--active': tab === t }"
+          :class="{ 'tab--active': tab === item.id }"
           role="tab"
-          :aria-selected="tab === t"
-          @click="tab = t"
+          :aria-selected="tab === item.id"
+          @click="tab = item.id"
         >
-          {{ t === 'relationships' ? 'joins' : t }}
-          <span v-if="t === 'columns'" class="count">{{ table.columns.length }}</span>
-          <span v-else-if="t === 'relationships'" class="count">{{ table.relationships.length }}</span>
-          <span v-else-if="t === 'lineage'" class="count">{{ table.columnLineage.length }}</span>
+          {{ t(item.key) }}
+          <span v-if="item.id === 'columns'" class="count">{{ table.columns.length }}</span>
+          <span v-else-if="item.id === 'relationships'" class="count">
+            {{ table.relationships.length }}
+          </span>
+          <span v-else-if="item.id === 'lineage'" class="count">
+            {{ table.columnLineage.length }}
+          </span>
         </button>
       </nav>
 
       <div class="body">
         <!-- Overview -->
         <section v-if="tab === 'overview'" class="pane">
-          <p v-if="table.description" class="desc">{{ table.description }}</p>
+          <p v-if="table.description" class="desc">{{ dt(table.description) }}</p>
 
           <dl class="props">
             <template v-if="table.grain">
-              <dt>Grain</dt>
-              <dd>{{ table.grain }}</dd>
+              <dt>{{ t('detail.grain') }}</dt>
+              <dd>{{ dt(table.grain) }}</dd>
             </template>
             <template v-if="table.kindRaw">
-              <dt>Type</dt>
+              <dt>{{ t('detail.type') }}</dt>
               <dd>{{ table.kindRaw }}</dd>
             </template>
             <template v-if="table.domainLabel">
-              <dt>Domain</dt>
+              <dt>{{ t('detail.domain') }}</dt>
               <dd>{{ table.domainLabel }}</dd>
             </template>
             <template v-if="table.updateFrequency">
-              <dt>Updated</dt>
-              <dd>{{ table.updateFrequency }}</dd>
+              <dt>{{ t('detail.updated') }}</dt>
+              <dd>{{ dt(table.updateFrequency) }}</dd>
             </template>
             <template v-if="table.layer">
-              <dt>Layer</dt>
+              <dt>{{ t('detail.layer') }}</dt>
               <dd>{{ table.layer }}</dd>
             </template>
-            <dt>Source</dt>
+            <dt>{{ t('detail.source') }}</dt>
             <dd class="mono faint">{{ table.docPath }}</dd>
           </dl>
 
           <template v-if="keyColumns.length">
-            <h3 class="section-label">Keys</h3>
+            <h3 class="section-label">{{ t('detail.keys') }}</h3>
             <ul class="keys">
               <li v-for="c in keyColumns" :key="c.name">
                 <code>{{ c.name }}</code>
@@ -207,11 +234,8 @@ function domainOf(id: string): string {
           </template>
 
           <template v-if="table.conformed && table.conformedIn?.length">
-            <h3 class="section-label">Also defined in</h3>
-            <p class="muted small">
-              This table name appears in other domains. Definitions may differ — check the
-              diagnostics panel for drift.
-            </p>
+            <h3 class="section-label">{{ t('detail.alsoDefinedIn') }}</h3>
+            <p class="muted small">{{ t('detail.alsoDefinedIn.note') }}</p>
             <ul class="links">
               <li v-for="id in table.conformedIn" :key="id">
                 <button class="linkish" @click="emit('navigate', id)">
@@ -222,9 +246,9 @@ function domainOf(id: string): string {
           </template>
 
           <template v-if="table.notes.length">
-            <h3 class="section-label">Notes &amp; caveats</h3>
+            <h3 class="section-label">{{ t('detail.notes') }}</h3>
             <ul class="notes">
-              <li v-for="(n, i) in table.notes" :key="i">{{ n }}</li>
+              <li v-for="(n, i) in table.notes" :key="i">{{ dt(n) }}</li>
             </ul>
           </template>
         </section>
@@ -235,10 +259,12 @@ function domainOf(id: string): string {
             v-model="columnFilter"
             class="input filter"
             type="search"
-            placeholder="Filter columns…"
-            aria-label="Filter columns"
+            :placeholder="t('detail.columns.filter')"
+            :aria-label="t('detail.columns.filter.label')"
           />
-          <p v-if="!filteredColumns.length" class="muted small">No columns match that filter.</p>
+          <p v-if="!filteredColumns.length" class="muted small">
+            {{ t('detail.columns.noMatches') }}
+          </p>
           <ul v-else class="cols-list">
             <li v-for="c in filteredColumns" :key="c.name" class="col">
               <div class="col-head">
@@ -247,12 +273,15 @@ function domainOf(id: string): string {
                 <span v-else-if="c.isFk" class="tag tag--muted">FK</span>
                 <span class="faint mono col-type">{{ c.type }}</span>
               </div>
-              <p v-if="c.description" class="col-desc">{{ c.description }}</p>
+              <p v-if="c.description" class="col-desc">{{ dt(c.description) }}</p>
               <p v-if="lineageByColumn.get(c.name)" class="col-src faint tiny">
-                from <code>{{ lineageByColumn.get(c.name)!.source }}</code>.<code>{{
+                {{ t('detail.columns.from') }}
+                <code>{{ lineageByColumn.get(c.name)!.source }}</code>.<code>{{
                   lineageByColumn.get(c.name)!.column
                 }}</code>
-                <span v-if="lineageByColumn.get(c.name)!.derived" class="tag tag--info key">derived</span>
+                <span v-if="lineageByColumn.get(c.name)!.derived" class="tag tag--info key">
+                  {{ t('detail.columns.derived') }}
+                </span>
               </p>
             </li>
           </ul>
@@ -260,36 +289,46 @@ function domainOf(id: string): string {
 
         <!-- Relationships -->
         <section v-else-if="tab === 'relationships'" class="pane">
-          <p v-if="table.relationshipNote" class="desc small">{{ table.relationshipNote }}</p>
+          <p v-if="table.relationshipNote" class="desc small">{{ dt(table.relationshipNote) }}</p>
 
-          <h3 class="section-label">Declared by this table</h3>
+          <h3 class="section-label">{{ t('detail.joins.declared') }}</h3>
           <p v-if="!resolvedRelationships.length && !unresolvedRelationships.length" class="muted small">
-            This table declares no relationships.
+            {{ t('detail.joins.none') }}
           </p>
           <ul class="rels">
             <li v-for="r in resolvedRelationships" :key="r.id">
               <button class="rel-target linkish" @click="emit('navigate', r.toTableId!)">
                 {{ shortId(r.toTableId!) }}
               </button>
-              <span v-if="r.resolution === 'conformed'" class="tag tag--warning">cross-domain</span>
+              <span v-if="r.resolution === 'conformed'" class="tag tag--warning">
+                {{ t('detail.joins.crossDomain') }}
+              </span>
               <div class="rel-meta mono faint">
                 {{ r.fromColumn }} → {{ r.toColumn }}
                 <span class="sep">·</span>{{ r.cardinality }}
               </div>
               <div v-if="r.candidates?.length && r.candidates.length > 1" class="faint tiny">
-                Bound to {{ r.toTableId }}; also defined in
-                {{ r.candidates.filter((c) => c !== r.toTableId).join(', ') }}
+                {{
+                  t('detail.joins.boundTo', {
+                    target: r.toTableId!,
+                    alternatives: r.candidates.filter((c) => c !== r.toTableId).join(', '),
+                  })
+                }}
               </div>
             </li>
           </ul>
 
           <template v-if="unresolvedRelationships.length">
-            <h3 class="section-label warn">Unresolved references</h3>
+            <h3 class="section-label warn">{{ t('detail.joins.unresolved') }}</h3>
             <ul class="rels">
               <li v-for="r in unresolvedRelationships" :key="r.id">
                 <span class="mono">{{ r.targetRef }}</span>
                 <span class="tag" :class="r.resolution === 'unresolved' ? 'tag--danger' : 'tag--info'">
-                  {{ r.resolution === 'unresolved' ? 'no document' : 'prose' }}
+                  {{
+                    r.resolution === 'unresolved'
+                      ? t('detail.joins.noDocument')
+                      : t('detail.joins.prose')
+                  }}
                 </span>
                 <div class="rel-meta mono faint">{{ r.joinKeyRaw || '—' }}</div>
               </li>
@@ -297,7 +336,7 @@ function domainOf(id: string): string {
           </template>
 
           <template v-if="detail?.incoming.length">
-            <h3 class="section-label">Referenced by</h3>
+            <h3 class="section-label">{{ t('detail.joins.referencedBy') }}</h3>
             <ul class="rels">
               <li v-for="r in detail.incoming" :key="r.tableId + r.fromColumn">
                 <button class="rel-target linkish" @click="emit('navigate', r.tableId)">
@@ -315,32 +354,31 @@ function domainOf(id: string): string {
 
         <!-- Lineage -->
         <section v-else class="pane">
-          <h3 class="section-label">Upstream source models</h3>
+          <h3 class="section-label">{{ t('detail.lineage.upstream') }}</h3>
           <p v-if="!detail?.upstream.length" class="muted small">
-            No column-level lineage is documented for this table.
+            {{ t('detail.lineage.none') }}
           </p>
           <ul v-else class="lineage">
             <li v-for="u in detail.upstream" :key="u.id">
               <div class="lin-head">
                 <code class="mono">{{ u.label }}</code>
-                <span class="tag tag--muted">{{ u.columnCount }} col{{ u.columnCount === 1 ? '' : 's' }}</span>
+                <span class="tag tag--muted">
+                  {{ tn('detail.lineage.columns', u.columnCount) }}
+                </span>
               </div>
               <div v-if="u.dataset" class="faint tiny mono">{{ u.dataset }}</div>
               <div class="cols">
                 <code v-for="c in u.columns.slice(0, 12)" :key="c" class="pill">{{ c }}</code>
                 <span v-if="u.columns.length > 12" class="faint tiny">
-                  +{{ u.columns.length - 12 }} more
+                  {{ t('detail.lineage.more', { n: u.columns.length - 12 }) }}
                 </span>
               </div>
             </li>
           </ul>
 
           <template v-if="detail?.siblings.length">
-            <h3 class="section-label">Shares sources with</h3>
-            <p class="muted small">
-              These tables read from at least one of the same upstream models, so an upstream
-              change is likely to affect them too.
-            </p>
+            <h3 class="section-label">{{ t('detail.siblings') }}</h3>
+            <p class="muted small">{{ t('detail.siblings.note') }}</p>
             <ul class="rels">
               <li v-for="s in detail.siblings.slice(0, 20)" :key="s.id">
                 <button class="rel-target linkish" @click="emit('navigate', s.id)">
@@ -348,7 +386,7 @@ function domainOf(id: string): string {
                 </button>
                 <span class="tag tag--muted">{{ s.domainId }}</span>
                 <div class="rel-meta faint tiny">
-                  {{ s.columns.length }} shared source{{ s.columns.length === 1 ? '' : 's' }}
+                  {{ tn('detail.siblings.shared', s.columns.length) }}
                 </div>
               </li>
             </ul>

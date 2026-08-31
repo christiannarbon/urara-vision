@@ -1,12 +1,14 @@
 # The documentation format
 
-The layout is the convention, and it is the only thing the tool insists on: a
-domain index per directory, a document per table. Any model documented that way
-is a model it can draw — a Kimball star, a snowflake, a Data Vault, a plain
-third-normal-form schema, or a vocabulary of roles it has never met.
+The layout is the convention, and with the manifest below it is the only thing
+the tool insists on: a domain index per directory, a document per table. Any
+model documented that way is a model it can draw — a Kimball star, a snowflake,
+a Data Vault, a plain third-normal-form schema, or a vocabulary of roles it has
+never met.
 
 ```
 data-modelling/
+  projectmeta.toml           what the project is; required
   domain_one.md              the domain index, beside its directory
   domain_one/
     fact_primary.md          one document per table
@@ -15,6 +17,98 @@ data-modelling/
   domain_two/
     dim_beta.md
 ```
+
+## The manifest
+
+`projectmeta.toml`, at the root of the directory you select. It is the one
+thing the documentation states rather than the parser infers, and an ingest
+without it is refused before a single document is read — a directory that
+cannot say what project it is would otherwise become a snapshot named after
+whatever folder happened to be picked.
+
+```toml
+[project]
+name = "sample-data-modelling-project"
+version = "0.1.0"
+description = "Sample Visual Data Modelling project"
+
+[internationalization]
+primary = "EN"
+supported = [
+	"EN",
+	"JP"
+]
+type = "inline"
+```
+
+| Key | Required | Meaning |
+|---|---|---|
+| `project.name` | yes | What the project is called. |
+| `project.version` | yes | The documentation's own version, however you number it. |
+| `project.description` | no | One line about the project. |
+| `internationalization.primary` | yes | The language the documentation is written in first. Must be one of `supported`. |
+| `internationalization.supported` | yes | Every language it is available in. At least one. |
+| `internationalization.type` | yes | How the translations are held. `inline` — every language lives in the documents themselves — is the only strategy implemented today. |
+
+Language tags are compared case-insensitively and stored upper-cased, so `en`
+and `EN` are one language. Everything wrong with a manifest is reported at
+once, including a misspelled key: a `descriptoin` that was silently dropped is
+metadata the project believes it has.
+
+The manifest is stored with the snapshot, so every ingest records which project
+and version it came from and which languages that documentation claimed.
+
+## Writing in more than one language
+
+With `type = "inline"`, every language lives in the document itself. A prose
+field carries its translations after a bracketed language tag:
+
+```markdown
+| `order_id` | STRING | This is a column [JP] これはコラムです。 |
+```
+
+The text before the first tag is in the project's **primary** language, and
+each tag runs until the next one. Reading that field in English gives
+`This is a column`; reading it in Japanese gives `これはコラムです。`
+
+Three rules cover everything else:
+
+- **A field with no tag is primary text, whatever script it is written in.**
+  `This is a column` and `これはコラムです。` are both shown to every reader,
+  untranslated. Nothing guesses a language from the characters in a field.
+- **A language the field does not carry falls back to the primary one**, and a
+  field with nothing in the primary language falls back to what it does carry.
+  A reader asking for Japanese is better served English than a blank cell.
+- **Only the languages the manifest lists are tags.** `[TBD]` in a description
+  is prose; `[JP]` is a tag only because `projectmeta.toml` says `JP` is one of
+  this project's languages. Tags are matched case-insensitively.
+
+It works the same way round for a project that documents in Japanese:
+
+```toml
+[internationalization]
+primary = "JP"
+supported = ["EN", "JP"]
+type = "inline"
+```
+
+```markdown
+| `order_id` | STRING | これはコラムです。 [EN] This is a column |
+```
+
+Every field a reader reads as a sentence can be written this way: a domain's
+title and description, and a table's description, grain, update frequency,
+notes, relationship note, column descriptions and column-lineage notes.
+
+Names are not among them, deliberately. A table name that resolved differently
+per language would resolve to a different graph per language, which is a second
+model rather than a translation.
+
+Both languages are stored, and the interface picks between them as the reader
+switches language — no re-ingest, and nothing is lost from the document. Two
+checks watch the format itself:
+[`duplicate_language_tag`](diagnostics.md) and
+[`missing_primary_language`](diagnostics.md).
 
 ## A table document
 

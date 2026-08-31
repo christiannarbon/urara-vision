@@ -18,7 +18,7 @@ ENV VITE_API_BASE=${VITE_API_BASE}
 RUN npm run build
 
 # --- runtime -------------------------------------------------------------
-FROM nginx:1.27-alpine
+FROM nginx:1.31-alpine
 
 # The upstream is templated so the same image works under compose (service
 # name "backend") and Kubernetes (a Service DNS name).

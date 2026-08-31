@@ -20,6 +20,7 @@ import (
 
 	"urara-vision/backend/internal/api"
 	"urara-vision/backend/internal/config"
+	"urara-vision/backend/internal/projectmeta"
 	"urara-vision/backend/tests/fixtures"
 	"urara-vision/backend/tests/integration/harness"
 )
@@ -78,6 +79,8 @@ func ingest(t *testing.T, base string) string {
 	for _, f := range fixtures.StarSchema() {
 		req.Files = append(req.Files, file{Path: f.Path, Content: f.Content})
 	}
+	// Without the manifest the upload is refused before anything is parsed.
+	req.Files = append(req.Files, file{Path: projectmeta.FileName, Content: fixtures.ProjectMetaTOML})
 	body, err := json.Marshal(req)
 	if err != nil {
 		t.Fatal(err)

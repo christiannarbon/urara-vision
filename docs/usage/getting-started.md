@@ -13,8 +13,10 @@ Then click **Choose folder…** and select your documentation directory, e.g.
 .../docs/data-modelling/
 ```
 
-Every `.md` file beneath it is read in the browser and posted to the parser.
-Nothing is written back to disk.
+Every `.md` file beneath it is read in the browser and posted to the parser,
+along with the `projectmeta.toml` the directory must carry — see [the
+documentation format](documentation-format.md#the-manifest). Nothing is written
+back to disk.
 
 | Service | URL |
 |---|---|

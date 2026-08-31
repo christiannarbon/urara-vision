@@ -13,7 +13,7 @@ Eight tables, all cascading from `snapshots`, so deleting a snapshot is one
 
 | Table | Holds | Key |
 |---|---|---|
-| `snapshots` | Name, source label, creation time, stats JSON | `id` |
+| `snapshots` | Name, source label, creation time, stats JSON, and the `projectmeta.toml` the directory declared | `id` |
 | `domains` | Title, description, mermaid diagram, lineage JSON, table count | `(snapshot_id, id)` |
 | `tables` | Every Overview property, notes, conformed flags, and the `tsvector` | `(snapshot_id, id)` |
 | `columns` | Name, type, description, PK/FK flags, in document order | `(snapshot_id, table_id, ordinal)` |
@@ -24,7 +24,16 @@ Eight tables, all cascading from `snapshots`, so deleting a snapshot is one
 
 The schema is `CREATE TABLE IF NOT EXISTS` throughout and applied on every
 start, so there is no migration step to forget and no state where the server is
-running against a schema it does not recognise.
+running against a schema it does not recognise. Columns added after the first
+release follow it as `ADD COLUMN IF NOT EXISTS`, which is idempotent in the same
+way: a fresh database takes them from the `CREATE`, an existing one from the
+`ALTER`, and neither has to know which it is.
+
+Applying it takes an advisory lock for the length of the transaction. `IF NOT
+EXISTS` is idempotent but not concurrency-safe — two sessions both find a table
+absent, both create it, and the loser fails on a duplicate key in `pg_type` —
+and the backend runs more than one replica, each migrating as it starts, so a
+rollout has them arriving together.
 
 An ingest is one transaction: the snapshot row is deleted and rewritten, and
 every child table is bulk-loaded with `COPY`. A snapshot is therefore wholly

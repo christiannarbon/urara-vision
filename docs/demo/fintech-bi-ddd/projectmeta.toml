@@ -1,0 +1,11 @@
+[project]
+name = "fintech-bi-ddd"
+version = "0.1.0"
+description = "A retail bank's marts, in the conventions of dbt-business-intelligence"
+
+[internationalization]
+primary = "EN"
+supported = [
+	"EN"
+]
+type = "inline"

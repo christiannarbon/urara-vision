@@ -9,7 +9,9 @@
 import { computed, onBeforeUnmount, ref, watch, nextTick } from 'vue'
 
 import { useTheme } from '../composables/useTheme'
+import { useI18n } from '../i18n'
 
+const { t } = useI18n()
 const { art, themes, current, setArt } = useTheme()
 
 const open = ref(false)
@@ -56,7 +58,7 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointer))
   <div ref="root" class="picker" @keydown="onKey">
     <button
       class="btn btn--ghost btn--sm trigger"
-      :title="`Theme: ${label}`"
+      :title="t('theme.current', { name: label })"
       aria-haspopup="listbox"
       :aria-expanded="open"
       @click="open = !open"
@@ -66,23 +68,25 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointer))
       <span class="caret" aria-hidden="true">▾</span>
     </button>
 
-    <div v-if="open" ref="list" class="menu" role="listbox" aria-label="Theme">
-      <p class="menu-head">Theme</p>
-      <template v-for="(t, i) in themes" :key="t.id">
-        <p v-if="i === firstPainting" class="menu-head menu-head--mid">Paintings</p>
+    <div v-if="open" ref="list" class="menu" role="listbox" :aria-label="t('theme.label')">
+      <p class="menu-head">{{ t('theme.label') }}</p>
+      <!-- `theme` rather than `t`: the loop variable would shadow the lookup,
+           and the section heading below needs both. -->
+      <template v-for="(theme, i) in themes" :key="theme.id">
+        <p v-if="i === firstPainting" class="menu-head menu-head--mid">{{ t('theme.paintings') }}</p>
         <button
           class="opt"
           role="option"
-          :aria-selected="t.id === art"
-          :data-selected="t.id === art"
-          @click="choose(t.id)"
+          :aria-selected="theme.id === art"
+          :data-selected="theme.id === art"
+          @click="choose(theme.id)"
         >
-          <span class="dot" :style="{ background: t.swatch }" aria-hidden="true" />
+          <span class="dot" :style="{ background: theme.swatch }" aria-hidden="true" />
           <span class="opt-text">
-            <span class="opt-name">{{ t.name }}</span>
-            <span class="opt-sub">{{ t.subtitle }}</span>
+            <span class="opt-name">{{ theme.name }}</span>
+            <span class="opt-sub">{{ theme.subtitle }}</span>
           </span>
-          <span v-if="t.id === art" class="tick" aria-hidden="true">✓</span>
+          <span v-if="theme.id === art" class="tick" aria-hidden="true">✓</span>
         </button>
       </template>
     </div>

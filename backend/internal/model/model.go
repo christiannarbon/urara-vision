@@ -29,11 +29,37 @@ const (
 
 // Snapshot is one ingest of a documentation directory.
 type Snapshot struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	SourceLabel string    `json:"sourceLabel"`
-	CreatedAt   time.Time `json:"createdAt"`
-	Stats       Stats     `json:"stats"`
+	ID          string      `json:"id"`
+	Name        string      `json:"name"`
+	SourceLabel string      `json:"sourceLabel"`
+	CreatedAt   time.Time   `json:"createdAt"`
+	Stats       Stats       `json:"stats"`
+	Project     ProjectMeta `json:"project"`
+}
+
+// ProjectMeta is what a documentation directory declares about itself, read
+// from the projectmeta.toml it must carry. Unlike everything else here it is
+// not derived from the documents: it is stated, and an ingest is refused
+// without it.
+type ProjectMeta struct {
+	Project              Project              `json:"project"`
+	Internationalization Internationalization `json:"internationalization"`
+}
+
+// Project identifies the documented project.
+type Project struct {
+	Name        string `json:"name"`
+	Version     string `json:"version"`
+	Description string `json:"description"`
+}
+
+// Internationalization is the languages the documentation is written in, and
+// how the translations are held. Language tags are upper-cased as they are
+// read, so "en" and "EN" are one language.
+type Internationalization struct {
+	Primary   string   `json:"primary"`
+	Supported []string `json:"supported"`
+	Type      string   `json:"type"`
 }
 
 // Stats summarises what an ingest produced.
@@ -48,6 +74,9 @@ type Stats struct {
 	FilesParsed   int `json:"filesParsed"`
 	FilesSkipped  int `json:"filesSkipped"`
 	Diagnostics   int `json:"diagnostics"`
+	// Translated is how many prose fields carry a language beyond the
+	// project's primary one.
+	Translated int `json:"translated"`
 }
 
 // Domain is one subject area, parsed from a top-level index markdown file.

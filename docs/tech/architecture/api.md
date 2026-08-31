@@ -42,6 +42,7 @@ curl -X POST localhost:8080/api/v1/ingest \
         "name": "my model",
         "sourceLabel": "local",
         "files": [
+          {"path": "projectmeta.toml", "content": "[project]\nname = \"my model\"\n..."},
           {"path": "domain_one.md", "content": "# Domain One\n\n## Description\n..."},
           {"path": "domain_one/fact_primary.md", "content": "# fact_primary\n..."}
         ]
@@ -49,9 +50,16 @@ curl -X POST localhost:8080/api/v1/ingest \
 ```
 
 In multipart, each file part carries its relative path as the form field name,
-and `name` and `sourceLabel` are plain fields. Either way anything that is not
-a `.md` file is dropped rather than rejected, so posting a whole directory is
-fine.
+and `name` and `sourceLabel` are plain fields. Either way anything that is
+neither a `.md` file nor the manifest is dropped rather than rejected, so
+posting a whole directory is fine.
+
+The upload must include the directory's
+[`projectmeta.toml`](../../usage/documentation-format.md#the-manifest), at the
+root: it is read and validated before any document is, and an upload without a
+valid one is `400` with every problem the manifest has listed at once. It is
+stored with the snapshot and comes back on it as `project`, so a caller reading
+`/snapshots` sees what project and version each ingest documented.
 
 It returns `201` with the snapshot, its stats, the normalised edge count and
 every diagnostic — so a caller knows what its documentation resolved to without
@@ -73,7 +81,7 @@ Failures are JSON with an `error` field and the status the outcome maps to:
 
 | Status | When |
 |---|---|
-| `400` | A parameter the handler can see is wrong, a body that will not decode, no `.md` files, too many files, or an upload past `MAX_UPLOAD_BYTES` |
+| `400` | A parameter the handler can see is wrong, a body that will not decode, a missing or invalid `projectmeta.toml`, no `.md` files, too many files, or an upload past `MAX_UPLOAD_BYTES` |
 | `401` | `API_TOKEN` is set and the request did not carry it as `Authorization: Bearer <token>` |
 | `404` | No such snapshot or table — including `latest` when nothing has been ingested yet, which says so rather than returning an empty graph |
 | `500` | Anything the stores report; the detail is logged with the request ID rather than returned |

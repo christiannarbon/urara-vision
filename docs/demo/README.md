@@ -39,6 +39,9 @@ cd backend && go run ./cmd/uraractl -dir ../docs/demo/eshop-ddd
 [nw]: https://learn.microsoft.com/en-us/dotnet/framework/data/adonet/sql/linq/downloading-sample-databases
 [sakila]: https://dev.mysql.com/doc/sakila/en/
 
+Every set carries its own `projectmeta.toml`, because an ingest without one is
+refused; the sets are English-only, so each declares `EN` alone.
+
 All seven are built the same way and to the same contract. The tables come from
 a real project, so the column names, the upstream models and the grains are real
 rather than invented; what is added on top is the *organisation*, because

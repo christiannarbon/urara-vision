@@ -41,12 +41,33 @@ export interface Stats {
   diagnostics: number
 }
 
+/**
+ * What the directory declared about itself in its projectmeta.toml, stored with
+ * the ingest that read it.
+ *
+ * Optional on a snapshot: the manifest became a requirement after the first
+ * release, and an ingest older than that has none.
+ */
+export interface ProjectMeta {
+  project: {
+    name: string
+    version: string
+    description: string
+  }
+  internationalization: {
+    primary: string
+    supported: string[]
+    type: string
+  }
+}
+
 export interface Snapshot {
   id: string
   name: string
   sourceLabel: string
   createdAt: string
   stats: Stats
+  project?: ProjectMeta
 }
 
 export interface DomainLineage {

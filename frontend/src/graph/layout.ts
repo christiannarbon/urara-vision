@@ -23,36 +23,28 @@
  * force-mode feature and the UI says so rather than silently dropping it.
  */
 
+import type { MessageKey } from '../i18n'
+
 export type LayoutMode = 'force' | 'layered' | 'radial'
 
 export interface LayoutSpec {
   id: LayoutMode
-  label: string
+  /**
+   * Catalogue keys rather than words. This table is built once at module
+   * load, so a name settled here would outlive the language it was chosen in;
+   * the control resolves both when it renders.
+   */
+  labelKey: MessageKey
   /** Shown as the control's tooltip: what this layout is for. */
-  hint: string
+  hintKey: MessageKey
   /** Whether domain clustering survives this layout. */
   grouping: boolean
 }
 
 export const LAYOUTS: LayoutSpec[] = [
-  {
-    id: 'force',
-    label: 'Force',
-    hint: 'Free arrangement with no reading direction. Groups tables by domain.',
-    grouping: true,
-  },
-  {
-    id: 'layered',
-    label: 'Layered',
-    hint: 'Ranks tables along their joins — normalisation depth, or Data Vault tiers. Cannot group by domain.',
-    grouping: false,
-  },
-  {
-    id: 'radial',
-    label: 'Radial',
-    hint: 'Busiest tables at the centre, working outwards. Cannot group by domain.',
-    grouping: false,
-  },
+  { id: 'force', labelKey: 'layout.force', hintKey: 'layout.force.hint', grouping: true },
+  { id: 'layered', labelKey: 'layout.layered', hintKey: 'layout.layered.hint', grouping: false },
+  { id: 'radial', labelKey: 'layout.radial', hintKey: 'layout.radial.hint', grouping: false },
 ]
 
 const byId = new Map(LAYOUTS.map((l) => [l.id, l]))
