@@ -9,6 +9,11 @@
  * known vocabularies gets, so a model built on a style nobody anticipated still
  * reads correctly rather than collapsing into a canvas of grey circles.
  *
+ * A role's name is a catalogue key rather than a fixed word, so the legend and
+ * the filter chips read in the language the rest of the interface is in. A
+ * role the documents brought with them has no key and keeps their word, which
+ * is the only name it has.
+ *
  * Two channels carry the role, and they are deliberately unequal:
  *
  *   Shape is primary. It is theme-independent, survives being printed in grey,
@@ -28,6 +33,16 @@
  * plain star schema looks exactly as it did before any of this existed.
  */
 
+import { translate as t } from '../i18n'
+import type { MessageKey } from '../i18n'
+
+/**
+ * A built-in role's catalogue key. Only the built-ins have one: a role read
+ * from the documents is named by whatever word the documents used, and there
+ * is nothing to translate it against.
+ */
+type RoleLabelKey = Extract<MessageKey, `role.${string}`>
+
 /** The modelling style a role belongs to. Mirrors model.RoleFamily. */
 export type RoleFamily = 'kimball' | 'vault' | 'relational' | 'other'
 
@@ -42,6 +57,10 @@ export type Swatch = 'square' | 'round' | 'angular'
 
 export interface RoleSpec {
   id: string
+  /**
+   * The name to show. Resolved through the catalogue for a built-in role, and
+   * taken from the documents' own word for anything else -- see roleSpec.
+   */
   label: string
   family: RoleFamily
   /** A Cytoscape node shape. */
@@ -62,30 +81,33 @@ const FAMILY_ORDER: RoleFamily[] = ['kimball', 'vault', 'relational', 'other']
  * Within an anchor the hue shifts fan out either side of zero rather than
  * marching in one direction, so no role drifts far from the theme's own hue.
  */
-const KNOWN: RoleSpec[] = [
+/** The built-in specs as declared: a catalogue key rather than a fixed name. */
+type KnownRole = Omit<RoleSpec, 'label'> & { labelKey: RoleLabelKey }
+
+const KNOWN: KnownRole[] = [
   // Kimball: star and snowflake schemas.
-  { id: 'fact', label: 'Fact', family: 'kimball', shape: 'round-rectangle', anchor: 'fact', hueShift: 0, lightShift: 0, swatch: 'square' },
-  { id: 'factless', label: 'Factless fact', family: 'kimball', shape: 'cut-rectangle', anchor: 'fact', hueShift: 18, lightShift: 7, swatch: 'square' },
-  { id: 'dimension', label: 'Dimension', family: 'kimball', shape: 'ellipse', anchor: 'dim', hueShift: 0, lightShift: 0, swatch: 'round' },
-  { id: 'outrigger', label: 'Outrigger', family: 'kimball', shape: 'round-diamond', anchor: 'dim', hueShift: 18, lightShift: 6, swatch: 'angular' },
-  { id: 'bridge', label: 'Bridge', family: 'kimball', shape: 'hexagon', anchor: 'dim', hueShift: 30, lightShift: -4, swatch: 'angular' },
-  { id: 'junk', label: 'Junk dimension', family: 'kimball', shape: 'barrel', anchor: 'dim', hueShift: -12, lightShift: 12, swatch: 'round' },
-  { id: 'degenerate', label: 'Degenerate dimension', family: 'kimball', shape: 'tag', anchor: 'dim', hueShift: 24, lightShift: -8, swatch: 'square' },
+  { id: 'fact', labelKey: 'role.fact', family: 'kimball', shape: 'round-rectangle', anchor: 'fact', hueShift: 0, lightShift: 0, swatch: 'square' },
+  { id: 'factless', labelKey: 'role.factless', family: 'kimball', shape: 'cut-rectangle', anchor: 'fact', hueShift: 18, lightShift: 7, swatch: 'square' },
+  { id: 'dimension', labelKey: 'role.dimension', family: 'kimball', shape: 'ellipse', anchor: 'dim', hueShift: 0, lightShift: 0, swatch: 'round' },
+  { id: 'outrigger', labelKey: 'role.outrigger', family: 'kimball', shape: 'round-diamond', anchor: 'dim', hueShift: 18, lightShift: 6, swatch: 'angular' },
+  { id: 'bridge', labelKey: 'role.bridge', family: 'kimball', shape: 'hexagon', anchor: 'dim', hueShift: 30, lightShift: -4, swatch: 'angular' },
+  { id: 'junk', labelKey: 'role.junk', family: 'kimball', shape: 'barrel', anchor: 'dim', hueShift: -12, lightShift: 12, swatch: 'round' },
+  { id: 'degenerate', labelKey: 'role.degenerate', family: 'kimball', shape: 'tag', anchor: 'dim', hueShift: 24, lightShift: -8, swatch: 'square' },
 
   // Data Vault.
-  { id: 'hub', label: 'Hub', family: 'vault', shape: 'round-hexagon', anchor: 'fact', hueShift: -18, lightShift: -5, swatch: 'angular' },
-  { id: 'link', label: 'Link', family: 'vault', shape: 'diamond', anchor: 'fact', hueShift: 30, lightShift: 3, swatch: 'angular' },
-  { id: 'satellite', label: 'Satellite', family: 'vault', shape: 'pentagon', anchor: 'dim', hueShift: -18, lightShift: 4, swatch: 'round' },
-  { id: 'pit', label: 'Point-in-time', family: 'vault', shape: 'vee', anchor: 'dim', hueShift: -24, lightShift: -7, swatch: 'angular' },
+  { id: 'hub', labelKey: 'role.hub', family: 'vault', shape: 'round-hexagon', anchor: 'fact', hueShift: -18, lightShift: -5, swatch: 'angular' },
+  { id: 'link', labelKey: 'role.link', family: 'vault', shape: 'diamond', anchor: 'fact', hueShift: 30, lightShift: 3, swatch: 'angular' },
+  { id: 'satellite', labelKey: 'role.satellite', family: 'vault', shape: 'pentagon', anchor: 'dim', hueShift: -18, lightShift: 4, swatch: 'round' },
+  { id: 'pit', labelKey: 'role.pit', family: 'vault', shape: 'vee', anchor: 'dim', hueShift: -24, lightShift: -7, swatch: 'angular' },
 
   // Third normal form and plain relational.
-  { id: 'entity', label: 'Entity', family: 'relational', shape: 'rectangle', anchor: 'fact', hueShift: -30, lightShift: 8, swatch: 'square' },
-  { id: 'associative', label: 'Associative', family: 'relational', shape: 'rhomboid', anchor: 'fact', hueShift: 12, lightShift: -6, swatch: 'angular' },
-  { id: 'lookup', label: 'Lookup', family: 'relational', shape: 'round-triangle', anchor: 'dim', hueShift: -30, lightShift: 9, swatch: 'angular' },
-  { id: 'reference', label: 'Reference', family: 'relational', shape: 'octagon', anchor: 'dim', hueShift: 12, lightShift: 10, swatch: 'round' },
+  { id: 'entity', labelKey: 'role.entity', family: 'relational', shape: 'rectangle', anchor: 'fact', hueShift: -30, lightShift: 8, swatch: 'square' },
+  { id: 'associative', labelKey: 'role.associative', family: 'relational', shape: 'rhomboid', anchor: 'fact', hueShift: 12, lightShift: -6, swatch: 'angular' },
+  { id: 'lookup', labelKey: 'role.lookup', family: 'relational', shape: 'round-triangle', anchor: 'dim', hueShift: -30, lightShift: 9, swatch: 'angular' },
+  { id: 'reference', labelKey: 'role.reference', family: 'relational', shape: 'octagon', anchor: 'dim', hueShift: 12, lightShift: 10, swatch: 'round' },
 
   // The role a document names when it names none.
-  { id: 'unknown', label: 'Unknown', family: 'other', shape: 'ellipse', anchor: 'dim', hueShift: 0, lightShift: 22, swatch: 'round' },
+  { id: 'unknown', labelKey: 'role.unknown', family: 'other', shape: 'ellipse', anchor: 'dim', hueShift: 0, lightShift: 22, swatch: 'round' },
 ]
 
 const byId = new Map(KNOWN.map((r) => [r.id, r]))
@@ -123,9 +145,14 @@ export function roleLabel(id: string): string {
  * so comes out distinct from every other unrecognised role in the same model.
  */
 export function roleSpec(id: string): RoleSpec {
-  const known = byId.get(id)
-  if (known) return known
-  if (!id) return byId.get('unknown')!
+  const known = byId.get(id) ?? (id ? undefined : byId.get('unknown'))
+  if (known) {
+    // Resolved on every call rather than baked into KNOWN: the table is built
+    // once at module load, and a name fixed there would outlive the language
+    // it was chosen in. The key itself does not travel with the spec.
+    const { labelKey, ...rest } = known
+    return { ...rest, label: t(labelKey) }
+  }
   const h = hash(id)
   return {
     id,

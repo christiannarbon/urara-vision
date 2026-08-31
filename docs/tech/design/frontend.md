@@ -13,6 +13,7 @@ src/
   graph/petal-overlap.ts  keeping the sakura petals off each other
   graph/palette.ts     role colour derivation
   graph/roles.ts       role → shape and family
+  i18n/                locale state, message lookup, one catalogue per language
   components/          canvas, detail, sidebar, search, diagnostics, theme
   composables/         directory picker, theme, role palette
   styles/              tokens, base CSS, generated art themes
@@ -93,3 +94,34 @@ The API base is `/api/v1` by default and the frontend needs no runtime config,
 because nginx proxies `/api` to the backend and the browser stays on one
 origin. When `API_TOKEN` is set, `ApiTokenGate` prompts for it and the client keeps it
 in `localStorage`.
+
+## Language
+
+The interface is available in English and Japanese. `src/i18n` is about a
+hundred lines and has no dependency, which is a deliberate choice rather than a
+saving: nginx serves a content-security policy with no `unsafe-eval`, the
+frontend workflow fails the build if the bundle contains `eval` or
+`new Function`, and the usual i18n libraries compile their messages with
+generated functions at runtime. What the app actually needs is a typed lookup
+and `{name}` substitution.
+
+Keys are flat and dotted — `topbar.search`, not a nested object — so
+`t('topbar.search')` is checked against the real key set at compile time, and
+`ja.ts` is a `Record<MessageKey, string>` that will not compile while a key is
+missing. Counted strings come in `.one`/`.other` pairs read through `tn`, which
+asks the locale which variant a number takes; Japanese does not mark plural and
+answers `other` for everything.
+
+`LanguagePicker` sits in the topbar beside the theme picker and is the same
+control, deliberately — two adjacent settings behaving differently for no
+reason is what makes a toolbar feel arbitrary. It carries no swatch, which is
+the one way it differs: the theme picker's dot *is* the theme, and a language
+is not a colour. Each language is listed under its own name for itself, because
+the reader most likely to reach for the control is the one who cannot read the
+language it is currently in.
+
+The locale comes from a stored choice, else the browser's preference list
+matched on the primary subtag, else English. It persists in `localStorage`
+beside the theme, and is stamped onto `<html lang>` — screen readers pick a
+voice from it and browsers pick line-breaking from it, and Japanese broken with
+English rules breaks in the wrong places.

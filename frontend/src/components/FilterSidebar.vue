@@ -7,6 +7,12 @@ import { useRolePalette } from '../composables/useRolePalette'
 import { LAYOUTS, type LayoutMode } from '../graph/layout'
 import { canvasTheme, domainColor, domainIndex, paletteFamily } from '../graph/palette'
 import { roleSpec, rolesPresent } from '../graph/roles'
+import { useI18n } from '../i18n'
+import { useDocumentText } from '../i18n/content'
+
+const { t } = useI18n()
+// Domain titles and table grains are the documents' words, not the app's.
+const { dt } = useDocumentText()
 
 const props = defineProps<{
   snapshot: Snapshot | null
@@ -106,58 +112,58 @@ function toggleGroup(id: string) {
 </script>
 
 <template>
-  <aside class="rail" aria-label="Filters and tables">
+  <aside class="rail" :aria-label="t('rail.label')">
     <section v-if="snapshot" class="block stats">
       <div class="stat">
-        <strong>{{ snapshot.stats.tables }}</strong><span>tables</span>
+        <strong>{{ snapshot.stats.tables }}</strong><span>{{ t('rail.stats.tables') }}</span>
       </div>
       <div class="stat">
-        <strong>{{ snapshot.stats.domains }}</strong><span>domains</span>
+        <strong>{{ snapshot.stats.domains }}</strong><span>{{ t('rail.stats.domains') }}</span>
       </div>
       <div class="stat">
-        <strong>{{ snapshot.stats.columns }}</strong><span>columns</span>
+        <strong>{{ snapshot.stats.columns }}</strong><span>{{ t('rail.stats.columns') }}</span>
       </div>
       <div class="stat">
-        <strong>{{ snapshot.stats.sourceTables }}</strong><span>sources</span>
+        <strong>{{ snapshot.stats.sourceTables }}</strong><span>{{ t('rail.stats.sources') }}</span>
       </div>
     </section>
 
     <section class="block">
-      <h3 class="section-label">View</h3>
-      <div class="seg" role="group" aria-label="View mode">
+      <h3 class="section-label">{{ t('rail.view') }}</h3>
+      <div class="seg" role="group" :aria-label="t('rail.view.label')">
         <button
           class="seg-btn"
           :class="{ 'seg-btn--on': viewMode === 'overview' }"
           @click="emit('set-view-mode', 'overview')"
         >
-          Whole model
+          {{ t('rail.view.whole') }}
         </button>
         <button
           class="seg-btn"
           :class="{ 'seg-btn--on': viewMode === 'focus' }"
           :disabled="!selectedId"
-          :title="selectedId ? 'Show only the selected table and its neighbours' : 'Select a table first'"
+          :title="selectedId ? t('rail.view.focused.title') : t('rail.view.focused.disabled')"
           @click="emit('set-view-mode', 'focus')"
         >
-          Focused
+          {{ t('rail.view.focused') }}
         </button>
       </div>
 
-      <div class="seg seg--layout" role="group" aria-label="Layout">
+      <div class="seg seg--layout" role="group" :aria-label="t('rail.layout.label')">
         <button
           v-for="l in LAYOUTS"
           :key="l.id"
           class="seg-btn"
           :class="{ 'seg-btn--on': layoutMode === l.id }"
-          :title="l.hint"
+          :title="t(l.hintKey)"
           @click="emit('set-layout-mode', l.id)"
         >
-          {{ l.label }}
+          {{ t(l.labelKey) }}
         </button>
       </div>
 
       <label v-if="viewMode === 'focus'" class="depth">
-        <span class="faint">Depth</span>
+        <span class="faint">{{ t('rail.depth') }}</span>
         <input
           type="range"
           min="1"
@@ -174,7 +180,7 @@ function toggleGroup(id: string) {
           :checked="showSources"
           @change="emit('set-sources', ($event.target as HTMLInputElement).checked)"
         />
-        <span>Show upstream source models</span>
+        <span>{{ t('rail.showSources') }}</span>
       </label>
 
       <label class="check">
@@ -184,14 +190,16 @@ function toggleGroup(id: string) {
           :disabled="viewMode === 'focus'"
           @change="emit('set-cross-domain', ($event.target as HTMLInputElement).checked)"
         />
-        <span>Cross-domain joins only</span>
+        <span>{{ t('rail.crossDomainOnly') }}</span>
       </label>
     </section>
 
     <section class="block">
       <div class="block-head">
-        <h3 class="section-label">Filters</h3>
-        <button v-if="hasFilters" class="btn btn--ghost btn--sm" @click="emit('clear')">Clear</button>
+        <h3 class="section-label">{{ t('rail.filters') }}</h3>
+        <button v-if="hasFilters" class="btn btn--ghost btn--sm" @click="emit('clear')">
+          {{ t('rail.clear') }}
+        </button>
       </div>
 
       <div class="chips">
@@ -201,7 +209,7 @@ function toggleGroup(id: string) {
           class="chip chip--role"
           :class="{ 'chip--on': activeKinds.includes(r.id) }"
           :style="{ '--swatch': colorOf(r.id) }"
-          :title="r.family === 'other' ? `Role read from the documents: ${r.id}` : r.label"
+          :title="r.family === 'other' ? t('rail.role.fromDocuments', { role: r.id }) : r.label"
           @click="emit('toggle-kind', r.id)"
         >
           <i class="swatch" :class="`swatch--${r.swatch}`" />
@@ -216,7 +224,7 @@ function toggleGroup(id: string) {
           class="chip chip--domain"
           :class="{ 'chip--on': activeDomains.includes(d.id) }"
           :style="{ '--swatch': domainSwatch.get(d.id) }"
-          :title="d.title"
+          :title="dt(d.title)"
           @click="emit('toggle-domain', d.id)"
         >
           <i class="swatch" />
@@ -227,13 +235,13 @@ function toggleGroup(id: string) {
     </section>
 
     <section class="block grow">
-      <h3 class="section-label">Tables ({{ visibleTables.length }})</h3>
+      <h3 class="section-label">{{ t('rail.tables', { n: visibleTables.length }) }}</h3>
       <input
         v-model="tableFilter"
         class="input"
         type="search"
-        placeholder="Filter tables…"
-        aria-label="Filter tables"
+        :placeholder="t('rail.tables.filter')"
+        :aria-label="t('rail.tables.filter.label')"
       />
 
       <div class="list">
@@ -248,28 +256,30 @@ function toggleGroup(id: string) {
             <span class="mono">{{ domain }}</span>
             <span class="faint">{{ items.length }}</span>
           </button>
+          <!-- `table` rather than `t`: the loop variable would shadow the
+               lookup the conformed marker's tooltip needs. -->
           <ul v-if="!collapsed.has(domain)" class="items">
-            <li v-for="t in items" :key="t.id">
+            <li v-for="table in items" :key="table.id">
               <button
                 class="item"
-                :class="{ 'item--on': selectedId === t.id }"
-                :title="t.grain || t.description"
-                @click="emit('select', t.id)"
+                :class="{ 'item--on': selectedId === table.id }"
+                :title="dt(table.grain) || dt(table.description)"
+                @click="emit('select', table.id)"
               >
                 <i
                   class="dot"
-                  :class="`dot--${roleOf(t.kind).swatch}`"
-                  :style="{ background: colorOf(t.kind) }"
+                  :class="`dot--${roleOf(table.kind).swatch}`"
+                  :style="{ background: colorOf(table.kind) }"
                 />
-                <span class="mono item-name">{{ t.name }}</span>
-                <span v-if="t.conformed" class="cf" title="Conformed: also defined in other domains">
+                <span class="mono item-name">{{ table.name }}</span>
+                <span v-if="table.conformed" class="cf" :title="t('rail.conformed')">
                   ↔
                 </span>
               </button>
             </li>
           </ul>
         </div>
-        <p v-if="!grouped.length" class="muted small pad">No tables match.</p>
+        <p v-if="!grouped.length" class="muted small pad">{{ t('rail.noMatches') }}</p>
       </div>
     </section>
   </aside>

@@ -11,23 +11,50 @@
  * directory, with the directory's own name stripped, so "model-docs/domain_one/
  * fact_primary.md" and "domain_one/fact_primary.md" produce identical table IDs no
  * matter which picker ran.
+ *
+ * The markdown is not all that is read. A documentation directory has to declare
+ * what project it is in a projectmeta.toml at its root, and an ingest without one
+ * is refused, so a missing manifest is caught here rather than as a rejected
+ * upload: the reader is still looking at the picker, and the directory they just
+ * chose is the thing to say it about.
  */
 
 import { ref } from 'vue'
 import type { IngestFile } from '../api/types'
+import { translate as t, translateCount as tn } from '../i18n'
 
 /** Directories that never hold documentation and would only slow the walk. */
 const SKIP_DIRS = new Set(['.git', 'node_modules', '.venv', '__pycache__', 'dist', 'build', '.next'])
 
+/** The manifest, at the root of the selected directory and nowhere else. */
+const MANIFEST = 'projectmeta.toml'
+
 /** Guard against a mis-click on a huge tree locking the tab up. */
 const MAX_FILES = 5000
 const MAX_TOTAL_BYTES = 48 * 1024 * 1024
+const MAX_TOTAL_MB = MAX_TOTAL_BYTES / (1024 * 1024)
+
+/**
+ * Progress and error text is resolved as it is assigned rather than held as a
+ * key and translated on read, unlike the workspace store's banners. Everything
+ * here belongs to one action the reader just started and is gone within a few
+ * seconds of it finishing; there is no window in which a language change could
+ * find one of these strings still on screen.
+ */
 
 export interface PickedDirectory {
   name: string
+  /** The markdown documents, manifest excluded. */
   files: IngestFile[]
+  /** The projectmeta.toml the directory declares itself with. */
+  manifest: IngestFile
   /** Files seen but not read, e.g. non-markdown or skipped directories. */
   ignored: number
+}
+
+/** Whether a path relative to the selected directory is the root manifest. */
+function isManifest(relativePath: string): boolean {
+  return relativePath.toLowerCase() === MANIFEST
 }
 
 /** Feature-detects the native directory picker. */
@@ -48,7 +75,10 @@ export function useDirectoryPicker() {
     error.value = null
   }
 
-  /** Opens the native OS directory picker and reads every .md file beneath it. */
+  /**
+   * Opens the native OS directory picker and reads every .md file beneath it,
+   * plus the manifest at its root.
+   */
   async function pickNative(): Promise<PickedDirectory | null> {
     error.value = null
     let handle: any
@@ -57,16 +87,17 @@ export function useDirectoryPicker() {
     } catch (e: any) {
       // AbortError means the user closed the picker; that is not a failure.
       if (e?.name === 'AbortError') return null
-      error.value = e?.message ?? 'Could not open the directory picker.'
+      error.value = e?.message ?? t('picker.error.open')
       return null
     }
 
     reading.value = true
     progress.value = 0
-    progressLabel.value = 'Scanning directory…'
+    progressLabel.value = t('picker.scanning')
 
     try {
       const files: IngestFile[] = []
+      let manifest: IngestFile | null = null
       let ignored = 0
       let bytes = 0
 
@@ -84,33 +115,45 @@ export function useDirectoryPicker() {
             await walk(entry, prefix ? `${prefix}/${name}` : name)
             continue
           }
+
+          const path = prefix ? `${prefix}/${name}` : name
+
+          // The manifest counts against neither the file limit nor the
+          // progress count: it is metadata about the directory, not one of
+          // the documents being read out of it.
+          if (isManifest(path)) {
+            const file: File = await entry.getFile()
+            manifest = { path: MANIFEST, content: await file.text() }
+            continue
+          }
           if (!name.toLowerCase().endsWith('.md')) {
             ignored++
             continue
           }
           if (files.length >= MAX_FILES) {
-            throw new Error(
-              `This directory holds more than ${MAX_FILES} markdown files. Select a narrower subtree.`,
-            )
+            throw new Error(t('picker.error.tooManyFiles', { max: MAX_FILES }))
           }
 
           const file: File = await entry.getFile()
           bytes += file.size
           if (bytes > MAX_TOTAL_BYTES) {
-            throw new Error('The selected documents exceed the 48 MB upload limit.')
+            throw new Error(t('picker.error.tooLarge', { mb: MAX_TOTAL_MB }))
           }
 
-          const path = prefix ? `${prefix}/${name}` : name
           files.push({ path, content: await file.text() })
           progress.value = files.length
-          progressLabel.value = `Read ${files.length} document${files.length === 1 ? '' : 's'}…`
+          progressLabel.value = tn('picker.read', files.length)
         }
       }
 
       await walk(handle, '')
-      return { name: handle.name as string, files, ignored }
+      if (!manifest) {
+        error.value = t('picker.error.noManifest')
+        return null
+      }
+      return { name: handle.name as string, files, manifest, ignored }
     } catch (e: any) {
-      error.value = e?.message ?? 'Failed to read the selected directory.'
+      error.value = e?.message ?? t('picker.error.read')
       return null
     } finally {
       reading.value = false
@@ -128,11 +171,17 @@ export function useDirectoryPicker() {
 
     reading.value = true
     progress.value = 0
-    progressLabel.value = 'Reading documents…'
+    progressLabel.value = t('picker.reading')
 
     try {
       const all = Array.from(list)
       const rootName = deriveRootName(all)
+
+      const manifestFile = all.find((f) => isManifest(relativePath(f, rootName)))
+      if (!manifestFile) {
+        error.value = t('picker.error.noManifest')
+        return null
+      }
 
       const markdown = all.filter((f) => {
         const rel = relativePath(f, rootName)
@@ -143,17 +192,17 @@ export function useDirectoryPicker() {
       })
 
       if (markdown.length === 0) {
-        error.value = 'That directory contains no markdown files.'
+        error.value = t('picker.error.noMarkdown')
         return null
       }
       if (markdown.length > MAX_FILES) {
-        error.value = `This directory holds more than ${MAX_FILES} markdown files. Select a narrower subtree.`
+        error.value = t('picker.error.tooManyFiles', { max: MAX_FILES })
         return null
       }
 
       const totalBytes = markdown.reduce((n, f) => n + f.size, 0)
       if (totalBytes > MAX_TOTAL_BYTES) {
-        error.value = 'The selected documents exceed the 48 MB upload limit.'
+        error.value = t('picker.error.tooLarge', { mb: MAX_TOTAL_MB })
         return null
       }
 
@@ -161,12 +210,19 @@ export function useDirectoryPicker() {
       for (const f of markdown) {
         files.push({ path: relativePath(f, rootName), content: await f.text() })
         progress.value = files.length
-        progressLabel.value = `Read ${files.length} of ${markdown.length} documents…`
+        progressLabel.value = t('picker.readOf', { n: files.length, total: markdown.length })
       }
 
-      return { name: rootName || 'documentation', files, ignored: all.length - markdown.length }
+      const manifest: IngestFile = { path: MANIFEST, content: await manifestFile.text() }
+      return {
+        name: rootName || 'documentation',
+        files,
+        manifest,
+        // The manifest was read, so it is not among the files that were not.
+        ignored: all.length - markdown.length - 1,
+      }
     } catch (e: any) {
-      error.value = e?.message ?? 'Failed to read the selected directory.'
+      error.value = e?.message ?? t('picker.error.read')
       return null
     } finally {
       reading.value = false

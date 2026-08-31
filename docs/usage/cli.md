@@ -8,11 +8,25 @@ cd backend
 go run ./cmd/uraractl -dir /path/to/model-docs
 go run ./cmd/uraractl -dir /path/to/model-docs -json     # full model as JSON
 go run ./cmd/uraractl -dir /path/to/model-docs -strict   # exit 1 on any error
+go run ./cmd/uraractl -dir /path/to/model-docs -lang JP  # one language out
 ```
+
+`-lang` resolves the [inline translations](documentation-format.md#writing-in-more-than-one-language)
+in every prose field to one language, for a consumer that wants the model in
+the language it speaks rather than every language the documents carry. The app
+does the opposite and keeps all of them, so a reader can change language
+without fetching the model again.
+
+The directory needs its `projectmeta.toml` here too: it is read and validated
+first, so a manifest the server would refuse fails in CI rather than at upload
+time. A missing or invalid one exits 2 and says what is wrong with it.
 
 It prints a summary of what it found, then the diagnostics themselves:
 
 ```
+project        <name> <version>
+languages      <tag> <tag> (primary <tag>, <type>)
+translated     <n> prose fields
 files parsed   <n> (skipped <n>)
 domains        <n>
 tables         <n>  (conformed instances <n>)

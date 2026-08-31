@@ -14,6 +14,7 @@ import (
 	"urara-vision/backend/internal/graph"
 	"urara-vision/backend/internal/model"
 	"urara-vision/backend/internal/parser"
+	"urara-vision/backend/internal/projectmeta"
 )
 
 // loadSet walks one demo directory and resolves it. The snapshot ID and name
@@ -46,7 +47,56 @@ func loadSet(t *testing.T, dir string) *model.Model {
 		t.Fatalf("no documents found under %s", dir)
 	}
 	name := filepath.Base(dir)
-	return graph.Build("demo", name, dir, parser.Parse(files))
+	return graph.Build("demo", name, dir, loadManifest(t, dir), parser.Parse(files))
+}
+
+// loadManifest reads a set's projectmeta.toml, which an ingest of it would
+// refuse to proceed without.
+func loadManifest(t *testing.T, dir string) model.ProjectMeta {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(dir, projectmeta.FileName))
+	if err != nil {
+		t.Fatalf("reading the manifest of %s: %v", dir, err)
+	}
+	meta, err := projectmeta.Parse(string(b))
+	if err != nil {
+		t.Fatalf("%s: %v", dir, err)
+	}
+	return meta
+}
+
+// demoRoot holds every shipped set, relative to this test's package directory.
+const demoRoot = "../../../../docs/demo"
+
+// TestEveryDemoSetCarriesAManifest: a set without one is a set the app now
+// refuses to ingest, which would make it a broken sample rather than a demo.
+func TestEveryDemoSetCarriesAManifest(t *testing.T) {
+	entries, err := os.ReadDir(demoRoot)
+	if err != nil {
+		t.Fatalf("reading %s: %v", demoRoot, err)
+	}
+
+	sets := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		sets++
+		dir := filepath.Join(demoRoot, e.Name())
+		meta := loadManifest(t, dir)
+		// The manifest names the project, and for a shipped set the project is
+		// the directory: a copied manifest that still names another set would
+		// otherwise pass unnoticed.
+		if meta.Project.Name != e.Name() {
+			t.Errorf("%s: project.name = %q, want the set's own name", e.Name(), meta.Project.Name)
+		}
+		if meta.Project.Description == "" {
+			t.Errorf("%s: the manifest says nothing about what the set is", e.Name())
+		}
+	}
+	if sets == 0 {
+		t.Fatalf("no demo sets found under %s", demoRoot)
+	}
 }
 
 // stat is one pinned figure from a set's snapshot statistics.

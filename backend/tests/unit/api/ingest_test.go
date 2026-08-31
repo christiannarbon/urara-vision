@@ -7,14 +7,31 @@ import (
 	"encoding/json"
 	"mime/multipart"
 	"net/http"
+	"reflect"
 	"strings"
 	"testing"
 
+	"urara-vision/backend/internal/projectmeta"
 	"urara-vision/backend/tests/fixtures"
 )
 
-// ingestBody renders a JSON ingest request.
+// ingestBody renders a JSON ingest request, adding the manifest every upload
+// has to carry. A suite testing the manifest itself passes its own under
+// projectmeta.FileName, or none at all.
 func ingestBody(t *testing.T, name, sourceLabel string, files map[string]string) *bytes.Reader {
+	t.Helper()
+	withMeta := make(map[string]string, len(files)+1)
+	for p, c := range files {
+		withMeta[p] = c
+	}
+	if _, ok := withMeta[projectmeta.FileName]; !ok {
+		withMeta[projectmeta.FileName] = fixtures.ProjectMetaTOML
+	}
+	return rawIngestBody(t, name, sourceLabel, withMeta)
+}
+
+// rawIngestBody renders exactly the files it is given, manifest or not.
+func rawIngestBody(t *testing.T, name, sourceLabel string, files map[string]string) *bytes.Reader {
 	t.Helper()
 	type f struct {
 		Path    string `json:"path"`
@@ -66,6 +83,11 @@ func TestIngestJSONCreatesASnapshot(t *testing.T) {
 	if got := meta.saved.Snapshot.Stats.Tables; got != 3 {
 		t.Errorf("tables = %d, want 3", got)
 	}
+	// The manifest is metadata about the ingest, so it travels with the
+	// snapshot rather than with any document in it.
+	if got, want := meta.saved.Snapshot.Project, fixtures.ProjectMeta(); !reflect.DeepEqual(got, want) {
+		t.Errorf("project = %+v, want %+v", got, want)
+	}
 	if graphs.edgeCount == 0 {
 		t.Error("no edges were projected for a model with two declared joins")
 	}
@@ -110,12 +132,17 @@ func TestIngestMultipart(t *testing.T) {
 	if err := mw.WriteField("name", "multipart snapshot"); err != nil {
 		t.Fatal(err)
 	}
-	part, err := mw.CreateFormFile("d/fact_x.md", "d/fact_x.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := part.Write([]byte(fixtures.Doc("fact_x", "Fact", "D", []string{"id"}, ""))); err != nil {
-		t.Fatal(err)
+	for path, content := range map[string]string{
+		"d/fact_x.md":        fixtures.Doc("fact_x", "Fact", "D", []string{"id"}, ""),
+		projectmeta.FileName: fixtures.ProjectMetaTOML,
+	} {
+		part, err := mw.CreateFormFile(path, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := mw.Close(); err != nil {
 		t.Fatal(err)

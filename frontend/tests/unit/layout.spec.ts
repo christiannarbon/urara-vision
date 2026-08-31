@@ -1,15 +1,28 @@
 /** The layouts the canvas offers and what each one can carry. */
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import { LAYOUTS, layoutOptions, supportsGrouping, type LayoutMode } from '../../src/graph/layout'
+import { setLocale, translate } from '../../src/i18n'
+import { messages as ja } from '../../src/i18n/messages/ja'
 
 describe('LAYOUTS', () => {
+  afterEach(() => setLocale('en'))
+
   it('offers force, layered and radial', () => {
     expect(LAYOUTS.map((l) => l.id)).toEqual(['force', 'layered', 'radial'])
   })
 
   it('names force first, since it is the default', () => {
     expect(LAYOUTS[0].id).toBe('force')
+  })
+
+  it('carries catalogue keys rather than words, so a name is never frozen', () => {
+    setLocale('ja')
+    expect(LAYOUTS.map((l) => translate(l.labelKey))).toEqual([
+      ja['layout.force'],
+      ja['layout.layered'],
+      ja['layout.radial'],
+    ])
   })
 })
 
