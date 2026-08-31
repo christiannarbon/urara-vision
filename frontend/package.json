@@ -23,7 +23,7 @@
   },
   "devDependencies": {
     "@types/cytoscape": "^3.31.0",
-    "@types/node": "^22.10.2",
+    "@types/node": "^24.13.3",
     "@vitejs/plugin-vue": "^5.2.1",
     "@vitest/coverage-v8": "^4.1.11",
     "@vue/test-utils": "^2.5.0",
