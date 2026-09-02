@@ -15,6 +15,7 @@ replicas:
 
 patches:
   - path: dev-resources.yaml
+  - path: dev-frontend-auth.yaml
   # HPAs fight the single-replica settings above, so they are dropped here.
   - target:
       kind: HorizontalPodAutoscaler

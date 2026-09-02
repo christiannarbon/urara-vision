@@ -54,6 +54,12 @@ spec:
               value: "backend"
             - name: BACKEND_PORT
               value: "8080"
+            # The credential nginx presents when it proxies /api. Empty here
+            # so the app prompts for a token like any other deployment; the
+            # dev overlay fills it in from the API secret, which is what keeps
+            # a local cluster from asking for a key it already holds.
+            - name: API_AUTHORIZATION
+              value: ""
           readinessProbe:
             httpGet:
               path: /healthz

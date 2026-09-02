@@ -1,0 +1,23 @@
+# The frontend holds the API token so a local cluster does not ask its reader
+# for one. nginx attaches it when it proxies /api, so the credential stays in
+# the cluster and the browser never sees it. Prod leaves it empty and prompts.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+spec:
+  template:
+    spec:
+      containers:
+        - name: frontend
+          env:
+            # Read from the same secret the backend checks against, so the two
+            # cannot drift apart. It has to come first: the header below is
+            # built from it, and kubelet only expands names already defined.
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: relviz-api
+                  key: token
+            - name: API_AUTHORIZATION
+              value: "Bearer $(API_TOKEN)"
