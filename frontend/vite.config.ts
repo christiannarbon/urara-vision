@@ -1,6 +1,11 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
+// The compose backend's token, which the dev proxy presents the way nginx does
+// in a built image. Override it for a backend running with a different one, or
+// set it empty for one running with none.
+const apiToken = process.env.VITE_PROXY_TOKEN ?? 'relviz-dev-token-not-for-production'
+
 export default defineConfig({
   plugins: [vue()],
   server: {
@@ -11,6 +16,15 @@ export default defineConfig({
       '/api': {
         target: process.env.VITE_PROXY_TARGET ?? 'http://localhost:8080',
         changeOrigin: true,
+        // Same rule the built image's nginx follows: fill in the credential
+        // only when the browser sent none of its own.
+        configure: (proxy) => {
+          proxy.on('proxyReq', (req) => {
+            if (apiToken && !req.getHeader('authorization')) {
+              req.setHeader('Authorization', `Bearer ${apiToken}`)
+            }
+          })
+        },
       },
     },
   },
