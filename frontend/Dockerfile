@@ -25,6 +25,13 @@ FROM nginx:1.31-alpine
 ENV BACKEND_HOST=backend
 ENV BACKEND_PORT=8080
 
+# The Authorization header nginx presents when proxying /api, whole: "Bearer
+# <token>". Empty means the browser supplies its own, which is what the token
+# gate is for. It has to be declared even when empty -- the entrypoint only
+# substitutes variables that already exist, and an undeclared one would
+# survive into the rendered config as literal text.
+ENV API_AUTHORIZATION=""
+
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 COPY nginx-security-headers.conf /etc/nginx/snippets/security-headers.conf
