@@ -39,6 +39,17 @@ kubectl -n urara-vision port-forward svc/frontend 8081:80
 Those dev credentials are committed deliberately and are safe only because
 they are dev credentials. Do not reuse them anywhere real.
 
+The dev overlay also hands the frontend the API token, as `API_AUTHORIZATION`
+on its Deployment, so nginx presents it when it proxies `/api` and nobody has
+to paste a key in to open the app. The token stays in the cluster: it is read
+from the same `relviz-api` secret the backend checks against and never reaches
+the browser. The backend is still authenticated, so anything talking to it
+directly still needs the token:
+
+```bash
+kubectl -n urara-vision get secret relviz-api -o jsonpath='{.data.token}' | base64 -d
+```
+
 ## Prod
 
 The prod overlay deliberately does **not** generate secrets. Create them first,
@@ -65,11 +76,16 @@ forgetting it should stop a rollout rather than quietly publish an open API.
 To run without authentication on purpose, delete the `API_TOKEN` block from
 `base/backend.yaml`; the server logs a warning on every start when it is unset.
 
-Read the token back out when you need to hand it to someone:
+Prod leaves `API_AUTHORIZATION` empty, which is what the dev overlay overrides.
+The frontend adds no credential of its own there and the app prompts for one,
+so hand the token to whoever needs it:
 
 ```bash
 kubectl -n urara-vision get secret relviz-api -o jsonpath='{.data.token}' | base64 -d
 ```
+
+Fill it in for a prod deployment only if the ingress in front already decides
+who may reach the frontend at all.
 
 Both Postgres keys must agree: the backend reads `dsn` for Postgres, while the Postgres
 pod itself reads `username` / `password` / `database`. A mismatch shows up as
