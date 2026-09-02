@@ -152,7 +152,14 @@ k8s-up: ## Bring the whole Kubernetes stack up and open a tunnel to it
 	  echo "  already ingested:      $$(echo "$$ingested" | paste -sd', ' -)"; \
 	fi
 	@echo "  logs:                  make k8s-logs"
+	@echo "  api token, for curl:   make k8s-token"
 	@echo "  shut down, keep data:  make k8s-down"
+
+.PHONY: k8s-token
+k8s-token: ## Print the cluster's API token
+	@# The frontend presents this itself, so the app needs nobody to read it.
+	@# It is here for talking to the API directly, which nothing proxies for.
+	@kubectl -n $(NS) get secret relviz-api -o jsonpath='{.data.token}' | base64 -d; echo
 
 .PHONY: k8s-tunnel
 k8s-tunnel: ## (Re)start the background port-forward

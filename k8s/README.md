@@ -47,7 +47,7 @@ the browser. The backend is still authenticated, so anything talking to it
 directly still needs the token:
 
 ```bash
-kubectl -n urara-vision get secret relviz-api -o jsonpath='{.data.token}' | base64 -d
+make k8s-token
 ```
 
 ## Prod
