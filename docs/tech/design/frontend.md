@@ -92,8 +92,12 @@ through the client.
 
 The API base is `/api/v1` by default and the frontend needs no runtime config,
 because nginx proxies `/api` to the backend and the browser stays on one
-origin. When `API_TOKEN` is set, `ApiTokenGate` prompts for it and the client keeps it
-in `localStorage`.
+origin. That proxy can carry the credential too: with `API_AUTHORIZATION` set
+it fills in the `Authorization` header on any request that arrived without one,
+which is how the dev stacks open without asking for a key. Where it is empty,
+a 401 raises `ApiTokenGate`, which prompts for the token and keeps it in
+`localStorage`. A token the browser holds always wins, so the gate still works
+against a proxy that has one of its own.
 
 ## Language
 

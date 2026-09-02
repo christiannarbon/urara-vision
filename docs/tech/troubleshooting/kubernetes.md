@@ -16,6 +16,22 @@ kubectl -n urara-vision create secret generic relviz-api \
 To run without authentication on purpose, delete the `API_TOKEN` block from
 `base/backend.yaml`.
 
+## The app asks for an API token
+
+The frontend prompts when nginx forwarded the request without a credential and
+the backend answered 401. The dev overlay avoids that by giving the frontend
+`API_AUTHORIZATION`, built from the `relviz-api` secret; check it survived on
+the pod:
+
+```bash
+kubectl -n urara-vision exec deploy/frontend -- printenv API_AUTHORIZATION
+```
+
+Empty means the patch did not apply, or that `API_TOKEN` is declared after it
+in the env list — `$(VAR)` expansion only sees names defined before the one
+using them. Prod prompts on purpose; read the token out of the secret and hand
+it over.
+
 ## Postgres will not initialise its data directory
 
 `postgres:16-alpine` runs as **uid 70**, not the 999 the Debian-based tags use,
