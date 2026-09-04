@@ -11,6 +11,11 @@ PF_PORT  ?= 18081
 PF_PID   := .k8s-portforward.pid
 PF_LOG   := .k8s-portforward.log
 
+# A minikube profile is not always called "minikube" -- the kube context carries
+# the profile name, so ask minikube whether it owns the context rather than
+# matching the name. Expects $$ctx to be set by the recipe using it.
+IS_MINIKUBE = minikube profile list -o json 2>/dev/null | grep -q '"Name":"'"$$ctx"'"'
+
 # The documentation sets already ingested into the cluster, one name per line.
 # Read straight out of Postgres rather than over the API: no tunnel, no bearer
 # token, and it answers before the frontend is up. The inner quotes reach the
@@ -112,20 +117,31 @@ demo-docs: ## Parse every shipped demo documentation set (make demo-docs SET=jaf
 	  (cd backend && go run ./cmd/uraractl -dir ../docs/demo/$$set) || exit $$?; \
 	done
 
+BACKEND_IMAGE  := urara-vision/backend:dev
+FRONTEND_IMAGE := urara-vision/frontend:dev
+IMAGES         := $(BACKEND_IMAGE) $(FRONTEND_IMAGE)
+
 .PHONY: images
 images: ## Build both images tagged :dev for a local cluster
-	docker build -t urara-vision/backend:dev ./backend
-	docker build -t urara-vision/frontend:dev ./frontend
+	docker build -t $(BACKEND_IMAGE) ./backend
+	docker build -t $(FRONTEND_IMAGE) ./frontend
 
 .PHONY: k8s-load
-k8s-load: images ## Build images and push them into minikube's daemon
-	minikube image load urara-vision/backend:dev urara-vision/frontend:dev
+k8s-load: images ## Build the images and push them into the local cluster
+	@ctx=$$(kubectl config current-context 2>/dev/null); \
+	if $(IS_MINIKUBE); then \
+		minikube -p "$$ctx" image load $(IMAGES); \
+	else \
+		case "$$ctx" in \
+			kind-*) kind load docker-image $(IMAGES) --name "$${ctx#kind-}" ;; \
+			*)      echo "  context $$ctx is not minikube or kind; push $(IMAGES) to a registry yourself" ;; \
+		esac; \
+	fi
 
 .PHONY: k8s-up
 k8s-up: ## Bring the whole Kubernetes stack up and open a tunnel to it
 	@echo "==> cluster"
-	@minikube status >/dev/null 2>&1 || minikube start
-	@minikube addons list 2>/dev/null | grep -qE 'ingress .*enabled' || minikube addons enable ingress
+	@$(MAKE) --no-print-directory k8s-cluster
 	@echo "==> images"
 	@$(MAKE) --no-print-directory k8s-load
 	@echo "==> storage"
@@ -154,6 +170,22 @@ k8s-up: ## Bring the whole Kubernetes stack up and open a tunnel to it
 	@echo "  logs:                  make k8s-logs"
 	@echo "  api token, for curl:   make k8s-token"
 	@echo "  shut down, keep data:  make k8s-down"
+
+.PHONY: k8s-cluster
+k8s-cluster: ## Make sure a local cluster is running, with an ingress controller
+	@ctx=$$(kubectl config current-context 2>/dev/null || echo none); \
+	if [ "$$ctx" = none ]; then \
+		echo "no kube context; start minikube or point kubectl at a cluster" >&2; exit 1; \
+	elif $(IS_MINIKUBE); then \
+		minikube -p "$$ctx" status >/dev/null 2>&1 || minikube -p "$$ctx" start; \
+		minikube -p "$$ctx" addons list 2>/dev/null | grep -qE 'ingress .*enabled' \
+			|| minikube -p "$$ctx" addons enable ingress; \
+	else \
+		case "$$ctx" in \
+			kind-*) kind get clusters | grep -q "$${ctx#kind-}" || { echo "kind cluster $${ctx#kind-} is gone" >&2; exit 1; } ;; \
+			*)      echo "  context $$ctx is not minikube or kind: $(IMAGES) must be pullable from it, and the ingress controller is yours to install" ;; \
+		esac; \
+	fi
 
 .PHONY: k8s-token
 k8s-token: ## Print the cluster's API token
