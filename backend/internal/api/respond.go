@@ -3,6 +3,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -16,33 +17,53 @@ import (
 	"urara-vision/backend/internal/store/postgres"
 )
 
+// errNoSnapshots is the "latest" alias asked for on an empty database. It is
+// distinct from ErrNotFound because the two deserve different messages: one
+// means the caller's ID is wrong, the other means there is nothing to name yet.
+var errNoSnapshots = errors.New("no snapshots have been ingested yet")
+
+// resolveSnapshotID turns the "latest" alias into a concrete snapshot ID and
+// verifies that any other ID exists, so a typo is a 404 rather than an empty
+// result that reads as a real but empty snapshot.
+//
+// It takes the ID rather than the request because the snapshot does not always
+// arrive in the path: a conversation names one in its body or query string.
+func (s *Server) resolveSnapshotID(ctx context.Context, sid string) (string, error) {
+	if sid != "latest" {
+		if _, err := s.pg.GetSnapshot(ctx, sid); err != nil {
+			return "", err
+		}
+		return sid, nil
+	}
+	id, err := s.pg.LatestSnapshotID(ctx)
+	if err != nil {
+		if errors.Is(err, postgres.ErrNotFound) {
+			return "", errNoSnapshots
+		}
+		return "", err
+	}
+	return id, nil
+}
+
+// failSnapshot maps a resolveSnapshotID error onto a response.
+func (s *Server) failSnapshot(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, errNoSnapshots):
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": errNoSnapshots.Error()})
+	case errors.Is(err, postgres.ErrNotFound):
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "snapshot not found"})
+	default:
+		s.fail(w, r, err)
+	}
+}
+
 // resolveSnapshot reads the snapshot ID from the path, translating the alias
 // "latest" into the most recent ingest so the UI can deep-link without knowing
 // an ID.
 func (s *Server) resolveSnapshot(w http.ResponseWriter, r *http.Request) (string, bool) {
-	sid := chi.URLParam(r, "sid")
-	if sid != "latest" {
-		// Verify it exists, so a typo returns 404 rather than an empty graph
-		// that reads as a real snapshot with nothing in it.
-		if _, err := s.pg.GetSnapshot(r.Context(), sid); err != nil {
-			if errors.Is(err, postgres.ErrNotFound) {
-				writeJSON(w, http.StatusNotFound, map[string]string{"error": "snapshot not found"})
-				return "", false
-			}
-			s.fail(w, r, err)
-			return "", false
-		}
-		return sid, true
-	}
-	id, err := s.pg.LatestSnapshotID(r.Context())
+	id, err := s.resolveSnapshotID(r.Context(), chi.URLParam(r, "sid"))
 	if err != nil {
-		if errors.Is(err, postgres.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{
-				"error": "no snapshots have been ingested yet",
-			})
-			return "", false
-		}
-		s.fail(w, r, err)
+		s.failSnapshot(w, r, err)
 		return "", false
 	}
 	return id, true
