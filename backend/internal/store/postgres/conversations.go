@@ -40,13 +40,43 @@ func scanConversation(row pgx.Row) (model.Conversation, error) {
 // CreateConversation starts a thread about one snapshot. The stored row comes
 // back from the INSERT rather than from a second read, so the timestamps are
 // the ones the database actually wrote.
+//
+// The snapshot is locked before the conversation is written, and that order is
+// not incidental: Migrate takes snapshots first -- its ALTER TABLE holds the
+// table from early in the schema until the transaction commits -- and reaches
+// conversations much later. A bare INSERT inverts that, holding conversations
+// while the foreign key reaches back for the snapshot, so a thread created
+// while another replica migrates deadlocks. FOR KEY SHARE is the same lock the
+// foreign key would take by itself; taking it first is what costs nothing and
+// removes the cycle.
 func (s *Store) CreateConversation(ctx context.Context, snapshotID, title string) (*model.Conversation, error) {
-	c, err := scanConversation(s.pool.QueryRow(ctx,
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var one int
+	if err := tx.QueryRow(ctx,
+		`SELECT 1 FROM snapshots WHERE id = $1 FOR KEY SHARE`, snapshotID).Scan(&one); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Reported as a missing snapshot rather than as the foreign key
+			// violation the INSERT would otherwise raise, which reaches the
+			// API as a 500 for what is really a bad request.
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+
+	c, err := scanConversation(tx.QueryRow(ctx,
 		`INSERT INTO conversations (id, snapshot_id, title)
 		 VALUES ($1, $2, $3)
 		 RETURNING `+conversationColumns,
 		uuid.NewString(), snapshotID, title))
 	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
 		return nil, err
 	}
 	return &c, nil
