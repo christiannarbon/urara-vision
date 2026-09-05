@@ -107,6 +107,7 @@ func (s *Server) Routes() http.Handler {
 		r.Route("/snapshots/{sid}", func(r chi.Router) {
 			r.Get("/", s.handleGetSnapshot)
 			r.Delete("/", s.handleDeleteSnapshot)
+			r.Get("/context", s.handleContext)
 			r.Get("/domains", s.handleListDomains)
 			r.Get("/tables", s.handleListTables)
 			r.Get("/table", s.handleGetTable)
