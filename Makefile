@@ -45,7 +45,7 @@ clean: ## Stop the stack and delete its volumes
 logs: ## Follow backend logs
 	$(COMPOSE) logs -f backend
 
-GO_IMAGE    := golang:1.25-alpine
+GO_IMAGE    := golang:1.27-alpine
 # docs/ is mounted as well as the module because the demo suites read the sample
 # documentation sets, which live outside backend/. Relative to
 # backend/tests/unit/demo/ those are ../../../../docs/demo, which resolves to
@@ -108,7 +108,7 @@ test-frontend: ## Frontend unit and component tests
 .PHONY: lint-docs
 lint-docs: ## Parse a documentation directory and report diagnostics (make lint-docs DOCS=...)
 	docker run --rm -v "$(PWD)/backend":/src -v "$(DOCS)":/docs:ro -w /src \
-	  golang:1.25-alpine go run ./cmd/uraractl -dir /docs
+	  golang:1.27-alpine go run ./cmd/uraractl -dir /docs
 
 .PHONY: demo-docs
 demo-docs: ## Parse every shipped demo documentation set (make demo-docs SET=jaffle-shop-ddd for one)
