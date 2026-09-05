@@ -60,6 +60,19 @@ func TestCreateConversationRejectsBadInput(t *testing.T) {
 		}
 	})
 
+	t.Run("trailing data after the body", func(t *testing.T) {
+		meta := &fakeMeta{latest: "real-snapshot-id"}
+		h := newServer(t, meta, &fakeGraphs{})
+		res := postJSON(t, h, "/api/v1/conversations",
+			`{"snapshotId":"latest"} {"snapshotId":"second"}`)
+		if res.StatusCode != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", res.StatusCode)
+		}
+		if meta.createdFor != "" {
+			t.Error("a conversation was created from a body that carried two objects")
+		}
+	})
+
 	// A misspelled field must be refused rather than silently dropped: a client
 	// that sends "snapshot_id" should hear about it, not watch its value vanish.
 	t.Run("unknown field", func(t *testing.T) {
