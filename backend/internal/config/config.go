@@ -16,34 +16,39 @@ const minAPITokenLen = 24
 
 // Config holds every setting the server needs.
 type Config struct {
-	Addr            string
-	PostgresDSN     string
-	Neo4jURI        string
-	Neo4jUser       string
-	Neo4jPassword   string
-	APIToken        string
-	CORSOrigins     []string
-	MaxUploadBytes  int64
-	MaxFiles        int
-	ShutdownTimeout time.Duration
-	LogLevel        string
+	Addr           string
+	PostgresDSN    string
+	Neo4jURI       string
+	Neo4jUser      string
+	Neo4jPassword  string
+	APIToken       string
+	CORSOrigins    []string
+	MaxUploadBytes int64
+	MaxFiles       int
+	// MaxContextTables caps how many tables /context lists inline. Past it the
+	// list is dropped rather than trimmed, because a partial catalogue would
+	// read to the agent as a complete one.
+	MaxContextTables int
+	ShutdownTimeout  time.Duration
+	LogLevel         string
 }
 
 // Load builds a Config from the environment, applying defaults that work with
 // the bundled docker-compose stack.
 func Load() (*Config, error) {
 	c := &Config{
-		Addr:            env("APP_ADDR", ":8080"),
-		PostgresDSN:     env("POSTGRES_DSN", "postgres://relviz:relviz@localhost:5432/relviz?sslmode=disable"),
-		Neo4jURI:        env("NEO4J_URI", "bolt://localhost:7687"),
-		Neo4jUser:       env("NEO4J_USER", "neo4j"),
-		Neo4jPassword:   env("NEO4J_PASSWORD", ""),
-		APIToken:        env("API_TOKEN", ""),
-		CORSOrigins:     envList("CORS_ORIGINS", "http://localhost:5173,http://localhost:8081"),
-		MaxUploadBytes:  envInt64("MAX_UPLOAD_BYTES", 64<<20),
-		MaxFiles:        int(envInt64("MAX_FILES", 5000)),
-		ShutdownTimeout: time.Duration(envInt64("SHUTDOWN_TIMEOUT_SECONDS", 20)) * time.Second,
-		LogLevel:        env("LOG_LEVEL", "info"),
+		Addr:             env("APP_ADDR", ":8080"),
+		PostgresDSN:      env("POSTGRES_DSN", "postgres://relviz:relviz@localhost:5432/relviz?sslmode=disable"),
+		Neo4jURI:         env("NEO4J_URI", "bolt://localhost:7687"),
+		Neo4jUser:        env("NEO4J_USER", "neo4j"),
+		Neo4jPassword:    env("NEO4J_PASSWORD", ""),
+		APIToken:         env("API_TOKEN", ""),
+		CORSOrigins:      envList("CORS_ORIGINS", "http://localhost:5173,http://localhost:8081"),
+		MaxUploadBytes:   envInt64("MAX_UPLOAD_BYTES", 64<<20),
+		MaxFiles:         int(envInt64("MAX_FILES", 5000)),
+		MaxContextTables: int(envInt64("MAX_CONTEXT_TABLES", 400)),
+		ShutdownTimeout:  time.Duration(envInt64("SHUTDOWN_TIMEOUT_SECONDS", 20)) * time.Second,
+		LogLevel:         env("LOG_LEVEL", "info"),
 	}
 	if c.Neo4jPassword == "" {
 		return nil, fmt.Errorf("NEO4J_PASSWORD must be set")
