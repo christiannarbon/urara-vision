@@ -18,6 +18,7 @@ Everything the server needs comes from the environment:
 | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:8081` | Unused when served behind the frontend's proxy |
 | `MAX_UPLOAD_BYTES` | `67108864` | 64 MB |
 | `MAX_FILES` | `5000` | |
+| `MAX_CONTEXT_TABLES` | `400` | Most tables `/context` will list before dropping the list and setting `truncated` |
 | `SHUTDOWN_TIMEOUT_SECONDS` | `20` | Grace period for in-flight requests on SIGTERM |
 | `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
 
