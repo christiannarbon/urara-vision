@@ -5,6 +5,7 @@
 package api_test
 
 import (
+	"fmt"
 	"net/http"
 	"reflect"
 	"strings"
@@ -135,6 +136,23 @@ func TestTablesDetailEmptiesAreListsNotNull(t *testing.T) {
 	}
 }
 
+// TestTablesDetailCollapsesRepeatedIDs: a repeated ID is one table's work and
+// one entry in the response, not the same document fetched again.
+func TestTablesDetailCollapsesRepeatedIDs(t *testing.T) {
+	meta := batchMeta()
+	h := newServer(t, meta, batchGraphs())
+
+	ids := strings.Repeat("domain_one/fact_primary,", 7) + "domain_one/fact_primary"
+	body := getBatch(t, h, ids)
+
+	if tables, _ := body["tables"].([]any); len(tables) != 1 {
+		t.Errorf("tables = %d entries, want 1", len(tables))
+	}
+	if len(meta.getTableIDs) != 1 {
+		t.Errorf("store queried %d times for one repeated ID", len(meta.getTableIDs))
+	}
+}
+
 func TestTablesDetailRejectsBadIDCounts(t *testing.T) {
 	h := newServer(t, batchMeta(), batchGraphs())
 
@@ -146,9 +164,11 @@ func TestTablesDetailRejectsBadIDCounts(t *testing.T) {
 	})
 
 	t.Run("too many ids", func(t *testing.T) {
+		// Nine *distinct* IDs: the cap counts the tables actually asked for,
+		// and repeats collapse before it is applied.
 		ids := make([]string, 9)
 		for i := range ids {
-			ids[i] = "domain_one/fact_primary"
+			ids[i] = fmt.Sprintf("domain_one/table_%d", i)
 		}
 		rec := do(t, h, http.MethodGet,
 			"/api/v1/snapshots/s1/tables/detail?ids="+strings.Join(ids, ","), nil, "")
