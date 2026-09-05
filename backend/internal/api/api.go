@@ -58,6 +58,14 @@ type MetaStore interface {
 	Search(ctx context.Context, sid, query string, limit int) ([]postgres.SearchHit, error)
 	ListDiagnostics(ctx context.Context, sid, severity string) ([]model.Diagnostic, error)
 	ListSourceTables(ctx context.Context, sid string) ([]model.SourceTable, error)
+
+	CreateConversation(ctx context.Context, snapshotID, title string) (*model.Conversation, error)
+	ListConversations(ctx context.Context, snapshotID string) ([]model.Conversation, error)
+	GetConversation(ctx context.Context, id string) (*model.Conversation, error)
+	DeleteConversation(ctx context.Context, id string) error
+	AppendMessage(ctx context.Context, conversationID string, m model.Message) (*model.Message, error)
+	ListMessages(ctx context.Context, conversationID string) ([]model.Message, error)
+
 	Ping(ctx context.Context) error
 }
 
@@ -119,6 +127,19 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/search", s.handleSearch)
 			r.Get("/diagnostics", s.handleDiagnostics)
 			r.Get("/sources", s.handleSources)
+		})
+
+		// Conversations sit outside /snapshots/{sid}: a thread is addressed by
+		// its own ID, and the snapshot it belongs to is fixed when it is
+		// created rather than restated on every request.
+		r.Route("/conversations", func(r chi.Router) {
+			r.Post("/", s.handleCreateConversation)
+			r.Get("/", s.handleListConversations)
+			r.Route("/{cid}", func(r chi.Router) {
+				r.Get("/", s.handleGetConversation)
+				r.Delete("/", s.handleDeleteConversation)
+				r.Post("/messages", s.handleAppendMessage)
+			})
 		})
 	})
 
