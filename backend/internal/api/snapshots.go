@@ -17,13 +17,9 @@ func (s *Server) handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetSnapshot(w http.ResponseWriter, r *http.Request) {
-	sid, ok := s.resolveSnapshot(w, r)
-	if !ok {
-		return
-	}
-	snap, err := s.pg.GetSnapshot(r.Context(), sid)
+	snap, err := s.resolveSnapshotMeta(r.Context(), chi.URLParam(r, "sid"))
 	if err != nil {
-		s.fail(w, r, err)
+		s.failSnapshot(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, snap)
