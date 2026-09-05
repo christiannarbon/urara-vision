@@ -15,7 +15,8 @@ package api
 import (
 	"net/http"
 	"time"
-	"unicode/utf8"
+
+	"github.com/go-chi/chi/v5"
 
 	"urara-vision/backend/internal/model"
 )
@@ -63,17 +64,14 @@ type contextTable struct {
 
 // handleContext returns the whole catalogue of a snapshot in one response.
 func (s *Server) handleContext(w http.ResponseWriter, r *http.Request) {
-	sid, ok := s.resolveSnapshot(w, r)
-	if !ok {
-		return
-	}
 	ctx := r.Context()
-
-	snap, err := s.pg.GetSnapshot(ctx, sid)
+	snap, err := s.resolveSnapshotMeta(ctx, chi.URLParam(r, "sid"))
 	if err != nil {
-		s.fail(w, r, err)
+		s.failSnapshot(w, r, err)
 		return
 	}
+	sid := snap.ID
+
 	domains, err := s.pg.ListDomains(ctx, sid)
 	if err != nil {
 		s.fail(w, r, err)
@@ -154,11 +152,20 @@ func (s *Server) handleContext(w http.ResponseWriter, r *http.Request) {
 // byte slice through a multi-byte character produces mojibake rather than a
 // shorter string.
 func truncateRunes(s string, n int) string {
-	if utf8.RuneCountInString(s) <= n {
-		return s
-	}
 	if n <= 0 {
+		if s == "" {
+			return s
+		}
 		return "…"
 	}
-	return string([]rune(s)[:n]) + "…"
+	// One pass, and no []rune allocation: ranging a string yields the byte
+	// offset of each rune, so the nth offset is where to cut.
+	count := 0
+	for i := range s {
+		if count == n {
+			return s[:i] + "…"
+		}
+		count++
+	}
+	return s
 }

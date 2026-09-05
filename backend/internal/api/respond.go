@@ -14,6 +14,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"urara-vision/backend/internal/model"
 	"urara-vision/backend/internal/store/postgres"
 )
 
@@ -43,6 +44,23 @@ func (s *Server) resolveSnapshotID(ctx context.Context, sid string) (string, err
 		return "", err
 	}
 	return id, nil
+}
+
+// resolveSnapshotMeta is resolveSnapshotID for callers that need the snapshot
+// itself as well as its ID, so the row is read once rather than resolved and
+// then fetched again.
+func (s *Server) resolveSnapshotMeta(ctx context.Context, sid string) (*model.Snapshot, error) {
+	if sid != "latest" {
+		return s.pg.GetSnapshot(ctx, sid)
+	}
+	id, err := s.pg.LatestSnapshotID(ctx)
+	if err != nil {
+		if errors.Is(err, postgres.ErrNotFound) {
+			return nil, errNoSnapshots
+		}
+		return nil, err
+	}
+	return s.pg.GetSnapshot(ctx, id)
 }
 
 // failSnapshot maps a resolveSnapshotID error onto a response.

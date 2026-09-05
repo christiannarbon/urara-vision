@@ -26,6 +26,9 @@ func newServerWithMaxFiles(t *testing.T, meta *fakeMeta, graphs *fakeGraphs, max
 		CORSOrigins:    []string{"http://localhost:5173"},
 		MaxUploadBytes: 64 << 20,
 		MaxFiles:       maxFiles,
+		// The production default. Left at zero, every /context response through
+		// this harness would truncate, and a wrong result would look right.
+		MaxContextTables: 400,
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return api.New(cfg, meta, graphs, log).Routes()
