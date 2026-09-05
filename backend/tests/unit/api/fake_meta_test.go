@@ -34,13 +34,23 @@ type fakeMeta struct {
 	diagnostics []model.Diagnostic
 	sources     []model.SourceTable
 
+	conversation  *model.Conversation
+	conversations []model.Conversation
+	messages      []model.Message
+	// appended is what AppendMessage hands back. When it is nil the fake echoes
+	// the message it was given with the next ordinal, which is enough for a
+	// handler test that only cares that the stored row is what is returned.
+	appended *model.Message
+
 	// Errors, keyed by the method they should come out of.
-	errGetSnapshot error
-	errLatest      error
-	errSave        error
-	errDelete      error
-	errList        error
-	errPing        error
+	errGetSnapshot  error
+	errLatest       error
+	errSave         error
+	errDelete       error
+	errList         error
+	errPing         error
+	errConversation error
+	errAppend       error
 
 	// Recorded calls.
 	saved         *model.Model
@@ -51,6 +61,12 @@ type fakeMeta struct {
 	diagsSeverity string
 	getTableID    string
 	getTableIDs   []string
+	createdFor    string
+	createdTitle  string
+	listedFor     string
+	convID        string
+	appendedTo    string
+	appendedMsg   model.Message
 }
 
 func (f *fakeMeta) SaveSnapshot(_ context.Context, m *model.Model) error {
@@ -125,3 +141,53 @@ func (f *fakeMeta) ListSourceTables(context.Context, string) ([]model.SourceTabl
 }
 
 func (f *fakeMeta) Ping(context.Context) error { return f.errPing }
+
+func (f *fakeMeta) CreateConversation(_ context.Context, snapshotID, title string) (*model.Conversation, error) {
+	f.createdFor, f.createdTitle = snapshotID, title
+	if f.errConversation != nil {
+		return nil, f.errConversation
+	}
+	if f.conversation != nil {
+		return f.conversation, nil
+	}
+	return &model.Conversation{ID: "conv-1", SnapshotID: snapshotID, Title: title}, nil
+}
+
+func (f *fakeMeta) ListConversations(_ context.Context, snapshotID string) ([]model.Conversation, error) {
+	f.listedFor = snapshotID
+	return f.conversations, f.errConversation
+}
+
+func (f *fakeMeta) GetConversation(_ context.Context, id string) (*model.Conversation, error) {
+	f.convID = id
+	if f.errConversation != nil {
+		return nil, f.errConversation
+	}
+	if f.conversation == nil {
+		return nil, postgres.ErrNotFound
+	}
+	return f.conversation, nil
+}
+
+func (f *fakeMeta) DeleteConversation(_ context.Context, id string) error {
+	f.convID = id
+	return f.errConversation
+}
+
+func (f *fakeMeta) AppendMessage(_ context.Context, conversationID string, m model.Message) (*model.Message, error) {
+	f.appendedTo, f.appendedMsg = conversationID, m
+	if f.errAppend != nil {
+		return nil, f.errAppend
+	}
+	if f.appended != nil {
+		return f.appended, nil
+	}
+	stored := m
+	stored.Ordinal = len(f.messages)
+	return &stored, nil
+}
+
+func (f *fakeMeta) ListMessages(_ context.Context, conversationID string) ([]model.Message, error) {
+	f.convID = conversationID
+	return f.messages, f.errConversation
+}
