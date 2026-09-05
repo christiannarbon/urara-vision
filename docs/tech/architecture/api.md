@@ -11,8 +11,10 @@ Every read route accepts `latest` in place of a snapshot ID.
 | `GET` | `/api/v1/snapshots` | List snapshots |
 | `GET` | `/api/v1/snapshots/{sid}` | Snapshot metadata and stats |
 | `DELETE` | `/api/v1/snapshots/{sid}` | Delete a snapshot from both stores |
+| `GET` | `/api/v1/snapshots/{sid}/context` | Compact catalogue of a whole snapshot |
 | `GET` | `/api/v1/snapshots/{sid}/domains` | Domains, with descriptions and mermaid |
 | `GET` | `/api/v1/snapshots/{sid}/tables` | Table summaries (`?domain=`) |
+| `GET` | `/api/v1/snapshots/{sid}/tables/detail?ids=` | Several table documents in one call |
 | `GET` | `/api/v1/snapshots/{sid}/table?id=` | One table in full, plus referrers and lineage |
 | `GET` | `/api/v1/snapshots/{sid}/graph` | Node-link graph (`?domain=&kind=&sources=&crossDomainOnly=`) |
 | `GET` | `/api/v1/snapshots/{sid}/neighborhood?table=` | Subgraph within `?depth=` hops |
@@ -21,6 +23,11 @@ Every read route accepts `latest` in place of a snapshot ID.
 | `GET` | `/api/v1/snapshots/{sid}/search?q=` | Full-text over tables and columns |
 | `GET` | `/api/v1/snapshots/{sid}/diagnostics` | Documentation problems (`?severity=`) |
 | `GET` | `/api/v1/snapshots/{sid}/sources` | Upstream source models by reference count |
+| `POST` | `/api/v1/conversations` | Start a conversation about a snapshot |
+| `GET` | `/api/v1/conversations?snapshot=` | Conversations for a snapshot |
+| `GET` | `/api/v1/conversations/{cid}` | One conversation with its messages |
+| `DELETE` | `/api/v1/conversations/{cid}` | Delete a conversation |
+| `POST` | `/api/v1/conversations/{cid}/messages` | Append a turn |
 | `GET` | `/healthz`, `/readyz` | Liveness; readiness includes both datastores |
 
 Table IDs are `domain/table` and contain a slash, so they travel as a query
@@ -74,6 +81,63 @@ input the server takes; they are normalised before anything else looks at them.
 is what the canvas consumes directly. Nodes carry their role, domain, column
 count and degree; links carry both columns, the cardinality and whether they
 cross a domain boundary.
+
+## The context endpoint
+
+`/context` is the whole of a snapshot in one response: its metadata and stats,
+every domain, every table, and a count of diagnostics by severity. It exists to
+be read in full before anything else is asked — a catalogue small enough to
+prime a prompt with, so a caller can go straight to the table it wants instead
+of paging the lists to find out what exists.
+
+```bash
+curl 'localhost:8080/api/v1/snapshots/latest/context'
+```
+
+Being bounded is the point, so prose is cut to fit: domain descriptions to 400
+characters and table grains to 200, counted in characters rather than bytes so
+the bilingual corpora survive it. Past `MAX_CONTEXT_TABLES` tables the list is
+dropped entirely and `truncated` is `true` — `tables` comes back empty rather
+than shortened, because a partial catalogue would read as a complete one and
+send the caller looking for tables it had simply not been shown. Domains are
+never dropped: they are few, and they are what is left to navigate by.
+
+All three severity keys — `error`, `warning`, `info` — are always present, at
+zero if need be, so nothing has to distinguish an absent key from a count of
+none.
+
+## Batch table detail
+
+`/tables/detail?ids=` returns up to eight table documents in one call, each
+entry identical to what `/table?id=` returns for the same ID. Fetching four
+tables one at a time costs four round trips; this costs one.
+
+Eight is the cap because a caller wanting more than that wants the table list,
+not the documents. Asking for none, or for more than eight, is a `400`.
+
+An ID that does not exist is not an error. It comes back in `missing` alongside
+the tables that were found, and the status is still `200`: a caller that guessed
+an ID wrong should get a usable answer telling it which ones missed, rather than
+a failed call it has to unpick. Both `tables` and `missing` are always lists,
+`[]` rather than `null`, so neither needs a guard before it is read.
+
+## Conversations
+
+A conversation is a thread about one snapshot. It is addressed by its own ID
+rather than under `/snapshots/{sid}`, because the snapshot it concerns is
+settled once, when it is created.
+
+That is also where `latest` is resolved. `POST /api/v1/conversations` accepts
+the alias in `snapshotId` and stores the concrete ID it resolved to, so a later
+ingest does not change what an existing conversation is about — a thread pinned
+to whatever was ingested most recently would silently change subject, and its
+earlier answers would then cite tables from a different model.
+
+Turns are appended one at a time and their order is the database's to decide:
+`POST /api/v1/conversations/{cid}/messages` returns the stored message with the
+`ordinal` it was given. A turn's `role` must be `user`, `assistant` or `system`,
+and empty content is refused; both are `400` naming the problem. `citations` is
+the table IDs an answer drew on, and comes back as `[]` when it drew on none.
 
 ## Errors
 
