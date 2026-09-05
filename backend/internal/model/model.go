@@ -182,3 +182,48 @@ type Model struct {
 	SourceTables []SourceTable `json:"sourceTables"`
 	Diagnostics  []Diagnostic  `json:"diagnostics"`
 }
+
+// Conversation is one chat thread about a snapshot.
+//
+// The snapshot ID is concrete, never the "latest" alias: a thread pinned to
+// whatever was ingested most recently would silently change subject when
+// someone re-ingests, and its earlier answers would then cite tables from a
+// different model.
+type Conversation struct {
+	ID         string    `json:"id"`
+	SnapshotID string    `json:"snapshotId"`
+	Title      string    `json:"title"`
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+	// Messages is populated when a single conversation is fetched, and left
+	// empty when they are listed.
+	Messages []Message `json:"messages,omitempty"`
+}
+
+// Message is one turn in a conversation.
+type Message struct {
+	Ordinal int    `json:"ordinal"`
+	Role    string `json:"role"`
+	Content string `json:"content"`
+	// Citations are the table IDs the answer drew on. They are computed from
+	// what the agent actually retrieved rather than written by the model, which
+	// is what makes them checkable.
+	Citations []string `json:"citations"`
+	// Meta is what the turn cost -- model, token counts, tool calls, latency.
+	// Kept for evaluation rather than for display.
+	Meta      map[string]any `json:"meta,omitempty"`
+	CreatedAt time.Time      `json:"createdAt"`
+}
+
+// Message roles. A role outside this set is refused by the API rather than by
+// the database, so the caller gets a message it can act on.
+const (
+	RoleUser      = "user"
+	RoleAssistant = "assistant"
+	RoleSystem    = "system"
+)
+
+// ValidRole reports whether a role is one the store will accept.
+func ValidRole(r string) bool {
+	return r == RoleUser || r == RoleAssistant || r == RoleSystem
+}
