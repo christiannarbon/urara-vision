@@ -21,7 +21,8 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	// Clear everything else so an inherited value cannot make this pass.
 	for _, k := range []string{
 		"APP_ADDR", "POSTGRES_DSN", "NEO4J_URI", "NEO4J_USER", "CORS_ORIGINS",
-		"MAX_UPLOAD_BYTES", "MAX_FILES", "SHUTDOWN_TIMEOUT_SECONDS", "LOG_LEVEL",
+		"MAX_UPLOAD_BYTES", "MAX_FILES", "MAX_CONTEXT_TABLES",
+		"SHUTDOWN_TIMEOUT_SECONDS", "LOG_LEVEL",
 	} {
 		t.Setenv(k, "")
 	}
@@ -42,6 +43,9 @@ func TestLoadAppliesDefaults(t *testing.T) {
 	if c.MaxFiles != 5000 {
 		t.Errorf("MaxFiles = %d", c.MaxFiles)
 	}
+	if c.MaxContextTables != 400 {
+		t.Errorf("MaxContextTables = %d", c.MaxContextTables)
+	}
 	if c.ShutdownTimeout != 20*time.Second {
 		t.Errorf("ShutdownTimeout = %s", c.ShutdownTimeout)
 	}
@@ -59,6 +63,7 @@ func TestLoadReadsOverrides(t *testing.T) {
 	t.Setenv("POSTGRES_DSN", "postgres://u:p@db:5432/x?sslmode=disable")
 	t.Setenv("MAX_FILES", "12")
 	t.Setenv("MAX_UPLOAD_BYTES", "2048")
+	t.Setenv("MAX_CONTEXT_TABLES", "25")
 	t.Setenv("SHUTDOWN_TIMEOUT_SECONDS", "5")
 	t.Setenv("LOG_LEVEL", "debug")
 
@@ -74,6 +79,9 @@ func TestLoadReadsOverrides(t *testing.T) {
 	}
 	if c.MaxFiles != 12 || c.MaxUploadBytes != 2048 {
 		t.Errorf("limits = %d files / %d bytes", c.MaxFiles, c.MaxUploadBytes)
+	}
+	if c.MaxContextTables != 25 {
+		t.Errorf("MaxContextTables = %d", c.MaxContextTables)
 	}
 	if c.ShutdownTimeout != 5*time.Second {
 		t.Errorf("ShutdownTimeout = %s", c.ShutdownTimeout)

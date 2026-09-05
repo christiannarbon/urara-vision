@@ -119,6 +119,7 @@ data:
   LOG_LEVEL: "info"
   MAX_UPLOAD_BYTES: "67108864"
   MAX_FILES: "5000"
+  MAX_CONTEXT_TABLES: "400"
   # The frontend proxies /api to this service, so requests arrive same-origin
   # and CORS never applies. The list is kept for direct-access debugging.
   CORS_ORIGINS: "http://localhost:5173,http://localhost:8081"

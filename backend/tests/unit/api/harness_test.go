@@ -31,6 +31,20 @@ func newServerWithMaxFiles(t *testing.T, meta *fakeMeta, graphs *fakeGraphs, max
 	return api.New(cfg, meta, graphs, log).Routes()
 }
 
+// newServerWithContextCap is newServer with the /context table cap lowered, so
+// truncation can be tested without building hundreds of tables.
+func newServerWithContextCap(t *testing.T, meta *fakeMeta, graphs *fakeGraphs, maxTables int) http.Handler {
+	t.Helper()
+	cfg := &config.Config{
+		CORSOrigins:      []string{"http://localhost:5173"},
+		MaxUploadBytes:   64 << 20,
+		MaxFiles:         100,
+		MaxContextTables: maxTables,
+	}
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	return api.New(cfg, meta, graphs, log).Routes()
+}
+
 // do issues a request against the router and returns the recorder.
 func do(t *testing.T, h http.Handler, method, target string, body io.Reader, contentType string) *httptest.ResponseRecorder {
 	t.Helper()
