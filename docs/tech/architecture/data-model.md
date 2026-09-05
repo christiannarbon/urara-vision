@@ -8,8 +8,8 @@ instance without isolating by database.
 
 ## Postgres — the system of record
 
-Eight tables, all cascading from `snapshots`, so deleting a snapshot is one
-`DELETE` and the rest follows:
+Ten tables, all cascading from `snapshots` — directly, or by way of
+`conversations` — so deleting a snapshot is one `DELETE` and the rest follows:
 
 | Table | Holds | Key |
 |---|---|---|
@@ -21,6 +21,8 @@ Eight tables, all cascading from `snapshots`, so deleting a snapshot is one
 | `column_lineage` | Column, source table, source column, notes, derived flag | `(snapshot_id, table_id, ordinal)` |
 | `source_tables` | Canonicalised upstream models with a reference count | `(snapshot_id, id)` |
 | `diagnostics` | Severity, code, message and where it points | `(snapshot_id, ordinal)` |
+| `conversations` | One chat thread about a snapshot: title, creation and last-touched times | `id` |
+| `conversation_messages` | One turn: role, content, the table IDs it cited, and what it cost | `(conversation_id, ordinal)` |
 
 The schema is `CREATE TABLE IF NOT EXISTS` throughout and applied on every
 start, so there is no migration step to forget and no state where the server is
@@ -60,6 +62,39 @@ Queries are prefix queries (`prim:*`), built by splitting the user's text on
 anything that is not a letter, digit or underscore, so the overlay can search
 as the reader types. Text with no usable characters compiles to a term that
 matches nothing rather than erroring.
+
+### Conversations
+
+A conversation belongs to the snapshot it is about and does not outlive it.
+Every citation a transcript carries is a table ID, and once the snapshot is gone
+those point at nothing: a transcript full of dead links is worse than no
+transcript, so `conversations.snapshot_id` cascades and the messages cascade
+behind it. The snapshot ID stored is always a concrete one — the `latest` alias
+is resolved when the conversation is created, never at read time.
+
+Message ordinals are assigned by the database, inside the same statement that
+stores the row:
+
+```sql
+INSERT INTO conversation_messages (conversation_id, ordinal, ...)
+SELECT $1, coalesce(max(ordinal), -1) + 1, ...
+  FROM conversation_messages WHERE conversation_id = $1
+```
+
+Reading the maximum into the application and writing it back would be a race:
+two appends to one conversation would see the same number, and one would be lost
+or would collide. Computing it in the `INSERT` narrows that to the window
+between the `SELECT` and the write, and the primary key on
+`(conversation_id, ordinal)` closes it — a collision becomes a unique violation
+rather than a duplicate ordinal, and the loser is retried once, by which point
+the winner's row is visible. The append also bumps the conversation's
+`updated_at` in the same transaction, so a stored turn always leaves its thread
+looking touched.
+
+`citations` and `meta` are `jsonb` defaulting to `[]` and `{}`, never null:
+"cited nothing" is a real answer and has to survive storage as one. `role` has
+no `CHECK` constraint — it is validated in the API instead, so an invalid role
+is a `400` with a message rather than a driver error a handler has to interpret.
 
 ## Neo4j — the graph projection
 
