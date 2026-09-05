@@ -94,6 +94,22 @@ func (s *Server) tableDetail(ctx context.Context, sid, id string) (any, error) {
 	}, nil
 }
 
+// dedupeIDs drops repeated IDs, keeping first-seen order. A repeated ID would
+// otherwise be looked up again in full and appear in the response more than
+// once, which is work and payload the caller cannot have wanted.
+func dedupeIDs(ids []string) []string {
+	seen := make(map[string]bool, len(ids))
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out
+}
+
 // handleTablesDetail returns several table details in one call. In a tool loop
 // four tables would otherwise cost four round trips and four model turns; each
 // entry here is byte-identical to what /table?id= returns for the same ID.
@@ -102,7 +118,7 @@ func (s *Server) handleTablesDetail(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ids := splitCSV(r.URL.Query().Get("ids"))
+	ids := dedupeIDs(splitCSV(r.URL.Query().Get("ids")))
 	if len(ids) == 0 {
 		s.badRequest(w, "query parameter \"ids\" is required")
 		return
