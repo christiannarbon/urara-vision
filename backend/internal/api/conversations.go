@@ -50,6 +50,11 @@ func decodeBody(w http.ResponseWriter, r *http.Request, dst any) error {
 	if err := dec.Decode(dst); err != nil {
 		return fmt.Errorf("invalid JSON body: %w", err)
 	}
+	// One JSON value and nothing else. A second object after the first is a
+	// client bug, and accepting it would silently discard whatever it meant.
+	if dec.More() {
+		return errors.New("invalid JSON body: unexpected data after the top-level object")
+	}
 	return nil
 }
 
@@ -104,11 +109,21 @@ func (s *Server) handleListConversations(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]any{"conversations": convs})
 }
 
+// failConversation maps a store error onto a response, naming the conversation
+// rather than leaving a bare "not found" the caller has to interpret.
+func (s *Server) failConversation(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, postgres.ErrNotFound) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "conversation not found"})
+		return
+	}
+	s.fail(w, r, err)
+}
+
 // handleGetConversation returns one thread with its full transcript.
 func (s *Server) handleGetConversation(w http.ResponseWriter, r *http.Request) {
 	conv, err := s.pg.GetConversation(r.Context(), chi.URLParam(r, "cid"))
 	if err != nil {
-		s.fail(w, r, err)
+		s.failConversation(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, conv)
@@ -117,7 +132,7 @@ func (s *Server) handleGetConversation(w http.ResponseWriter, r *http.Request) {
 // handleDeleteConversation removes a thread and its messages.
 func (s *Server) handleDeleteConversation(w http.ResponseWriter, r *http.Request) {
 	if err := s.pg.DeleteConversation(r.Context(), chi.URLParam(r, "cid")); err != nil {
-		s.fail(w, r, err)
+		s.failConversation(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -151,11 +166,7 @@ func (s *Server) handleAppendMessage(w http.ResponseWriter, r *http.Request) {
 		Meta:      req.Meta,
 	})
 	if err != nil {
-		if errors.Is(err, postgres.ErrNotFound) {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "conversation not found"})
-			return
-		}
-		s.fail(w, r, err)
+		s.failConversation(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, stored)
