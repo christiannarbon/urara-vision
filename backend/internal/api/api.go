@@ -110,6 +110,7 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/context", s.handleContext)
 			r.Get("/domains", s.handleListDomains)
 			r.Get("/tables", s.handleListTables)
+			r.Get("/tables/detail", s.handleTablesDetail)
 			r.Get("/table", s.handleGetTable)
 			r.Get("/graph", s.handleGraph)
 			r.Get("/neighborhood", s.handleNeighborhood)
