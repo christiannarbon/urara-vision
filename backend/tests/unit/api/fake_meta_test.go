@@ -19,12 +19,16 @@ var errBoom = errors.New("boom")
 // Each field is a hook, so a test only fills in the calls it cares about and
 // any unexpected call returns the zero value rather than panicking.
 type fakeMeta struct {
-	snapshots   []model.Snapshot
-	snapshot    *model.Snapshot
-	latest      string
-	domains     []model.Domain
-	tables      []postgres.TableSummary
-	table       *model.Table
+	snapshots []model.Snapshot
+	snapshot  *model.Snapshot
+	latest    string
+	domains   []model.Domain
+	tables    []postgres.TableSummary
+	table     *model.Table
+	// tablesByID lets one fake answer for several IDs, which the batch endpoint
+	// needs. When it is set it replaces table entirely: an ID not in the map is
+	// ErrNotFound.
+	tablesByID  map[string]*model.Table
 	incoming    []postgres.Referrer
 	hits        []postgres.SearchHit
 	diagnostics []model.Diagnostic
@@ -46,6 +50,7 @@ type fakeMeta struct {
 	searchLimit   int
 	diagsSeverity string
 	getTableID    string
+	getTableIDs   []string
 }
 
 func (f *fakeMeta) SaveSnapshot(_ context.Context, m *model.Model) error {
@@ -87,6 +92,14 @@ func (f *fakeMeta) ListTables(_ context.Context, _, domainID string) ([]postgres
 
 func (f *fakeMeta) GetTable(_ context.Context, _, tableID string) (*model.Table, error) {
 	f.getTableID = tableID
+	f.getTableIDs = append(f.getTableIDs, tableID)
+	if f.tablesByID != nil {
+		t, ok := f.tablesByID[tableID]
+		if !ok {
+			return nil, postgres.ErrNotFound
+		}
+		return t, nil
+	}
 	if f.table == nil {
 		return nil, postgres.ErrNotFound
 	}
