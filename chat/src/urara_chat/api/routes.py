@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 
 from urara_chat.api.schemas import ToolInvokeRequest
@@ -48,7 +49,7 @@ async def healthz() -> dict[str, str]:
 
 
 @router.get("/readyz")
-async def readyz(request: Request) -> dict[str, str]:
+async def readyz(request: Request) -> Response:
     """Readiness. This one does check the backend.
 
     The service can answer nothing useful without it, so a pod that cannot
@@ -57,10 +58,13 @@ async def readyz(request: Request) -> dict[str, str]:
     """
     client = get_client(request)
     if await client.health():
-        return {"status": "ok"}
-    raise HTTPException(
+        return JSONResponse({"status": "ok"})
+    # A JSONResponse rather than an HTTPException: raising would nest the body
+    # under "detail", and the shape a probe and an operator read should be the
+    # one the route documents.
+    return JSONResponse(
         status_code=503,
-        detail={"status": "unready", "reason": "backend is not reachable or not ready"},
+        content={"status": "unready", "reason": "backend is not reachable or not ready"},
     )
 
 
