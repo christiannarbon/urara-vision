@@ -80,8 +80,13 @@ def snapshot_id(backend_url: str, auth_headers: dict[str, str]) -> Iterator[str]
             yield sid
         finally:
             # Deleted whatever happened above, so a failing test does not leave
-            # a snapshot behind for the next run to trip over.
-            http.delete(f"/api/v1/snapshots/{sid}")
+            # a snapshot behind for the next run to trip over -- and the outcome
+            # is checked, because a silent failure here is exactly the leak the
+            # teardown exists to prevent.
+            deleted = http.delete(f"/api/v1/snapshots/{sid}")
+            assert deleted.status_code in (204, 404), (
+                f"failed to delete test snapshot {sid}: {deleted.status_code} {deleted.text[:200]}"
+            )
 
 
 @pytest.fixture
