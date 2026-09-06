@@ -19,11 +19,13 @@ import httpx
 
 from urara_chat.backend.errors import BackendError, BackendNotFound
 from urara_chat.backend.models import (
+    Conversation,
     Diagnostic,
     Domain,
     Graph,
     JoinPath,
     LineageEntry,
+    Message,
     SearchHit,
     Snapshot,
     SnapshotContext,
@@ -69,6 +71,23 @@ class BackendClient:
         if response.status_code >= 400:
             raise self._error(response)
         return response.json()
+
+    async def _post(self, path: str, body: dict[str, Any]) -> Any:
+        """Issue a POST and return decoded JSON, or raise."""
+        response = await self._client.post(path, json=body)
+        if response.status_code >= 400:
+            raise self._error(response)
+        return response.json()
+
+    async def _delete(self, path: str) -> None:
+        """Issue a DELETE, raising on failure.
+
+        Nothing is decoded: a successful delete answers 204 with no body, and
+        asking for JSON that is not there would turn a success into an error.
+        """
+        response = await self._client.delete(path)
+        if response.status_code >= 400:
+            raise self._error(response)
 
     @staticmethod
     def _error(response: httpx.Response) -> BackendError:
@@ -191,3 +210,59 @@ class BackendClient:
     async def list_sources(self, sid: str) -> list[SourceTable]:
         data = await self._get(f"{_API}/snapshots/{sid}/sources")
         return [SourceTable.model_validate(s) for s in data["sources"]]
+
+    # --- conversations ------------------------------------------------------
+    #
+    # The only methods in this service that cause a write, and every one goes
+    # through the Go API. A conversation ID is a UUID and carries no slash, so
+    # unlike a table ID it is safe as a path segment.
+
+    async def create_conversation(self, snapshot_id: str, title: str = "") -> Conversation:
+        """Start a thread about one snapshot.
+
+        `snapshot_id` may be "latest". It is passed through untouched: the
+        backend resolves the alias and stores the concrete ID it resolved to, so
+        resolving here as well would put a second opinion in the system about
+        which snapshot a thread is pinned to.
+        """
+        data = await self._post(
+            f"{_API}/conversations", {"snapshotId": snapshot_id, "title": title}
+        )
+        return Conversation.model_validate(data)
+
+    async def list_conversations(self, snapshot_id: str) -> list[Conversation]:
+        data = await self._get(f"{_API}/conversations", {"snapshot": snapshot_id})
+        return [Conversation.model_validate(c) for c in data["conversations"]]
+
+    async def get_conversation(self, cid: str) -> Conversation:
+        """One thread with its full transcript."""
+        return Conversation.model_validate(await self._get(f"{_API}/conversations/{cid}"))
+
+    async def delete_conversation(self, cid: str) -> None:
+        await self._delete(f"{_API}/conversations/{cid}")
+
+    async def append_message(
+        self,
+        cid: str,
+        role: str,
+        content: str,
+        citations: list[str] | None = None,
+        meta: dict[str, Any] | None = None,
+    ) -> Message:
+        """Add one turn, returning it as stored.
+
+        The ordinal is the database's to assign, so what comes back is the
+        stored row rather than what was sent. `citations` is always a list:
+        "drew on no tables" is a real answer, and sending null or omitting the
+        key would make it indistinguishable from not having been asked.
+        """
+        body: dict[str, Any] = {
+            "role": role,
+            "content": content,
+            "citations": citations if citations is not None else [],
+        }
+        if meta is not None:
+            body["meta"] = meta
+
+        data = await self._post(f"{_API}/conversations/{cid}/messages", body)
+        return Message.model_validate(data)

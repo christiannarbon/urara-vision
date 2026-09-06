@@ -318,3 +318,190 @@ async def test_get_table_returns_the_captured_fixture(client: BackendClient) -> 
     assert detail.table.id == TABLE_ID
     assert detail.table.grain == "One row per order."
     assert detail.table.columns
+
+
+class TestCreateConversation:
+    @respx.mock
+    async def test_posts_the_documented_body(self, client: BackendClient) -> None:
+        route = respx.post(f"{BASE}/api/v1/conversations").mock(
+            return_value=httpx.Response(
+                201, json={"id": "conv-1", "snapshotId": SID, "title": "why"}
+            )
+        )
+        conv = await client.create_conversation(SID, title="why")
+
+        assert json.loads(route.calls.last.request.content) == {
+            "snapshotId": SID,
+            "title": "why",
+        }
+        assert conv.id == "conv-1"
+
+    @respx.mock
+    async def test_latest_is_passed_through_untouched(self, client: BackendClient) -> None:
+        """The backend resolves the alias and stores the concrete ID. Resolving
+        here as well would put a second opinion in the system about which
+        snapshot a thread is pinned to."""
+        route = respx.post(f"{BASE}/api/v1/conversations").mock(
+            return_value=httpx.Response(
+                201, json={"id": "conv-1", "snapshotId": "resolved-id", "title": ""}
+            )
+        )
+        conv = await client.create_conversation("latest")
+
+        assert json.loads(route.calls.last.request.content)["snapshotId"] == "latest"
+        # No GET went out to resolve it first.
+        assert len(respx.calls) == 1
+        assert conv.snapshot_id == "resolved-id"
+
+    @respx.mock
+    async def test_an_unknown_snapshot_raises_not_found(self, client: BackendClient) -> None:
+        respx.post(f"{BASE}/api/v1/conversations").mock(
+            return_value=httpx.Response(404, json={"error": "snapshot not found"})
+        )
+        with pytest.raises(BackendNotFound):
+            await client.create_conversation("nope")
+
+
+class TestListAndGetConversations:
+    @respx.mock
+    async def test_list_sends_the_snapshot_parameter(self, client: BackendClient) -> None:
+        route = respx.get(f"{BASE}/api/v1/conversations").mock(
+            return_value=httpx.Response(200, json={"conversations": [{"id": "conv-1"}]})
+        )
+        convs = await client.list_conversations(SID)
+
+        assert query(route.calls.last.request)["snapshot"] == [SID]
+        assert [c.id for c in convs] == ["conv-1"]
+
+    @respx.mock
+    async def test_get_returns_the_transcript(self, client: BackendClient) -> None:
+        raw = json.loads((Path(__file__).parent / "fixtures" / "conversation.json").read_text())
+        respx.get(f"{BASE}/api/v1/conversations/conv-1").mock(
+            return_value=httpx.Response(200, json=raw)
+        )
+        conv = await client.get_conversation("conv-1")
+
+        assert conv.messages
+        assert conv.messages[0].ordinal == 0
+
+    @respx.mock
+    async def test_get_unknown_raises_not_found(self, client: BackendClient) -> None:
+        respx.get(f"{BASE}/api/v1/conversations/nope").mock(
+            return_value=httpx.Response(404, json={"error": "conversation not found"})
+        )
+        with pytest.raises(BackendNotFound):
+            await client.get_conversation("nope")
+
+
+class TestDeleteConversation:
+    @respx.mock
+    async def test_204_is_success_and_returns_none(self, client: BackendClient) -> None:
+        """A successful delete has no body, so nothing may try to decode one."""
+        route = respx.delete(f"{BASE}/api/v1/conversations/conv-1").mock(
+            return_value=httpx.Response(204)
+        )
+        assert await client.delete_conversation("conv-1") is None
+        assert route.called
+
+    @respx.mock
+    async def test_404_raises_not_found(self, client: BackendClient) -> None:
+        respx.delete(f"{BASE}/api/v1/conversations/nope").mock(
+            return_value=httpx.Response(404, json={"error": "conversation not found"})
+        )
+        with pytest.raises(BackendNotFound):
+            await client.delete_conversation("nope")
+
+
+class TestAppendMessage:
+    @respx.mock
+    async def test_returns_the_server_assigned_ordinal(self, client: BackendClient) -> None:
+        """The ordinal is the database's to assign, so what comes back is the
+        stored row rather than what was sent."""
+        respx.post(f"{BASE}/api/v1/conversations/conv-1/messages").mock(
+            return_value=httpx.Response(
+                201,
+                json={"ordinal": 7, "role": "user", "content": "hi", "citations": []},
+            )
+        )
+        msg = await client.append_message("conv-1", "user", "hi")
+        assert msg.ordinal == 7
+        assert msg.role == "user"
+
+    @respx.mock
+    async def test_citations_are_sent_as_a_list_when_none(self, client: BackendClient) -> None:
+        """Never null, never an absent key: "cited nothing" has to be
+        distinguishable from "was not asked"."""
+        route = respx.post(f"{BASE}/api/v1/conversations/conv-1/messages").mock(
+            return_value=httpx.Response(
+                201, json={"ordinal": 0, "role": "user", "content": "hi", "citations": []}
+            )
+        )
+        await client.append_message("conv-1", "user", "hi")
+
+        body = json.loads(route.calls.last.request.content)
+        assert "citations" in body
+        assert body["citations"] == []
+        assert body["citations"] is not None
+
+    @respx.mock
+    async def test_citations_and_meta_survive(self, client: BackendClient) -> None:
+        route = respx.post(f"{BASE}/api/v1/conversations/conv-1/messages").mock(
+            return_value=httpx.Response(
+                201,
+                json={
+                    "ordinal": 1,
+                    "role": "assistant",
+                    "content": "two of them",
+                    "citations": [TABLE_ID],
+                },
+            )
+        )
+        msg = await client.append_message(
+            "conv-1",
+            "assistant",
+            "two of them",
+            citations=[TABLE_ID],
+            meta={"tokens": 10},
+        )
+
+        body = json.loads(route.calls.last.request.content)
+        assert body["citations"] == [TABLE_ID]
+        assert body["meta"] == {"tokens": 10}
+        assert msg.citations == [TABLE_ID]
+
+    @respx.mock
+    async def test_meta_is_omitted_rather_than_sent_as_null(self, client: BackendClient) -> None:
+        """The backend rejects unknown fields but accepts an absent one; sending
+        null would be a value it has to interpret."""
+        route = respx.post(f"{BASE}/api/v1/conversations/conv-1/messages").mock(
+            return_value=httpx.Response(
+                201, json={"ordinal": 0, "role": "user", "content": "hi", "citations": []}
+            )
+        )
+        await client.append_message("conv-1", "user", "hi")
+        assert "meta" not in json.loads(route.calls.last.request.content)
+
+    @respx.mock
+    async def test_unknown_conversation_raises_not_found(self, client: BackendClient) -> None:
+        respx.post(f"{BASE}/api/v1/conversations/nope/messages").mock(
+            return_value=httpx.Response(404, json={"error": "conversation not found"})
+        )
+        with pytest.raises(BackendNotFound):
+            await client.append_message("nope", "user", "hi")
+
+    @respx.mock
+    async def test_an_invalid_role_surfaces_the_backends_message(
+        self, client: BackendClient
+    ) -> None:
+        """Role validation lives in the Go handler; the client's job is to carry
+        the reason back rather than to duplicate the rule."""
+        respx.post(f"{BASE}/api/v1/conversations/conv-1/messages").mock(
+            return_value=httpx.Response(
+                400,
+                json={"error": '"robot" is not a valid role; expected one of "user", ...'},
+            )
+        )
+        with pytest.raises(BackendError) as caught:
+            await client.append_message("conv-1", "robot", "hi")
+        assert "not a valid role" in caught.value.message
+        assert caught.value.status == 400
