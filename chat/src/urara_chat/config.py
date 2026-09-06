@@ -80,6 +80,26 @@ class Settings(BaseSettings):
     vertex_project: str = ""
     vertex_location: str = "us-central1"
 
+    @field_validator("google_api_key")
+    @classmethod
+    def _strip_key(cls, v: SecretStr) -> SecretStr:
+        """Trim the credential before anything judges whether it is present.
+
+        A trailing newline from `export GOOGLE_API_KEY=$(cat key.txt)` is the
+        common case, and whitespace is otherwise truthy: the check below would
+        pass and the provider would answer with a puzzling 400.
+
+        This unwraps the secret, which the factory is otherwise the only place
+        to do. The value never leaves the validator -- it is stripped and
+        re-wrapped -- and `str(v)` would return the mask and strip nothing.
+        """
+        return SecretStr(v.get_secret_value().strip())
+
+    @field_validator("vertex_project", "vertex_location")
+    @classmethod
+    def _strip_identifier(cls, v: str) -> str:
+        return v.strip()
+
     @model_validator(mode="after")
     def _credentials_match_the_provider(self) -> Settings:
         """Refuse to start without the credential the chosen provider needs.
