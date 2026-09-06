@@ -12,9 +12,9 @@ import json
 import logging
 import sys
 from functools import lru_cache
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import field_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # The levels the Go server accepts, mapped to Python's. Anything else falls
@@ -31,6 +31,17 @@ _DEFAULT_LOG_LEVEL = "info"
 # A container listens on every interface; the pod's NetworkPolicy is what
 # narrows who may reach it.
 _DEFAULT_HOST = "0.0.0.0"
+
+
+class ConfigurationError(RuntimeError):
+    """Settings are invalid, carrying only the reasons.
+
+    Raised instead of letting pydantic's own ValidationError escape. That error
+    embeds the input it was given, and pydantic elides the *middle* of a long
+    value rather than the ends -- so a long API key leaves its tail in the
+    message, and re-raising puts that tail in the container log on every restart
+    of a crash loop.
+    """
 
 
 class Settings(BaseSettings):
@@ -54,6 +65,41 @@ class Settings(BaseSettings):
     backend_timeout_seconds: float = 30.0
     log_level: str = _DEFAULT_LOG_LEVEL
     app_addr: str = ":8090"
+
+    # A Literal rather than a string plus a check: an unknown provider is then
+    # refused by the type, in one place, with a message pydantic writes.
+    llm_provider: Literal["gemini-studio", "vertex"] = "gemini-studio"
+    llm_model: str = "gemini-2.5-flash"
+    llm_temperature: float = 0.2
+    llm_max_output_tokens: int = 2048
+    llm_timeout_seconds: float = 60.0
+
+    # SecretStr so redaction is the default rather than something to remember at
+    # every point the settings are printed. No credential has a default value.
+    google_api_key: SecretStr = SecretStr("")
+    vertex_project: str = ""
+    vertex_location: str = "us-central1"
+
+    @model_validator(mode="after")
+    def _credentials_match_the_provider(self) -> Settings:
+        """Refuse to start without the credential the chosen provider needs.
+
+        The same posture as the Go service's NEO4J_PASSWORD check: a process
+        that starts and then fails every request is worse than one that does not
+        start. The message names the environment variable because that string is
+        what someone reads in `kubectl logs` at the moment they are least
+        inclined to go digging.
+        """
+        # `not self.google_api_key` rather than unwrapping it: an empty
+        # SecretStr is already falsy, and get_secret_value() belongs only in the
+        # factory that hands the key to the SDK.
+        if self.llm_provider == "gemini-studio" and not self.google_api_key:
+            raise ValueError("GOOGLE_API_KEY must be set when LLM_PROVIDER is 'gemini-studio'")
+        if self.llm_provider == "vertex" and not self.vertex_project:
+            # Vertex authenticates with Application Default Credentials, so it
+            # needs no key -- only somewhere to send the request.
+            raise ValueError("VERTEX_PROJECT must be set when LLM_PROVIDER is 'vertex'")
+        return self
 
     @field_validator("backend_base_url")
     @classmethod
