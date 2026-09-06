@@ -167,6 +167,11 @@ class TestArgumentBounds:
         with pytest.raises(ValidationError):
             by_name["get_lineage"].args_schema(table_id="d/t", direction="sideways")
 
+    def test_an_unknown_argument_is_rejected(self) -> None:
+        by_name, _ = tools()
+        with pytest.raises(ValidationError):
+            by_name["search_model"].args_schema(query="x", limt=5)
+
     def test_diagnostics_rejects_an_unknown_severity(self) -> None:
         by_name, _ = tools()
         with pytest.raises(ValidationError):
@@ -238,6 +243,17 @@ class TestShrinking:
         table = (await by_name["get_tables"].fn(ids=["ordering/fact_orders"]))["items"][0]["table"]
         assert "layer" not in table, "an empty string should not reach the prompt"
         assert "notes" not in table
+
+    async def test_false_flags_are_dropped_and_zeros_kept(self) -> None:
+        """In Python `False == 0`, so a naive zero check keeps every False flag.
+        Absence already says false; a zero ordinal is the first column."""
+        from urara_chat.tools.registry import _prune
+
+        pruned = _prune({"conformed": False, "ordinal": 0, "name": "x", "empty": ""})
+
+        assert "conformed" not in pruned
+        assert pruned["ordinal"] == 0
+        assert "empty" not in pruned
 
     async def test_missing_ids_are_always_reported(self) -> None:
         """An absent key would read as though every ID was found."""
