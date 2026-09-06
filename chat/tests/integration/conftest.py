@@ -94,6 +94,8 @@ async def client(backend_url: str, api_token: str) -> AsyncIterator[BackendClien
     settings = Settings(
         backend_base_url=backend_url,
         backend_api_token=api_token,
+        # Required since 03.2; this suite never reaches an LLM.
+        google_api_key="test-key-not-real",  # type: ignore[arg-type]
         backend_timeout_seconds=30.0,
         log_level="info",
         app_addr=":8090",

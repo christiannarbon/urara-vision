@@ -14,6 +14,14 @@ from pydantic import ValidationError
 from urara_chat.config import Settings, configure_logging, get_settings
 
 
+@pytest.fixture(autouse=True)
+def _llm_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Settings now refuses to construct without the credential its provider
+    needs. These tests are about the backend settings, so a dummy key keeps each
+    one about the thing it actually asserts."""
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key-not-real")
+
+
 def test_defaults_when_the_environment_is_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     for var in (
         "BACKEND_BASE_URL",

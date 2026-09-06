@@ -12,19 +12,43 @@ with a second token to rotate.
 from __future__ import annotations
 
 import logging
+import sys
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from pydantic import ValidationError
 
 from urara_chat.api.routes import router
 from urara_chat.backend.client import BackendClient
-from urara_chat.config import configure_logging, get_settings
+from urara_chat.config import ConfigurationError, configure_logging, get_settings
+
+
+def _reasons(exc: ValidationError) -> list[str]:
+    """The messages from a validation error, without pydantic's framing.
+
+    A settings error is almost always one missing environment variable, and the
+    name of it is the whole content of the message worth printing.
+    """
+    return [str(err.get("msg", "")).removeprefix("Value error, ") for err in exc.errors()]
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    settings = get_settings()
+    try:
+        settings = get_settings()
+    except ValidationError as exc:
+        # Logged as one line, then re-raised as a ConfigurationError carrying
+        # only the reasons. `from None` drops the pydantic error from the
+        # traceback deliberately: it embeds the input it was given, and a long
+        # API key leaves its tail in that text.
+        reasons = "; ".join(_reasons(exc))
+        logging.basicConfig(stream=sys.stdout, level=logging.ERROR, format="%(message)s")
+        logging.getLogger("urara_chat").error(
+            "configuration is invalid, refusing to start: %s", reasons
+        )
+        raise ConfigurationError(reasons) from None
+
     configure_logging(settings)
 
     log = logging.getLogger("urara_chat")
