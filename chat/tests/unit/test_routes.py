@@ -230,6 +230,13 @@ class TestLifespan:
     ) -> None:
         """A client per request would leak connections and drop pooling."""
         import urara_chat.main as main
+        from urara_chat.config import get_settings
+
+        # The lifespan reads real settings, and since 03.2 those refuse to build
+        # without the credential the default provider needs. This test is about
+        # the client's lifecycle, not about configuration.
+        monkeypatch.setenv("GOOGLE_API_KEY", "test-key-not-real")
+        get_settings.cache_clear()
 
         built: list[FakeClient] = []
 
@@ -246,3 +253,4 @@ class TestLifespan:
             assert c.get("/readyz").status_code == 200
 
         assert len(built) == 1, "the client should be built once in the lifespan"
+        get_settings.cache_clear()
