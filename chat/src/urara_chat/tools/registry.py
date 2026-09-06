@@ -22,7 +22,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from urara_chat.backend.client import BackendClient
 from urara_chat.backend.models import Graph, JoinPath, TableDetail, TablesDetailResponse
@@ -83,10 +83,25 @@ def _prune(value: Any) -> Any:
     """
     if isinstance(value, dict):
         pruned = {k: _prune(v) for k, v in value.items()}
-        return {k: v for k, v in pruned.items() if v or v == 0}
+        return {k: v for k, v in pruned.items() if _worth_keeping(v)}
     if isinstance(value, list):
         return [_prune(v) for v in value]
     return value
+
+
+def _worth_keeping(value: Any) -> bool:
+    """Whether a pruned value earns its place in the prompt.
+
+    `False` goes, because absence says the same thing. `0` stays, because a zero
+    ordinal is the first column rather than a missing one. The bool check comes
+    first: in Python `False == 0`, so testing for zero without it keeps every
+    False flag -- which is the bug this replaced.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int | float):
+        return True
+    return bool(value)
 
 
 def _shrink_table(detail: TableDetail) -> dict[str, Any]:
@@ -187,11 +202,23 @@ def _shrink_batch(batch: TablesDetailResponse) -> dict[str, Any]:
 # from the backend that it has to interpret.
 
 
-class NoArgs(BaseModel):
+class ToolArgs(BaseModel):
+    """Base for every tool's arguments.
+
+    Unknown keys are refused rather than ignored. A model that sends `limt`
+    instead of `limit` would otherwise get the default silently and reason about
+    a result it did not ask for -- the same failure the Go handlers were changed
+    to reject in Phase 01.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class NoArgs(ToolArgs):
     pass
 
 
-class ListTablesArgs(BaseModel):
+class ListTablesArgs(ToolArgs):
     domain: str | None = Field(
         default=None,
         description="Optional domain ID to restrict the list to, e.g. 'ordering'. "
@@ -199,7 +226,7 @@ class ListTablesArgs(BaseModel):
     )
 
 
-class GetTablesArgs(BaseModel):
+class GetTablesArgs(ToolArgs):
     ids: list[str] = Field(
         min_length=1,
         max_length=8,
@@ -209,23 +236,23 @@ class GetTablesArgs(BaseModel):
     )
 
 
-class SearchArgs(BaseModel):
+class SearchArgs(ToolArgs):
     query: str = Field(description="Words to search for in table and column names and prose.")
     limit: int = Field(default=20, ge=1, le=50, description="Maximum hits to return, 1 to 50.")
 
 
-class NeighbourhoodArgs(BaseModel):
+class NeighbourhoodArgs(ToolArgs):
     table_id: str = Field(description="Full table ID in 'domain/table' form.")
     depth: int = Field(default=1, ge=1, le=3, description="How many joins to follow out, 1 to 3.")
 
 
-class JoinPathsArgs(BaseModel):
+class JoinPathsArgs(ToolArgs):
     from_table: str = Field(description="Full table ID to start from, in 'domain/table' form.")
     to_table: str = Field(description="Full table ID to reach, in 'domain/table' form.")
     max_depth: int = Field(default=4, ge=1, le=6, description="Longest path to consider, 1 to 6.")
 
 
-class LineageArgs(BaseModel):
+class LineageArgs(ToolArgs):
     table_id: str = Field(description="Full table ID in 'domain/table' form.")
     direction: Literal["upstream", "downstream"] = Field(
         default="upstream",
@@ -234,7 +261,7 @@ class LineageArgs(BaseModel):
     )
 
 
-class DiagnosticsArgs(BaseModel):
+class DiagnosticsArgs(ToolArgs):
     severity: Literal["error", "warning", "info"] | None = Field(
         default=None, description="Restrict to one severity. Omit for all of them."
     )

@@ -22,3 +22,12 @@ class BackendError(Exception):
 # it subclasses BackendError, so an `except BackendError` still catches it.
 class BackendNotFound(BackendError):  # noqa: N818
     """404 -- the snapshot, table or conversation does not exist."""
+
+
+class BackendUnavailable(BackendError):  # noqa: N818
+    """The backend could not be reached at all: refused, unresolved or timed out.
+
+    A subclass of BackendError so it maps to the same 502 an upstream failure
+    already does. The distinction that matters to a caller is only ever "the
+    fault is upstream", and the message carries the detail.
+    """

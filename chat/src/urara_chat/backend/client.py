@@ -17,7 +17,7 @@ from typing import Any
 
 import httpx
 
-from urara_chat.backend.errors import BackendError, BackendNotFound
+from urara_chat.backend.errors import BackendError, BackendNotFound, BackendUnavailable
 from urara_chat.backend.models import (
     Conversation,
     Diagnostic,
@@ -67,14 +67,14 @@ class BackendClient:
         Parameters go through httpx rather than into the path, which is what
         keeps a table ID's slash from being read as a route separator.
         """
-        response = await self._client.get(path, params=params)
+        response = await self._send("GET", path, params=params)
         if response.status_code >= 400:
             raise self._error(response)
         return response.json()
 
     async def _post(self, path: str, body: dict[str, Any]) -> Any:
         """Issue a POST and return decoded JSON, or raise."""
-        response = await self._client.post(path, json=body)
+        response = await self._send("POST", path, json=body)
         if response.status_code >= 400:
             raise self._error(response)
         return response.json()
@@ -85,9 +85,23 @@ class BackendClient:
         Nothing is decoded: a successful delete answers 204 with no body, and
         asking for JSON that is not there would turn a success into an error.
         """
-        response = await self._client.delete(path)
+        response = await self._send("DELETE", path)
         if response.status_code >= 400:
             raise self._error(response)
+
+    async def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
+        """Issue a request, turning a transport failure into a BackendError.
+
+        Without this a refused connection or a timeout leaves httpx's own
+        exception to escape the client, and the handler answers 500 -- blaming
+        this service for an outage in the one it depends on. Every other backend
+        failure already arrives as a BackendError; an unreachable backend is the
+        most likely of them and should not be the exception.
+        """
+        try:
+            return await self._client.request(method, path, **kwargs)
+        except httpx.HTTPError as exc:
+            raise BackendUnavailable(502, f"backend unreachable: {exc}") from exc
 
     @staticmethod
     def _error(response: httpx.Response) -> BackendError:
