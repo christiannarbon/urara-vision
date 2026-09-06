@@ -14,7 +14,10 @@ from pydantic import SecretStr, ValidationError
 
 from urara_chat.config import Settings
 
-REAL_KEY = "AIza-this-is-the-real-key-value-0123456789"
+# Deliberately not shaped like a real Google key. A fixture with an
+# AIza prefix trips every secret scanner in the repository, and a leak
+# detector that always cries wolf is one nobody reads.
+FAKE_KEY = "test-key-shaped-value-0123456789abcdef"
 
 LLM_VARS = (
     "LLM_PROVIDER",
@@ -36,13 +39,13 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def studio(**over: object) -> Settings:
-    base: dict[str, object] = {"google_api_key": REAL_KEY}
+    base: dict[str, object] = {"google_api_key": FAKE_KEY}
     return Settings(**(base | over))  # type: ignore[arg-type]
 
 
 class TestDefaults:
     def test_documented_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("GOOGLE_API_KEY", REAL_KEY)
+        monkeypatch.setenv("GOOGLE_API_KEY", FAKE_KEY)
         s = Settings()
 
         assert s.llm_provider == "gemini-studio"
@@ -97,14 +100,14 @@ class TestCredentialsMustMatchTheProvider:
         assert s.google_api_key.get_secret_value() == ""
 
     def test_studio_with_a_key_is_valid(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("GOOGLE_API_KEY", REAL_KEY)
+        monkeypatch.setenv("GOOGLE_API_KEY", FAKE_KEY)
         assert Settings().llm_provider == "gemini-studio"
 
     def test_an_unknown_provider_is_refused_by_the_type(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("LLM_PROVIDER", "openai")
-        monkeypatch.setenv("GOOGLE_API_KEY", REAL_KEY)
+        monkeypatch.setenv("GOOGLE_API_KEY", FAKE_KEY)
         with pytest.raises(ValidationError) as caught:
             Settings()
         assert "llm_provider" in str(caught.value).lower()
@@ -116,14 +119,14 @@ class TestTheKeyDoesNotLeak:
 
     def test_repr_carries_no_part_of_the_key(self) -> None:
         rendered = repr(studio())
-        assert REAL_KEY not in rendered
-        assert "AIza" not in rendered
+        assert FAKE_KEY not in rendered
+        assert FAKE_KEY[:12] not in rendered
         assert "**********" in rendered
 
     def test_json_carries_no_part_of_the_key(self) -> None:
         rendered = studio().model_dump_json()
-        assert REAL_KEY not in rendered
-        assert "AIza" not in rendered
+        assert FAKE_KEY not in rendered
+        assert FAKE_KEY[:12] not in rendered
 
     def test_str_of_the_field_is_masked(self) -> None:
         assert str(studio().google_api_key) == "**********"
@@ -131,11 +134,11 @@ class TestTheKeyDoesNotLeak:
     def test_model_dump_does_not_expose_it_either(self) -> None:
         """model_dump keeps the SecretStr wrapper rather than unwrapping it."""
         dumped = studio().model_dump()
-        assert REAL_KEY not in str(dumped)
+        assert FAKE_KEY not in str(dumped)
 
     def test_get_secret_value_returns_the_real_key(self) -> None:
         """The one deliberate way through, used only by the factory."""
-        assert studio().google_api_key.get_secret_value() == REAL_KEY
+        assert studio().google_api_key.get_secret_value() == FAKE_KEY
 
     def test_an_empty_key_is_falsy(self) -> None:
         """What the credential check relies on, so it never has to unwrap."""
@@ -152,13 +155,13 @@ class TestTheStartupFailureLeaksNothing:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Documents why the lifespan does not re-raise it."""
-        monkeypatch.setenv("GOOGLE_API_KEY", REAL_KEY)
+        monkeypatch.setenv("GOOGLE_API_KEY", FAKE_KEY)
         monkeypatch.setenv("LLM_PROVIDER", "vertex")
 
         with pytest.raises(ValidationError) as caught:
             Settings()
 
-        assert REAL_KEY[-12:] in str(caught.value), (
+        assert FAKE_KEY[-12:] in str(caught.value), (
             "if this ever stops being true the sanitising in main.py can be simplified"
         )
 
@@ -167,7 +170,7 @@ class TestTheStartupFailureLeaksNothing:
     ) -> None:
         from urara_chat.main import _reasons
 
-        monkeypatch.setenv("GOOGLE_API_KEY", REAL_KEY)
+        monkeypatch.setenv("GOOGLE_API_KEY", FAKE_KEY)
         monkeypatch.setenv("LLM_PROVIDER", "vertex")
 
         with pytest.raises(ValidationError) as caught:
@@ -175,8 +178,8 @@ class TestTheStartupFailureLeaksNothing:
 
         logged = "; ".join(_reasons(caught.value))
         assert "VERTEX_PROJECT" in logged
-        assert REAL_KEY[-12:] not in logged
-        assert REAL_KEY not in logged
+        assert FAKE_KEY[-12:] not in logged
+        assert FAKE_KEY not in logged
 
     def test_the_lifespan_raises_a_sanitised_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from fastapi.testclient import TestClient
@@ -185,7 +188,7 @@ class TestTheStartupFailureLeaksNothing:
         from urara_chat.config import ConfigurationError, get_settings
 
         get_settings.cache_clear()
-        monkeypatch.setenv("GOOGLE_API_KEY", REAL_KEY)
+        monkeypatch.setenv("GOOGLE_API_KEY", FAKE_KEY)
         monkeypatch.setenv("LLM_PROVIDER", "vertex")
         monkeypatch.delenv("VERTEX_PROJECT", raising=False)
 
@@ -194,5 +197,5 @@ class TestTheStartupFailureLeaksNothing:
                 pass
 
         assert "VERTEX_PROJECT" in str(caught.value)
-        assert REAL_KEY[-12:] not in str(caught.value)
+        assert FAKE_KEY[-12:] not in str(caught.value)
         get_settings.cache_clear()
