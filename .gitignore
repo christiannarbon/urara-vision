@@ -29,6 +29,13 @@ backend/*.out
 backend/coverage.out
 backend/coverage.html
 
+# --- chat -----------------------------------------------------------------
+# uv writes .venv/.gitignore, and ruff, mypy and pytest each ignore their own
+# cache, so only the bytecode needs naming here.
+chat/**/__pycache__/
+chat/**/*.pyc
+chat/.venv/
+
 # --- local run state ------------------------------------------------------
 # Written by the Makefile's k8s port-forward targets.
 .k8s-portforward.pid
