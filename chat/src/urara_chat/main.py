@@ -59,7 +59,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.client = BackendClient(settings)
     # Built once, here. A model per request adds latency to every turn and, on
     # Vertex, a credential refresh with it.
-    app.state.chat_model = build_chat_model(settings)
+    try:
+        app.state.chat_model = build_chat_model(settings)
+    except ValidationError as exc:
+        # Same sanitising as the settings above, and for the same reason: the
+        # SDK validates its own constructor, and its ValidationError embeds the
+        # kwargs it was given -- which include the API key.
+        reasons = "; ".join(_reasons(exc))
+        log.error("language model configuration is invalid, refusing to start: %s", reasons)
+        raise ConfigurationError(reasons) from None
     log.info("language model configured: %s", describe_model(settings))
     try:
         yield

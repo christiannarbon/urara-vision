@@ -187,9 +187,7 @@ async def debug_llm(request: Request) -> dict[str, Any]:
 
     started = time.perf_counter()
     try:
-        reply = await asyncio.wait_for(
-            model.ainvoke(PROBE_PROMPT), timeout=PROBE_TIMEOUT_SECONDS
-        )
+        reply = await asyncio.wait_for(model.ainvoke(PROBE_PROMPT), timeout=PROBE_TIMEOUT_SECONDS)
     except Exception as exc:
         # Broad on purpose: every provider raises its own exception types, and
         # this endpoint exists to report that the provider did not answer rather

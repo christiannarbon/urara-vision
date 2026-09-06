@@ -424,6 +424,30 @@ class TestLifespan:
         assert len(built) == 1, "the client should be built once in the lifespan"
         get_settings.cache_clear()
 
+    def test_a_bad_model_setting_does_not_leak_the_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The SDK validates its own constructor, and its ValidationError embeds
+        the kwargs it was given -- including the key. A crash loop would put the
+        key's tail in the container log on every restart."""
+        import urara_chat.main as main
+        from urara_chat.config import ConfigurationError, get_settings
+
+        monkeypatch.setenv("GOOGLE_API_KEY", FAKE_KEY)
+        # In range for Settings, out of range for the SDK, so the failure
+        # happens in build_chat_model rather than in get_settings.
+        monkeypatch.setenv("LLM_TEMPERATURE", "5.0")
+        get_settings.cache_clear()
+
+        with pytest.raises(ConfigurationError) as caught:  # noqa: SIM117
+            with TestClient(main.app):
+                pass
+
+        assert "temperature" in str(caught.value)
+        assert FAKE_KEY[-12:] not in str(caught.value)
+        assert FAKE_KEY not in str(caught.value)
+        get_settings.cache_clear()
+
     def test_the_model_is_built_once_in_the_lifespan(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A model per request adds latency to every turn and, on Vertex, a
         credential refresh with it."""

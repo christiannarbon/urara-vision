@@ -103,6 +103,31 @@ class TestCredentialsMustMatchTheProvider:
         monkeypatch.setenv("GOOGLE_API_KEY", FAKE_KEY)
         assert Settings().llm_provider == "gemini-studio"
 
+    @pytest.mark.parametrize("value", ["   ", "\n", "\t "])
+    def test_a_whitespace_only_key_is_refused(
+        self, value: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`export GOOGLE_API_KEY=$(cat key.txt)` picks up a trailing newline,
+        and whitespace is truthy: without stripping, the check passes and the
+        provider answers with a puzzling 400 instead."""
+        monkeypatch.setenv("GOOGLE_API_KEY", value)
+        with pytest.raises(ValidationError) as caught:
+            Settings()
+        assert "GOOGLE_API_KEY" in str(caught.value)
+
+    def test_a_key_with_surrounding_whitespace_is_trimmed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("GOOGLE_API_KEY", f"  {FAKE_KEY}\n")
+        assert Settings().google_api_key.get_secret_value() == FAKE_KEY
+
+    def test_a_whitespace_only_project_is_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("LLM_PROVIDER", "vertex")
+        monkeypatch.setenv("VERTEX_PROJECT", "   ")
+        with pytest.raises(ValidationError) as caught:
+            Settings()
+        assert "VERTEX_PROJECT" in str(caught.value)
+
     def test_an_unknown_provider_is_refused_by_the_type(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

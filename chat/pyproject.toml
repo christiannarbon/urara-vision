@@ -42,6 +42,9 @@ python_version = "3.12"
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# The llm tests call a real provider and are billed. Excluded by default so a
+# plain `pytest` never spends money; opt in with `-m llm`, which overrides this.
+addopts = "-m 'not llm'"
 testpaths = ["tests"]
 markers = [
   "integration: needs a running backend (set CHAT_TEST_BACKEND_URL)",
