@@ -51,6 +51,10 @@ chat/.venv/
 # Test output tee'd by the backend workflow's integration step.
 backend/integration.log
 
+# A local compose override, which is how the chat service is pointed at the
+# host's gcloud credentials for Vertex. Machine-specific, so not committed.
+docker-compose.override.yml
+
 # Environment overrides; the committed defaults live in docker-compose.yml.
 .env
 .env.*
