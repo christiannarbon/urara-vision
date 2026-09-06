@@ -20,7 +20,10 @@ from urara_chat.backend.models import Domain, SearchHit
 from urara_chat.config import Settings
 from urara_chat.tools.registry import TOOL_NAMES
 
-REAL_KEY = "AIza-this-is-the-real-key-value-0123456789"
+# Deliberately not shaped like a real Google key. A fixture with an
+# AIza prefix trips every secret scanner in the repository, and a leak
+# detector that always cries wolf is one nobody reads.
+FAKE_KEY = "test-key-shaped-value-0123456789abcdef"
 
 
 class FakeClient:
@@ -78,7 +81,7 @@ def fake_settings(**over: Any) -> Settings:
     base: dict[str, Any] = {
         "llm_provider": "gemini-studio",
         "llm_model": "gemini-2.5-flash",
-        "google_api_key": REAL_KEY,
+        "google_api_key": FAKE_KEY,
     }
     return Settings(**(base | over))
 
@@ -157,8 +160,8 @@ class TestReadyzReportsTheModelWithoutCallingIt:
 
     def test_the_body_carries_no_part_of_the_key(self) -> None:
         rendered = client_for(FakeClient(healthy=True)).get("/readyz").text
-        assert REAL_KEY not in rendered
-        assert "AIza" not in rendered
+        assert FAKE_KEY not in rendered
+        assert FAKE_KEY[:12] not in rendered
 
     def test_vertex_reports_its_region(self) -> None:
         settings = Settings(
@@ -205,15 +208,15 @@ class TestDebugLLM:
     def test_the_provider_error_text_is_not_echoed(self) -> None:
         """Provider errors quote the request back, so they can carry prompt
         fragments and occasionally credentials."""
-        secret = f"quota exceeded for key {REAL_KEY}"
+        secret = f"quota exceeded for key {FAKE_KEY}"
         model = FakeModel(raises=RuntimeError(secret))
 
         response = client_for(FakeClient(), model).get("/debug/llm")
 
         assert response.status_code == 502
-        assert REAL_KEY not in response.text
+        assert FAKE_KEY not in response.text
         assert "quota exceeded" not in response.text
-        assert "AIza" not in response.text
+        assert FAKE_KEY[:12] not in response.text
 
     def test_the_real_reason_is_logged(self, caplog: pytest.LogCaptureFixture) -> None:
         model = FakeModel(raises=RuntimeError("the real reason"))

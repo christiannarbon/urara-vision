@@ -18,7 +18,10 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from urara_chat.config import Settings
 from urara_chat.llm.factory import build_chat_model, describe_model
 
-REAL_KEY = "AIza-this-is-the-real-key-value-0123456789"
+# Deliberately not shaped like a real Google key. A fixture with an
+# AIza prefix trips every secret scanner in the repository, and a leak
+# detector that always cries wolf is one nobody reads.
+FAKE_KEY = "test-key-shaped-value-0123456789abcdef"
 
 
 @pytest.fixture(autouse=True)
@@ -44,7 +47,7 @@ def studio_settings(**over: object) -> Settings:
         "llm_temperature": 0.2,
         "llm_max_output_tokens": 2048,
         "llm_timeout_seconds": 60.0,
-        "google_api_key": REAL_KEY,
+        "google_api_key": FAKE_KEY,
     }
     return Settings(**(base | over))  # type: ignore[arg-type]
 
@@ -87,7 +90,7 @@ class TestStudio:
     def test_the_key_arrives_unwrapped(self) -> None:
         model = build_chat_model(studio_settings())
         assert model.google_api_key is not None
-        assert model.google_api_key.get_secret_value() == REAL_KEY
+        assert model.google_api_key.get_secret_value() == FAKE_KEY
 
     def test_it_is_not_put_into_vertex_mode(self) -> None:
         model = build_chat_model(studio_settings())
@@ -124,8 +127,8 @@ class TestVertex:
     ) -> None:
         """Someone with both configured should not have the key sent to Vertex
         just because it happened to be set."""
-        model = build_chat_model(vertex_settings(google_api_key=REAL_KEY))
-        assert not model.google_api_key or model.google_api_key.get_secret_value() != REAL_KEY
+        model = build_chat_model(vertex_settings(google_api_key=FAKE_KEY))
+        assert not model.google_api_key or model.google_api_key.get_secret_value() != FAKE_KEY
 
 
 class TestDescribeModel:
@@ -147,11 +150,11 @@ class TestDescribeModel:
     def test_carries_no_part_of_the_key(self, build: object) -> None:
         """This ends up in a readiness response and in stored message metadata,
         both read by people who should not be able to read the key."""
-        settings = build(google_api_key=REAL_KEY)  # type: ignore[operator]
+        settings = build(google_api_key=FAKE_KEY)  # type: ignore[operator]
         rendered = json.dumps(describe_model(settings))
 
-        assert REAL_KEY not in rendered
-        assert "AIza" not in rendered
+        assert FAKE_KEY not in rendered
+        assert FAKE_KEY[:12] not in rendered
         assert "**" not in rendered, "not even the mask belongs in a description"
 
     @pytest.mark.parametrize("build", [studio_settings, vertex_settings])
@@ -168,7 +171,7 @@ class TestNoSilentFallback:
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError):
-            Settings(llm_provider="openai", google_api_key=REAL_KEY)  # type: ignore[arg-type]
+            Settings(llm_provider="openai", google_api_key=FAKE_KEY)  # type: ignore[arg-type]
 
     def test_the_factory_raises_rather_than_defaulting(self) -> None:
         """A service quietly answering from the wrong provider is worse than one
