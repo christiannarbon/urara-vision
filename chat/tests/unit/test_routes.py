@@ -5,16 +5,22 @@ backend is on fire, because a liveness probe that fails during an outage
 restarts every chat pod and mends nothing.
 """
 
+import asyncio
+import logging
 from typing import Any
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from langchain_core.messages import AIMessage
 
 from urara_chat.api.routes import router
 from urara_chat.backend.errors import BackendError, BackendNotFound, BackendUnavailable
 from urara_chat.backend.models import Domain, SearchHit
+from urara_chat.config import Settings
 from urara_chat.tools.registry import TOOL_NAMES
+
+REAL_KEY = "AIza-this-is-the-real-key-value-0123456789"
 
 
 class FakeClient:
@@ -52,16 +58,51 @@ class FakeClient:
         return None
 
 
-def app_with(client: FakeClient) -> FastAPI:
-    """An app whose state carries the fake, skipping the real lifespan."""
+class FakeModel:
+    """Stands in for the chat model. Records whether it was ever called, which
+    is how /readyz is held to not calling it."""
+
+    def __init__(self, reply: Any = "pong", raises: Exception | None = None) -> None:
+        self.reply = reply
+        self.raises = raises
+        self.calls = 0
+
+    async def ainvoke(self, prompt: Any, *args: Any, **kwargs: Any) -> Any:
+        self.calls += 1
+        if self.raises:
+            raise self.raises
+        return AIMessage(content=self.reply)
+
+
+def fake_settings(**over: Any) -> Settings:
+    base: dict[str, Any] = {
+        "llm_provider": "gemini-studio",
+        "llm_model": "gemini-2.5-flash",
+        "google_api_key": REAL_KEY,
+    }
+    return Settings(**(base | over))
+
+
+def app_with(
+    client: FakeClient,
+    model: FakeModel | None = None,
+    settings: Settings | None = None,
+) -> FastAPI:
+    """An app whose state carries the fakes, skipping the real lifespan."""
     app = FastAPI()
     app.include_router(router)
     app.state.client = client
+    app.state.chat_model = model or FakeModel()
+    app.state.settings = settings or fake_settings()
     return app
 
 
-def client_for(fake: FakeClient) -> TestClient:
-    return TestClient(app_with(fake))
+def client_for(
+    fake: FakeClient,
+    model: FakeModel | None = None,
+    settings: Settings | None = None,
+) -> TestClient:
+    return TestClient(app_with(fake, model, settings))
 
 
 class TestProbes:
@@ -76,7 +117,10 @@ class TestProbes:
     def test_readyz_is_200_when_the_backend_is_ready(self) -> None:
         response = client_for(FakeClient(healthy=True)).get("/readyz")
         assert response.status_code == 200
-        assert response.json()["status"] == "ok"
+        body = response.json()
+        assert body["status"] == "ok"
+        assert body["backend"] == "ok"
+        assert body["llm"] == {"provider": "gemini-studio", "model": "gemini-2.5-flash"}
 
     def test_readyz_is_503_and_says_why(self) -> None:
         """A pod that cannot answer leaves the load balancer, but is not killed:
@@ -89,6 +133,128 @@ class TestProbes:
         body = response.json()
         assert body["status"] == "unready"
         assert body["reason"]
+
+
+class TestReadyzReportsTheModelWithoutCallingIt:
+    def test_the_model_is_never_invoked(self) -> None:
+        """Readiness runs every ten seconds per pod. A provider round trip on
+        each would be a standing bill for information nobody asked for."""
+        model = FakeModel()
+        response = client_for(FakeClient(healthy=True), model).get("/readyz")
+
+        assert response.status_code == 200
+        assert model.calls == 0, "/readyz called the provider"
+
+    def test_it_reports_the_configured_model_when_unready_too(self) -> None:
+        """Knowing which model a failing pod is configured for is exactly what
+        you want while it is failing."""
+        model = FakeModel()
+        response = client_for(FakeClient(healthy=False), model).get("/readyz")
+
+        assert response.status_code == 503
+        assert response.json()["llm"]["model"] == "gemini-2.5-flash"
+        assert model.calls == 0
+
+    def test_the_body_carries_no_part_of_the_key(self) -> None:
+        rendered = client_for(FakeClient(healthy=True)).get("/readyz").text
+        assert REAL_KEY not in rendered
+        assert "AIza" not in rendered
+
+    def test_vertex_reports_its_region(self) -> None:
+        settings = Settings(
+            llm_provider="vertex",
+            llm_model="gemini-2.5-pro",
+            vertex_project="p",
+            vertex_location="europe-west2",
+        )
+        body = client_for(FakeClient(), None, settings).get("/readyz").json()
+
+        assert body["llm"] == {
+            "provider": "vertex",
+            "model": "gemini-2.5-pro",
+            "location": "europe-west2",
+        }
+
+
+class TestDebugLLM:
+    def test_returns_the_reply_and_a_latency(self) -> None:
+        model = FakeModel(reply="pong")
+        response = client_for(FakeClient(), model).get("/debug/llm")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["text"] == "pong"
+        assert body["latencyMs"] >= 0
+        assert body["provider"] == "gemini-studio"
+        assert body["model"] == "gemini-2.5-flash"
+        assert model.calls == 1
+
+    def test_a_list_shaped_reply_is_flattened(self) -> None:
+        """A probe that reports [{'type': 'text', ...}] has failed at its one
+        job, and providers do answer in parts."""
+        model = FakeModel(reply=[{"type": "text", "text": "po"}, {"type": "text", "text": "ng"}])
+        body = client_for(FakeClient(), model).get("/debug/llm").json()
+
+        assert body["text"] == "pong"
+
+    def test_a_provider_failure_is_502(self) -> None:
+        model = FakeModel(raises=RuntimeError("boom"))
+        response = client_for(FakeClient(), model).get("/debug/llm")
+        assert response.status_code == 502
+
+    def test_the_provider_error_text_is_not_echoed(self) -> None:
+        """Provider errors quote the request back, so they can carry prompt
+        fragments and occasionally credentials."""
+        secret = f"quota exceeded for key {REAL_KEY}"
+        model = FakeModel(raises=RuntimeError(secret))
+
+        response = client_for(FakeClient(), model).get("/debug/llm")
+
+        assert response.status_code == 502
+        assert REAL_KEY not in response.text
+        assert "quota exceeded" not in response.text
+        assert "AIza" not in response.text
+
+    def test_the_real_reason_is_logged(self, caplog: pytest.LogCaptureFixture) -> None:
+        model = FakeModel(raises=RuntimeError("the real reason"))
+
+        with caplog.at_level(logging.ERROR, logger="urara_chat.api.routes"):
+            client_for(FakeClient(), model).get("/debug/llm")
+
+        record = next(r for r in caplog.records if r.message == "llm probe failed")
+        assert record.provider == "gemini-studio"  # type: ignore[attr-defined]
+        assert "the real reason" in str(record.exc_info[1])  # type: ignore[index]
+
+    def test_a_hung_provider_times_out_rather_than_hanging(self) -> None:
+        """The probe you reach for while the provider is wedged must not wedge
+        with it."""
+        import urara_chat.api.routes as routes
+
+        class Hangs(FakeModel):
+            async def ainvoke(self, prompt: Any, *args: Any, **kwargs: Any) -> Any:
+                await asyncio.sleep(10)
+                return AIMessage(content="never")
+
+        original = routes.PROBE_TIMEOUT_SECONDS
+        routes.PROBE_TIMEOUT_SECONDS = 0.05
+        try:
+            response = client_for(FakeClient(), Hangs()).get("/debug/llm")
+        finally:
+            routes.PROBE_TIMEOUT_SECONDS = original
+
+        assert response.status_code == 502
+
+
+class TestHealthzIsUnaffectedByTheModel:
+    def test_a_model_that_raises_does_not_touch_liveness(self) -> None:
+        """A liveness probe that failed while a provider rate-limits would
+        restart every pod in the deployment at the worst possible moment."""
+        model = FakeModel(raises=RuntimeError("provider is down"))
+        response = client_for(FakeClient(), model).get("/healthz")
+
+        assert response.status_code == 200
+        assert response.json() == {"status": "ok"}
+        assert model.calls == 0
 
 
 class TestListTools:
@@ -253,4 +419,31 @@ class TestLifespan:
             assert c.get("/readyz").status_code == 200
 
         assert len(built) == 1, "the client should be built once in the lifespan"
+        get_settings.cache_clear()
+
+    def test_the_model_is_built_once_in_the_lifespan(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A model per request adds latency to every turn and, on Vertex, a
+        credential refresh with it."""
+        import urara_chat.main as main
+        from urara_chat.config import get_settings
+
+        monkeypatch.setenv("GOOGLE_API_KEY", "test-key-not-real")
+        get_settings.cache_clear()
+
+        built: list[FakeModel] = []
+
+        def build(settings: Any) -> FakeModel:
+            model = FakeModel()
+            built.append(model)
+            return model
+
+        monkeypatch.setattr(main, "BackendClient", lambda settings: FakeClient())
+        monkeypatch.setattr(main, "build_chat_model", build)
+
+        with TestClient(main.app) as c:
+            for _ in range(3):
+                assert c.get("/debug/llm").status_code == 200
+
+        assert len(built) == 1, "the model should be built once in the lifespan"
+        assert built[0].calls == 3, "all three requests used the same model"
         get_settings.cache_clear()
