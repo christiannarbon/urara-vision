@@ -74,6 +74,11 @@ class Settings(BaseSettings):
     llm_max_output_tokens: int = 2048
     llm_timeout_seconds: float = 60.0
 
+    # A snapshot is immutable once ingested, so a rendered context card stays
+    # true for as long as the pod cares to keep it. The TTL exists to bound
+    # memory and to pick up a re-ingest under the same ID, not for correctness.
+    context_cache_ttl_seconds: float = 300.0
+
     # SecretStr so redaction is the default rather than something to remember at
     # every point the settings are printed. No credential has a default value.
     google_api_key: SecretStr = SecretStr("")
