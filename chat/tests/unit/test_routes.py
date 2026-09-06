@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from urara_chat.api.routes import router
-from urara_chat.backend.errors import BackendError, BackendNotFound
+from urara_chat.backend.errors import BackendError, BackendNotFound, BackendUnavailable
 from urara_chat.backend.models import Domain, SearchHit
 from urara_chat.tools.registry import TOOL_NAMES
 
@@ -84,9 +84,11 @@ class TestProbes:
         response = client_for(FakeClient(healthy=False)).get("/readyz")
 
         assert response.status_code == 503
-        detail = response.json()["detail"]
-        assert detail["status"] == "unready"
-        assert detail["reason"]
+        # The documented shape, not nested under "detail": a probe and an
+        # operator both read this, and neither should have to unwrap it.
+        body = response.json()
+        assert body["status"] == "unready"
+        assert body["reason"]
 
 
 class TestListTools:
@@ -183,6 +185,33 @@ class TestInvokeTool:
 
         assert response.status_code == 502
         assert "boom" in str(response.json()["detail"])
+
+    def test_an_unreachable_backend_is_502_not_500(self) -> None:
+        """A transport failure is still the backend's fault. Answering 500 would
+        point at this service for an outage in the one it depends on.
+
+        The wrapping itself lives in BackendClient, so this checks the mapping;
+        test_client.py checks that a refused connection produces the exception.
+        """
+        fake = FakeClient(raises=BackendUnavailable(502, "backend unreachable: refused"))
+        response = self.invoke(fake, snapshotId="snap-1", tool="list_domains", args={})
+        assert response.status_code == 502
+
+    def test_an_unknown_body_field_is_rejected(self) -> None:
+        """A misspelled key should be reported, not silently dropped."""
+        response = client_for(FakeClient()).post(
+            "/debug/tool",
+            json={"snapshotId": "snap-1", "tool": "list_domains", "args": {}, "toolz": "x"},
+        )
+        assert response.status_code == 422
+
+    def test_a_misspelled_argument_is_rejected(self) -> None:
+        """`limt` would otherwise take the default and the caller would reason
+        about a result it did not ask for."""
+        response = self.invoke(
+            FakeClient(), snapshotId="snap-1", tool="search_model", args={"query": "x", "limt": 5}
+        )
+        assert response.status_code == 400
 
     def test_snake_case_body_is_accepted_too(self) -> None:
         response = self.invoke(FakeClient(), snapshot_id="snap-1", tool="list_domains", args={})
