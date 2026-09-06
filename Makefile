@@ -123,13 +123,14 @@ test-chat-integration: ## Chat service tests against the compose stack
 	@echo "==> tests"
 	@docker run --rm --network $(COMPOSE_NET) \
 	  -v "$(PWD)/chat":/src \
+	  -v "$(PWD)/docs":/docs:ro \
 	  -v urara-vision-uv-cache:/root/.cache/uv \
 	  -e UV_PROJECT_ENVIRONMENT=/venv \
 	  -e UV_LINK_MODE=copy \
 	  -e CHAT_TEST_BACKEND_URL="http://backend:8080" \
 	  -e CHAT_TEST_API_TOKEN="relviz-dev-token-not-for-production" \
 	  -w /src $(UV_IMAGE) \
-	  sh -c 'uv run --frozen pytest tests/integration -q; s=$$?; [ $$s -eq 5 ] && echo "(no integration tests yet; 02.9 adds them)" && exit 0; exit $$s'
+	  uv run --frozen pytest tests/integration -q -m integration
 
 .PHONY: lint-chat
 lint-chat: ## ruff and mypy over the chat service
