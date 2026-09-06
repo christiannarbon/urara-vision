@@ -45,4 +45,5 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
   "integration: needs a running backend (set CHAT_TEST_BACKEND_URL)",
+  "llm: calls a real language model and costs money (needs GOOGLE_API_KEY)",
 ]

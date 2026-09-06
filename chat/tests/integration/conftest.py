@@ -20,6 +20,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from pydantic import SecretStr
 
 from urara_chat.backend.client import BackendClient
 from urara_chat.config import Settings
@@ -87,6 +88,35 @@ def snapshot_id(backend_url: str, auth_headers: dict[str, str]) -> Iterator[str]
             assert deleted.status_code in (204, 404), (
                 f"failed to delete test snapshot {sid}: {deleted.status_code} {deleted.text[:200]}"
             )
+
+
+@pytest.fixture(scope="session")
+def llm_settings() -> Settings:
+    """Settings for a real Studio call, or a skip.
+
+    Separate from the backend fixtures on purpose: these tests spend money, so
+    they are gated on their own credential and never run because a backend
+    happened to be reachable.
+
+    The output cap is small but not tiny, and 512 is not arbitrary. Gemini 2.5
+    spends output tokens on reasoning before it emits anything, so at 64 the
+    reply comes back with finish_reason=MAX_TOKENS, 55 reasoning tokens and no
+    tool call at all -- test_binds_tools fails for a reason that looks nothing
+    like a token limit. Cost is dominated by the ~1k input tokens the tool
+    schemas take anyway, so the cap buys little and costs a confusing failure.
+    """
+    key = os.getenv("GOOGLE_API_KEY")
+    if not key:
+        pytest.skip(
+            "set GOOGLE_API_KEY to run this test; it calls a real model and "
+            "costs money (see chat/README.md)"
+        )
+    return Settings(
+        llm_provider="gemini-studio",
+        google_api_key=SecretStr(key),
+        llm_max_output_tokens=512,
+        llm_timeout_seconds=30.0,
+    )
 
 
 @pytest.fixture
