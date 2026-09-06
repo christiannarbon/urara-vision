@@ -29,6 +29,9 @@ def settings(token: str = "") -> Settings:
     return Settings(
         backend_base_url=BASE,
         backend_api_token=token,
+        # Required since 03.2: the default provider refuses to construct
+        # without a key. Nothing here reaches an LLM.
+        google_api_key="test-key-not-real",  # type: ignore[arg-type]
         backend_timeout_seconds=5.0,
         log_level="info",
         app_addr=":8090",
