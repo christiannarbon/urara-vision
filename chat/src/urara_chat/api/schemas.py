@@ -14,7 +14,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ToolInvokeRequest(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    # Unknown keys are refused rather than ignored, so a misspelled field is
+    # reported instead of silently doing nothing.
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
     snapshot_id: str = Field(
         alias="snapshotId",
@@ -24,13 +26,3 @@ class ToolInvokeRequest(BaseModel):
     args: dict[str, Any] = Field(
         default_factory=dict, description="Arguments, validated against the tool's own schema."
     )
-
-
-class ToolDescription(BaseModel):
-    """One tool as /debug/tools reports it."""
-
-    name: str
-    description: str
-    schema_: dict[str, Any] = Field(alias="schema")
-
-    model_config = ConfigDict(populate_by_name=True)
