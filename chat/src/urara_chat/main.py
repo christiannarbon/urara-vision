@@ -1,8 +1,8 @@
 """The FastAPI application.
 
-One backend client is built at startup and closed at shutdown. Per-request
-clients would leak connections and throw away pooling, and the client holds the
-only network identity this service has.
+One backend client and one chat model are built at startup. Per-request
+construction would leak connections and throw away pooling, and the client holds
+the only network identity this service has.
 
 There is no authentication here, by design: the service is not exposed outside
 the cluster, and Phase 07 handles reachability at the network layer rather than
@@ -22,6 +22,7 @@ from pydantic import ValidationError
 from urara_chat.api.routes import router
 from urara_chat.backend.client import BackendClient
 from urara_chat.config import ConfigurationError, configure_logging, get_settings
+from urara_chat.llm.factory import build_chat_model, describe_model
 
 
 def _reasons(exc: ValidationError) -> list[str]:
@@ -56,6 +57,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.settings = settings
     app.state.client = BackendClient(settings)
+    # Built once, here. A model per request adds latency to every turn and, on
+    # Vertex, a credential refresh with it.
+    app.state.chat_model = build_chat_model(settings)
+    log.info("language model configured: %s", describe_model(settings))
     try:
         yield
     finally:
