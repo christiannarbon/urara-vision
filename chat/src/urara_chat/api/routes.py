@@ -14,18 +14,34 @@ answer leaves the load balancer without being killed.
 
 from __future__ import annotations
 
+import asyncio
+import logging
+import time
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
+from langchain_core.language_models import BaseChatModel
 from pydantic import ValidationError
 
 from urara_chat.api.schemas import ToolInvokeRequest
 from urara_chat.backend.client import BackendClient
 from urara_chat.backend.errors import BackendError, BackendNotFound
+from urara_chat.config import Settings
+from urara_chat.llm.factory import describe_model
 from urara_chat.tools.registry import ToolSpec, build_tools
 
 router = APIRouter()
+log = logging.getLogger(__name__)
+
+# The probe's own timeout, deliberately shorter than a turn's and independent of
+# it: /debug/llm is what you reach for when the provider is misbehaving, and a
+# probe that hangs as long as the thing it is diagnosing is no use.
+PROBE_TIMEOUT_SECONDS = 15.0
+
+# Fixed, and short enough to cost nothing. The point is whether credentials work
+# and the provider answers, not what it says.
+PROBE_PROMPT = "Reply with exactly: pong"
 
 
 def get_client(request: Request) -> BackendClient:
@@ -36,6 +52,17 @@ def get_client(request: Request) -> BackendClient:
     """
     client: BackendClient = request.app.state.client
     return client
+
+
+def get_settings_for(request: Request) -> Settings:
+    settings: Settings = request.app.state.settings
+    return settings
+
+
+def get_chat_model(request: Request) -> BaseChatModel:
+    """The one model, built in the lifespan."""
+    model: BaseChatModel = request.app.state.chat_model
+    return model
 
 
 @router.get("/healthz")
@@ -57,14 +84,25 @@ async def readyz(request: Request) -> Response:
     outage is not its fault and a restart will not mend it.
     """
     client = get_client(request)
+    # describe_model reads configuration only. Readiness runs every ten seconds
+    # per pod, and a provider round trip on each would be a standing bill for
+    # information this endpoint is not being asked for -- /debug/llm is what
+    # tests whether the model actually answers.
+    llm = describe_model(get_settings_for(request))
+
     if await client.health():
-        return JSONResponse({"status": "ok"})
+        return JSONResponse({"status": "ok", "backend": "ok", "llm": llm})
     # A JSONResponse rather than an HTTPException: raising would nest the body
     # under "detail", and the shape a probe and an operator read should be the
     # one the route documents.
     return JSONResponse(
         status_code=503,
-        content={"status": "unready", "reason": "backend is not reachable or not ready"},
+        content={
+            "status": "unready",
+            "backend": "unreachable",
+            "llm": llm,
+            "reason": "backend is not reachable or not ready",
+        },
     )
 
 
@@ -135,3 +173,58 @@ async def _run(spec: ToolSpec, args: dict[str, Any]) -> Any:
         raise HTTPException(status_code=404, detail=exc.message) from exc
     except BackendError as exc:
         raise HTTPException(status_code=502, detail=exc.message) from exc
+
+
+@router.get("/debug/llm")
+async def debug_llm(request: Request) -> dict[str, Any]:
+    """One fixed prompt to the provider: the cheapest check that credentials work.
+
+    This is the first thing to reach for when the service misbehaves in a
+    cluster, before reading a log line, so it answers quickly or not at all.
+    """
+    settings = get_settings_for(request)
+    model = get_chat_model(request)
+
+    started = time.perf_counter()
+    try:
+        reply = await asyncio.wait_for(
+            model.ainvoke(PROBE_PROMPT), timeout=PROBE_TIMEOUT_SECONDS
+        )
+    except Exception as exc:
+        # Broad on purpose: every provider raises its own exception types, and
+        # this endpoint exists to report that the provider did not answer rather
+        # than to distinguish why.
+        #
+        # The detail is logged and *not* returned. Provider errors quote the
+        # request back, so they can carry prompt fragments and occasionally
+        # credentials -- the same reason Server.fail in the Go backend logs the
+        # error and answers with a generic one.
+        log.error(
+            "llm probe failed",
+            extra={"provider": settings.llm_provider, "model": settings.llm_model},
+            exc_info=exc,
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="the language model provider did not answer; see the service logs",
+        ) from exc
+
+    return {
+        "text": _text_of(reply.content),
+        "latencyMs": round((time.perf_counter() - started) * 1000, 2),
+        **describe_model(settings),
+    }
+
+
+def _text_of(content: Any) -> str:
+    """Flatten a reply's content to text.
+
+    A provider may answer with a string or with a list of parts, and a probe
+    that reports `[{'type': 'text', ...}]` has failed at its one job.
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = [p if isinstance(p, str) else p.get("text", "") for p in content]
+        return "".join(str(p) for p in parts)
+    return str(content)
