@@ -17,7 +17,7 @@ import pytest
 import respx
 
 from urara_chat.backend.client import BackendClient
-from urara_chat.backend.errors import BackendError, BackendNotFound
+from urara_chat.backend.errors import BackendError, BackendNotFound, BackendUnavailable
 from urara_chat.config import Settings
 
 BASE = "http://backend:8080"
@@ -231,6 +231,40 @@ class TestErrorMapping:
             await client.get_context(SID)
         assert caught.value.status == 502
         assert caught.value.message
+
+
+class TestTransportFailures:
+    """A refused connection or a timeout is still an upstream failure. Letting
+    httpx's own exception escape makes the handler answer 500, which blames this
+    service for an outage in the one it depends on."""
+
+    @respx.mock
+    async def test_a_refused_connection_raises_backend_unavailable(
+        self, client: BackendClient
+    ) -> None:
+        respx.get(f"{BASE}/api/v1/snapshots/{SID}/domains").mock(
+            side_effect=httpx.ConnectError("connection refused")
+        )
+        with pytest.raises(BackendUnavailable) as caught:
+            await client.list_domains(SID)
+        assert "unreachable" in caught.value.message
+        assert isinstance(caught.value, BackendError), "must map to 502 like any upstream failure"
+
+    @respx.mock
+    async def test_a_timeout_raises_backend_unavailable(self, client: BackendClient) -> None:
+        respx.get(f"{BASE}/api/v1/snapshots/{SID}/domains").mock(
+            side_effect=httpx.ReadTimeout("too slow")
+        )
+        with pytest.raises(BackendUnavailable):
+            await client.list_domains(SID)
+
+    @respx.mock
+    async def test_a_write_is_wrapped_too(self, client: BackendClient) -> None:
+        respx.post(f"{BASE}/api/v1/conversations").mock(
+            side_effect=httpx.ConnectError("connection refused")
+        )
+        with pytest.raises(BackendUnavailable):
+            await client.create_conversation(SID)
 
 
 class TestAuthorization:
