@@ -63,11 +63,24 @@ COMPOSE_NET := urara-vision_default
 # locally. Neo4j Community allows only one database, so the graph suites share it
 # and isolate by snapshot ID instead.
 TEST_DB     := relviz_test
+# The chat suites run in a container for the same reason the Go ones do: a
+# contributor with no Python installed can still run them.
+UV_IMAGE    := ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+# UV_PROJECT_ENVIRONMENT puts the virtualenv inside the container rather than in
+# the mounted checkout, where a Linux .venv would collide with the macOS one a
+# contributor is using locally. The cache volume is what keeps a rerun quick.
+CHAT_RUN    := docker run --rm \
+                 -v "$(PWD)/chat":/src \
+                 -v urara-vision-uv-cache:/root/.cache/uv \
+                 -e UV_PROJECT_ENVIRONMENT=/venv \
+                 -e UV_LINK_MODE=copy \
+                 -w /src $(UV_IMAGE)
 
 .PHONY: test
-test: ## Run the fast suites: backend unit tests and frontend typecheck + unit tests
+test: ## Run the fast suites: backend and chat unit tests, frontend typecheck + unit tests
 	$(GO_RUN) go test ./...
 	cd frontend && npm run typecheck && npm run test:run
+	$(MAKE) test-chat
 
 .PHONY: test-unit
 test-unit: ## Backend unit tests only (no databases needed)
@@ -93,7 +106,36 @@ test-integration: ## Backend integration tests against the compose stack (starts
 	  $(GO_IMAGE) go test -tags=integration -count=1 ./tests/integration/...
 
 .PHONY: test-all
-test-all: test test-integration ## Everything: unit, frontend and integration
+test-all: test test-integration test-chat-integration ## Everything: unit, frontend and integration
+
+.PHONY: test-chat
+test-chat: ## Chat service unit tests (no backend needed)
+	$(CHAT_RUN) uv run --frozen pytest tests/unit -q
+
+.PHONY: test-chat-integration
+test-chat-integration: ## Chat service tests against the compose stack
+	@echo "==> stack"
+	$(COMPOSE) up -d postgres neo4j backend
+	@echo "==> waiting for the backend"
+	@docker run --rm --network $(COMPOSE_NET) --entrypoint sh $(UV_IMAGE) -c \
+	  'until python -c "import urllib.request;urllib.request.urlopen(\"http://backend:8080/healthz\")" \
+	     >/dev/null 2>&1; do sleep 1; done'
+	@echo "==> tests"
+	@docker run --rm --network $(COMPOSE_NET) \
+	  -v "$(PWD)/chat":/src \
+	  -v urara-vision-uv-cache:/root/.cache/uv \
+	  -e UV_PROJECT_ENVIRONMENT=/venv \
+	  -e UV_LINK_MODE=copy \
+	  -e CHAT_TEST_BACKEND_URL="http://backend:8080" \
+	  -e CHAT_TEST_API_TOKEN="relviz-dev-token-not-for-production" \
+	  -w /src $(UV_IMAGE) \
+	  sh -c 'uv run --frozen pytest tests/integration -q; s=$$?; [ $$s -eq 5 ] && echo "(no integration tests yet; 02.9 adds them)" && exit 0; exit $$s'
+
+.PHONY: lint-chat
+lint-chat: ## ruff and mypy over the chat service
+	$(CHAT_RUN) uv run --frozen ruff check .
+	$(CHAT_RUN) uv run --frozen ruff format --check .
+	$(CHAT_RUN) uv run --frozen mypy src
 
 .PHONY: test-cover
 test-cover: ## Backend unit test coverage over the packages under test

@@ -5,7 +5,11 @@ FROM python:3.12-slim AS build
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
-WORKDIR /src
+# The virtualenv is built at the path it will be used from. uv writes absolute
+# paths into every console script's shebang, so a venv built at /src and copied
+# to /app leaves `uvicorn` pointing at an interpreter that is not there --
+# which fails only when the image is actually run, not when it is built.
+WORKDIR /app
 
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
@@ -32,7 +36,7 @@ RUN groupadd --gid 65532 nonroot \
  && useradd --uid 65532 --gid 65532 --no-create-home --shell /usr/sbin/nologin nonroot
 
 WORKDIR /app
-COPY --from=build /src/.venv /app/.venv
+COPY --from=build /app/.venv /app/.venv
 COPY src/ /app/src/
 
 # The manifests run this read-only with all capabilities dropped, so nothing may

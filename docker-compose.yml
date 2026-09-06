@@ -65,6 +65,39 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  chat:
+    build:
+      context: ./chat
+      dockerfile: Dockerfile
+    environment:
+      APP_ADDR: ":8090"
+      BACKEND_BASE_URL: "http://backend:8080"
+      # The same committed dev token the frontend presents. The chat service
+      # is an API client like any other.
+      BACKEND_API_TOKEN: "relviz-dev-token-not-for-production"
+      LOG_LEVEL: "info"
+    ports:
+      - "8090:8090"
+    depends_on:
+      # service_started rather than service_healthy: the backend declares no
+      # compose healthcheck, and this service's own readiness probe already
+      # reports a backend that is not up yet.
+      backend:
+        condition: service_started
+    healthcheck:
+      # The final image is a slim Python base with neither curl nor wget, so the
+      # check is made with the interpreter that is definitely there.
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request;urllib.request.urlopen('http://localhost:8090/healthz')
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend
