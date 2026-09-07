@@ -30,7 +30,13 @@ from urara_chat.config import Settings
 # from <root>/chat/tests/integration it is <root>/docs/demo/..., and from
 # /src/tests/integration inside the test container it is /docs/demo/..., which
 # is where the Makefile mounts it.
-DEMO_SET = Path(__file__).resolve().parents[3] / "docs" / "demo" / "jaffle-shop-ddd"
+DEMO_DIR = Path(__file__).resolve().parents[3] / "docs" / "demo"
+DEMO_SET = DEMO_DIR / "jaffle-shop-ddd"
+
+# A second, unrelated set. It exists so one test can prove the snapshot binding
+# holds: asking the Jaffle Shop snapshot about a table that lives only here must
+# come back empty rather than answered.
+OTHER_DEMO_SET = DEMO_DIR / "eshop-ddd"
 
 
 @pytest.fixture(scope="session")
@@ -52,25 +58,26 @@ def auth_headers(api_token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {api_token}"} if api_token else {}
 
 
-@pytest.fixture(scope="session")
-def snapshot_id(backend_url: str, auth_headers: dict[str, str]) -> Iterator[str]:
-    """Ingest the demo set, yield its snapshot ID, and delete it afterwards.
+def _ingest(
+    demo_set: Path, name: str, backend_url: str, auth_headers: dict[str, str]
+) -> Iterator[str]:
+    """Ingest one demo set, yield its snapshot ID, and delete it afterwards.
 
     Synchronous on purpose: it runs once per session, and a sync fixture avoids
     having to pin an event loop scope for something that is not under test.
     """
-    if not DEMO_SET.is_dir():
+    if not demo_set.is_dir():
         raise RuntimeError(
-            f"demo set not found at {DEMO_SET}. Inside the test container the "
+            f"demo set not found at {demo_set}. Inside the test container the "
             "repository's docs/ must be mounted at /docs."
         )
 
     files = [
-        {"path": str(p.relative_to(DEMO_SET)), "content": p.read_text()}
-        for p in sorted(DEMO_SET.rglob("*"))
+        {"path": str(p.relative_to(demo_set)), "content": p.read_text()}
+        for p in sorted(demo_set.rglob("*"))
         if p.suffix in {".md", ".toml"}
     ]
-    body = {"name": "chat-integration", "sourceLabel": "phase02", "files": files}
+    body = {"name": name, "sourceLabel": "phase02", "files": files}
 
     with httpx.Client(base_url=backend_url, headers=auth_headers, timeout=60.0) as http:
         response = http.post("/api/v1/ingest", json=body)
@@ -88,6 +95,22 @@ def snapshot_id(backend_url: str, auth_headers: dict[str, str]) -> Iterator[str]
             assert deleted.status_code in (204, 404), (
                 f"failed to delete test snapshot {sid}: {deleted.status_code} {deleted.text[:200]}"
             )
+
+
+@pytest.fixture(scope="session")
+def snapshot_id(backend_url: str, auth_headers: dict[str, str]) -> Iterator[str]:
+    """The Jaffle Shop set, in a snapshot of its own."""
+    yield from _ingest(DEMO_SET, "chat-integration", backend_url, auth_headers)
+
+
+@pytest.fixture(scope="session")
+def other_snapshot_id(backend_url: str, auth_headers: dict[str, str]) -> Iterator[str]:
+    """A second set, ingested only so a test can ask the first about it.
+
+    Its own snapshot, ingested and deleted like the first: two snapshots that
+    exist at once is the whole point, and neither may outlive the session.
+    """
+    yield from _ingest(OTHER_DEMO_SET, "chat-integration-other", backend_url, auth_headers)
 
 
 @pytest.fixture(scope="session")
