@@ -61,7 +61,9 @@ def pipeline(replies: list[AIMessage], **kwargs: Any) -> tuple[Pipeline, FakeCha
     model = FakeChatModel(replies)
     built = Pipeline(
         model,
-        [scripted_tool()],
+        # A factory rather than a list: the real tools close over the snapshot
+        # they read, so the graph is built per snapshot.
+        lambda sid: [scripted_tool()],
         ContextCardCache(ttl_seconds=300.0),
         CountingContextClient(jaffle()),  # type: ignore[arg-type]
         model_name="gemini-2.5-flash",
@@ -256,6 +258,94 @@ class TestLogging:
         assert record.tools == ["get_tables"]  # type: ignore[attr-defined]
         assert record.citations == 1  # type: ignore[attr-defined]
         assert record.latency_ms >= 0  # type: ignore[attr-defined]
+
+
+class TestOneGraphPerSnapshot:
+    """A graph is compiled once per snapshot, not once per process and not once
+    per turn.
+
+    Until 04.R the graph was built in `__init__` from a fixed tool list. Each
+    tool closes over the snapshot it reads, so a process-wide pipeline could
+    only ever answer about whichever snapshot was bound first -- while the HTTP
+    layer takes one per request.
+    """
+
+    def counting_pipeline(self, **kwargs: Any) -> tuple[Pipeline, list[str]]:
+        asked: list[str] = []
+
+        def tools_for(sid: str) -> list[StructuredTool]:
+            asked.append(sid)
+            return [scripted_tool()]
+
+        built = Pipeline(
+            FakeChatModel([AIMessage(content="answered")] * 20),
+            tools_for,
+            ContextCardCache(ttl_seconds=300.0),
+            CountingContextClient(jaffle()),  # type: ignore[arg-type]
+            model_name="gemini-2.5-flash",
+            **kwargs,
+        )
+        return built, asked
+
+    async def test_two_turns_on_one_snapshot_compile_once(self) -> None:
+        built, asked = self.counting_pipeline()
+
+        await built.answer("q1", "snap-1", [])
+        await built.answer("q2", "snap-1", [])
+
+        assert asked == ["snap-1"], "the graph was rebuilt for a snapshot it already had"
+
+    async def test_each_snapshot_gets_its_own_tools(self) -> None:
+        built, asked = self.counting_pipeline()
+
+        await built.answer("q", "snap-1", [])
+        await built.answer("q", "snap-2", [])
+
+        assert asked == ["snap-1", "snap-2"]
+
+    async def test_the_graph_cache_is_bounded(self) -> None:
+        """A pod asked about many snapshots must not hold a compiled graph for
+        every one it has ever seen."""
+        built, _ = self.counting_pipeline(max_graphs=3)
+
+        for i in range(20):
+            await built.answer("q", f"snap-{i}", [])
+
+        assert len(built._graphs) == 3
+
+    async def test_an_evicted_snapshot_is_rebuilt_not_wrong(self) -> None:
+        built, asked = self.counting_pipeline(max_graphs=1)
+
+        await built.answer("q", "snap-1", [])
+        await built.answer("q", "snap-2", [])
+        await built.answer("q", "snap-1", [])
+
+        assert asked == ["snap-1", "snap-2", "snap-1"]
+
+
+class TestTheCostLineReachesTheLog:
+    """Phase 08 bills the feature from this line, so it is asserted on the
+    rendered output rather than on the LogRecord -- the fields were real on the
+    record and dropped by the formatter until 04.R."""
+
+    async def test_the_turn_line_carries_usage_and_iterations(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from urara_chat.config import JSONLogFormatter
+
+        built, _ = pipeline([call_tool(), AIMessage(content="fact_orders is one per order.")])
+
+        with caplog.at_level(logging.INFO, logger="urara_chat.agent.pipeline"):
+            await built.answer("q", "snap-1", [])
+
+        record = next(r for r in caplog.records if r.message == "turn answered")
+        line = json.loads(JSONLogFormatter().format(record))
+
+        assert line["snapshot_id"] == "snap-1"
+        assert line["iterations"] == 2
+        assert line["tools"] == ["get_tables"]
+        assert line["latency_ms"] >= 0
+        assert "usage" in line
 
 
 class TestTheModuleEntryPoint:
