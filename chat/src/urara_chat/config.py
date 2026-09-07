@@ -92,6 +92,18 @@ class Settings(BaseSettings):
     # it. Four thousand characters is several paragraphs.
     max_question_chars: int = 4000
 
+    # A ceiling on the whole turn, not on one call. Each provider call is bounded
+    # by llm_timeout_seconds and each backend call by backend_timeout_seconds,
+    # but a turn is up to seven of the first plus its tools -- and Phase 08's
+    # eval runner drives this thousands of times, where a turn that hangs is a
+    # run that hangs.
+    answer_timeout_seconds: float = 120.0
+
+    # Refused on Content-Length, before the body is read. The question limit
+    # above cannot do this job: it runs in the handler, by which point the whole
+    # body has been received and parsed.
+    max_request_bytes: int = 1_048_576
+
     # SecretStr so redaction is the default rather than something to remember at
     # every point the settings are printed. No credential has a default value.
     google_api_key: SecretStr = SecretStr("")
@@ -191,12 +203,34 @@ class Settings(BaseSettings):
         return _LOG_LEVELS[self.log_level]
 
 
+# Everything logging puts on a record itself. Anything left over was passed by
+# a caller through `extra=`, which is the whole point of a structured log line.
+# Built from a real record rather than typed out, so a new attribute in a future
+# Python does not start appearing in the output as if someone had logged it.
+_RESERVED_RECORD_KEYS = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__dict__) | {
+    "message",
+    "asctime",
+    "taskName",
+}
+
+# The four keys the shape is defined by. Held apart so a caller cannot displace
+# one of them with an `extra` field of the same name.
+_FIXED_KEYS = ("time", "level", "msg", "logger")
+
+
 class JSONLogFormatter(logging.Formatter):
     """Renders a record as one JSON object per line.
 
     The Go service logs JSON through slog, and two services in one cluster
     emitting different shapes is a small permanent tax on anyone reading the
     logs. The keys match slog's: time, level, msg.
+
+    Fields passed through `extra=` are rendered alongside those. They were
+    dropped until 04.R: every structured line in the service -- the per-turn
+    cost line Phase 08 bills from, the per-tool timing line, the provider on a
+    failed probe -- reached stdout as a bare message with its fields silently
+    gone. A test that asserts on the LogRecord will not see this. Assert on the
+    rendered string.
     """
 
     def format(self, record: logging.LogRecord) -> str:
@@ -206,9 +240,21 @@ class JSONLogFormatter(logging.Formatter):
             "msg": record.getMessage(),
             "logger": record.name,
         }
+        # Merged after the fixed keys and with them removed, so `extra={"msg":
+        # ...}` adds a field rather than rewriting the message.
+        payload.update(
+            {
+                key: value
+                for key, value in record.__dict__.items()
+                if key not in _RESERVED_RECORD_KEYS and key not in _FIXED_KEYS
+            }
+        )
         if record.exc_info:
             payload["error"] = self.formatException(record.exc_info)
-        return json.dumps(payload)
+        # default=str rather than letting a value raise: a formatter that throws
+        # takes out the line it was writing and tells nobody why, and a log call
+        # is the last place that should be able to fail a request.
+        return json.dumps(payload, default=str)
 
 
 def configure_logging(settings: Settings) -> None:

@@ -12,7 +12,7 @@ prose would make every rewording a test failure.
 
 import pytest
 
-from urara_chat.agent.prompts import TOOL_BUDGET_SPENT, build_system_prompt
+from urara_chat.agent.prompts import TOOL_BUDGET_SPENT, build_system_prompt, language_name
 
 CARD = (
     "PROJECT: jaffle-shop-ddd (v0.1.0)\nTABLES\n  ordering/fact_orders | fact | one per order | 15"
@@ -49,9 +49,24 @@ class TestTheCard:
 
 
 class TestLanguage:
-    @pytest.mark.parametrize("language", ["EN", "JA"])
-    def test_the_requested_language_appears(self, language: str) -> None:
-        assert f"Answer in {language}" in build_system_prompt(CARD, language)
+    @pytest.mark.parametrize(("code", "name"), [("EN", "English"), ("JA", "Japanese")])
+    def test_the_language_is_named_not_coded(self, code: str, name: str) -> None:
+        """ "Answer in JA" is followed less reliably than "Answer in Japanese",
+        and this one instruction is the whole of the bilingual behaviour."""
+        prompt = build_system_prompt(CARD, code)
+
+        assert f"Answer in {name}" in prompt
+        assert f"Answer in {code}" not in prompt
+
+    @pytest.mark.parametrize("code", ["ja", " JA "])
+    def test_the_code_is_normalised(self, code: str) -> None:
+        assert "Answer in Japanese" in build_system_prompt(CARD, code)
+
+    def test_an_unknown_code_falls_back_to_english(self) -> None:
+        """A prompt is not the place to raise, and the request layer has already
+        narrowed the code to one of the two."""
+        assert language_name("KL") == "English"
+        assert "Answer in English" in build_system_prompt(CARD, "KL")
 
     def test_the_prompt_itself_is_in_english(self) -> None:
         """It instructs in English and directs the answer language; it is not

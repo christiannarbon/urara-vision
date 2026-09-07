@@ -671,6 +671,40 @@ class TestDebugAnswer:
         assert response.status_code == 422
 
 
+class TestTheTurnDeadline:
+    """Each call inside a turn is bounded already; the turn was not. Phase 08's
+    eval runner drives this route thousands of times, and one hung turn hangs
+    the run."""
+
+    def test_a_hung_turn_is_502_rather_than_hanging(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import urara_chat.api.routes as routes
+
+        async def never(*args: Any, **kwargs: Any) -> Any:
+            await asyncio.sleep(10)
+
+        monkeypatch.setattr(routes, "answer", never)
+        settings = fake_settings(answer_timeout_seconds=0.05)
+        response = client_for(FakeClient(), None, settings).post(
+            "/debug/answer", json={"snapshotId": "snap-1", "question": "q"}
+        )
+
+        assert response.status_code == 502
+
+    def test_the_timeout_leaks_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import urara_chat.api.routes as routes
+
+        async def never(*args: Any, **kwargs: Any) -> Any:
+            await asyncio.sleep(10)
+
+        monkeypatch.setattr(routes, "answer", never)
+        settings = fake_settings(answer_timeout_seconds=0.05)
+        response = client_for(FakeClient(), None, settings).post(
+            "/debug/answer", json={"snapshotId": "snap-1", "question": "q"}
+        )
+
+        assert response.json()["detail"] == routes.UPSTREAM_FAILURE
+
+
 class TestLifespan:
     def test_one_client_is_built_for_the_process_and_closed_on_shutdown(
         self, monkeypatch: pytest.MonkeyPatch
@@ -724,6 +758,79 @@ class TestLifespan:
         assert "temperature" in str(caught.value)
         assert FAKE_KEY[-12:] not in str(caught.value)
         assert FAKE_KEY not in str(caught.value)
+        get_settings.cache_clear()
+
+    def test_the_lifespan_installs_the_agent_pipeline(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Nothing called configure_pipeline until 04.R, so every request to
+        /debug/answer raised "the agent pipeline has not been configured" -- and
+        no unit test saw it, because each one builds its own Pipeline."""
+        import urara_chat.agent.pipeline as agent_pipeline
+        import urara_chat.main as main
+        from urara_chat.config import get_settings
+
+        monkeypatch.setenv("GOOGLE_API_KEY", "test-key-not-real")
+        get_settings.cache_clear()
+        monkeypatch.setattr(main, "BackendClient", lambda settings: FakeClient())
+        monkeypatch.setattr(main, "build_chat_model", lambda settings: FakeModel())
+        monkeypatch.setattr(agent_pipeline, "_pipeline", None)
+
+        with TestClient(main.app):
+            installed = agent_pipeline.get_pipeline()
+
+        assert installed is not None
+        get_settings.cache_clear()
+
+    def test_the_lifespan_passes_the_configured_limits_through(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """These three settings were read by nothing at all: the history bound,
+        the tool budget and the card TTL."""
+        import urara_chat.agent.pipeline as agent_pipeline
+        import urara_chat.main as main
+        from urara_chat.config import get_settings
+
+        monkeypatch.setenv("GOOGLE_API_KEY", "test-key-not-real")
+        monkeypatch.setenv("MAX_HISTORY_MESSAGES", "7")
+        monkeypatch.setenv("MAX_TOOL_ITERATIONS", "2")
+        get_settings.cache_clear()
+        monkeypatch.setattr(main, "BackendClient", lambda settings: FakeClient())
+        monkeypatch.setattr(main, "build_chat_model", lambda settings: FakeModel())
+        monkeypatch.setattr(agent_pipeline, "_pipeline", None)
+
+        with TestClient(main.app):
+            built = agent_pipeline.get_pipeline()
+            assert built._max_history == 7
+            assert built._max_tool_iterations == 2
+
+        get_settings.cache_clear()
+
+    def test_an_oversized_body_is_refused_before_it_is_read(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """MAX_QUESTION_CHARS cannot do this: it runs in the handler, by which
+        point the whole body has been received and parsed."""
+        import urara_chat.main as main
+        from urara_chat.config import get_settings
+
+        monkeypatch.setenv("GOOGLE_API_KEY", "test-key-not-real")
+        monkeypatch.setenv("MAX_REQUEST_BYTES", "200")
+        get_settings.cache_clear()
+        monkeypatch.setattr(main, "BackendClient", lambda settings: FakeClient())
+        monkeypatch.setattr(main, "build_chat_model", lambda settings: FakeModel())
+
+        with TestClient(main.app) as c:
+            oversized = c.post(
+                "/debug/answer", json={"snapshotId": "snap-1", "question": "x" * 500}
+            )
+            assert oversized.status_code == 413
+            assert "200" in oversized.json()["detail"]
+
+            # A body under the ceiling still reaches the handler, where the
+            # friendly limit lives.
+            assert c.get("/healthz").status_code == 200
+
         get_settings.cache_clear()
 
     def test_the_model_is_built_once_in_the_lifespan(self, monkeypatch: pytest.MonkeyPatch) -> None:

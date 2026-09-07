@@ -7,6 +7,15 @@ tool during the turn and keeps the ones the answer mentions. The model can
 neither invent a citation -- it never looked the table up -- nor pad the list,
 because an ID it did not mention is not something the answer rests on.
 
+An answer that mentions a bare name shared by more than one table cites **all**
+of them. The demo set has `customer_identity/dim_date` and
+`shared_kernel/dim_date`, and "there are two dim_date tables" cites both -- which
+is right for that question, and over-cites for one that meant only one of them.
+This is deliberate. Nothing in the text can tell the two apart, and citing both
+is the safer error: a reader who clicks the wrong chip loses a second, a reader
+never shown the right one loses the answer. `TestAmbiguity` pins it, so it is not
+"fixed" later by someone reading it as a bug.
+
 Pure: no model, no client, no I/O. That is what makes it exhaustively testable,
 and it is the function most worth testing in the service.
 """

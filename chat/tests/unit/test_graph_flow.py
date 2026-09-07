@@ -13,14 +13,18 @@ from typing import Any
 
 import pytest
 from fakes import CountingContextClient, FakeChatModel
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel
 
 from urara_chat.agent.citations import extract_citations
 from urara_chat.agent.context_card import ContextCardCache
 from urara_chat.agent.graph import build_graph, initial_state
-from urara_chat.agent.prompts import TOOL_BUDGET_SPENT
+from urara_chat.agent.prompts import (
+    NO_ANSWER_PRODUCED,
+    TOOL_BUDGET_SPENT,
+    TOOL_BUDGET_SPENT_RESULT,
+)
 from urara_chat.backend.models import SnapshotContext
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -177,6 +181,95 @@ class TestTheBoundedLoop:
         assert final["truncated"] is True
         assert final["answer"] == "Only fact_orders confirmed."
         assert final["citations"] == [FACT_ORDERS]
+
+
+class TestTheBudgetNoticeReachesTheModel:
+    """Where the notice lands, not just that it was appended.
+
+    It was a SystemMessage until 04.R, and the Google adapter hoists every
+    system message into the system instruction wherever it sits -- so an
+    instruction to stop retrieving and answer arrived at the *front* of the
+    context, ahead of the retrieval it was talking about. Nothing caught it,
+    because FakeChatModel does not care what it is handed. These assert on
+    `model.calls`, which is the record of what was actually sent.
+    """
+
+    async def test_the_notice_is_the_last_thing_the_model_reads(self) -> None:
+        _, model, _ = await run([call_tool()], max_tool_iterations=2)
+
+        last_sent = model.calls[-1]
+        assert str(last_sent[-1].content) == TOOL_BUDGET_SPENT
+
+    async def test_the_notice_is_not_a_system_message(self) -> None:
+        """A system-shaped notice is merged into the system instruction and
+        stops being the last word."""
+        _, model, _ = await run([call_tool()], max_tool_iterations=2)
+
+        notice = next(m for m in model.calls[-1] if str(m.content) == TOOL_BUDGET_SPENT)
+        assert isinstance(notice, HumanMessage)
+
+    async def test_exactly_one_system_message_still_reaches_the_model(self) -> None:
+        _, model, _ = await run([call_tool()], max_tool_iterations=2)
+
+        systems = [m for m in model.calls[-1] if isinstance(m, SystemMessage)]
+        assert len(systems) == 1
+        assert "SNAPSHOT INVENTORY" in str(systems[0].content)
+
+    async def test_no_tool_call_is_left_unanswered(self) -> None:
+        """A turn whose last model message holds a call with no result is one
+        most providers refuse to continue from, and continuing is the whole
+        point of the post-budget pass."""
+        _, model, _ = await run([call_tool()], max_tool_iterations=3)
+
+        sent = model.calls[-1]
+        asked = {
+            call["id"]
+            for message in sent
+            if isinstance(message, AIMessage)
+            for call in message.tool_calls
+        }
+        answered = {m.tool_call_id for m in sent if isinstance(m, ToolMessage)}
+        assert asked <= answered, f"unanswered tool calls: {sorted(asked - answered)}"
+
+    async def test_the_unrun_calls_say_so(self) -> None:
+        _, model, _ = await run([call_tool()], max_tool_iterations=2)
+
+        bodies = [str(m.content) for m in model.calls[-1] if isinstance(m, ToolMessage)]
+        assert TOOL_BUDGET_SPENT_RESULT in bodies
+
+
+class TestTheAnswerIsNeverEmpty:
+    async def test_a_script_of_bare_tool_calls_still_answers(self) -> None:
+        """A model asking for a tool emits empty content. Taking the last
+        message's text gave the reader `""` with truncated set -- which is not
+        the partial answer the loop is supposed to degrade to."""
+        final, _, _ = await run([call_tool()], max_tool_iterations=3)
+
+        assert final["truncated"] is True
+        assert final["answer"].strip() != ""
+        assert final["answer"] == NO_ANSWER_PRODUCED
+
+    async def test_the_last_text_the_model_wrote_wins(self) -> None:
+        """Not the fallback, and not an earlier answer either."""
+        replies = [
+            AIMessage(content="a first thought", tool_calls=[]),
+            call_tool(),
+            call_tool(),
+        ]
+        final, _, _ = await run(replies, max_tool_iterations=2)
+
+        assert final["answer"] == "a first thought"
+
+    async def test_an_answer_after_the_budget_still_wins_over_the_fallback(self) -> None:
+        replies = [call_tool(), call_tool(), AIMessage(content="Only fact_orders confirmed.")]
+        final, _, _ = await run(replies, max_tool_iterations=2)
+
+        assert final["answer"] == "Only fact_orders confirmed."
+
+    async def test_whitespace_is_not_an_answer(self) -> None:
+        final, _, _ = await run([AIMessage(content="   \n  ")])
+
+        assert final["answer"] == NO_ANSWER_PRODUCED
 
 
 class TestToolResultsAndCitations:

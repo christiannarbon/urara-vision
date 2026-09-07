@@ -13,16 +13,21 @@ from __future__ import annotations
 
 import logging
 import sys
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from urara_chat.agent.context_card import ContextCardCache
+from urara_chat.agent.pipeline import Pipeline, configure_pipeline
 from urara_chat.api.routes import router
 from urara_chat.backend.client import BackendClient
 from urara_chat.config import ConfigurationError, configure_logging, get_settings
 from urara_chat.llm.factory import build_chat_model, describe_model
+from urara_chat.tools.langchain import to_langchain_tools
+from urara_chat.tools.registry import build_tools
 
 
 def _reasons(exc: ValidationError) -> list[str]:
@@ -69,6 +74,31 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.error("language model configuration is invalid, refusing to start: %s", reasons)
         raise ConfigurationError(reasons) from None
     log.info("language model configured: %s", describe_model(settings))
+
+    # The agent, assembled here and nowhere else. Until 04.R nothing called
+    # configure_pipeline, so every request to /debug/answer raised "the agent
+    # pipeline has not been configured". Three settings -- the history bound,
+    # the tool budget and the card TTL -- were read by nothing at all. The unit
+    # suite could not see any of it, because every test in the phase builds its
+    # own Pipeline.
+    #
+    # The tools are a factory rather than a list: each one closes over the
+    # snapshot it reads, and the snapshot is per request. There is nothing to
+    # bind here.
+    app.state.card_cache = ContextCardCache(settings.context_cache_ttl_seconds)
+    configure_pipeline(
+        Pipeline(
+            app.state.chat_model,
+            lambda sid: to_langchain_tools(build_tools(app.state.client, sid)),
+            app.state.card_cache,
+            app.state.client,
+            model_name=settings.llm_model,
+            max_history_messages=settings.max_history_messages,
+            max_tool_iterations=settings.max_tool_iterations,
+        )
+    )
+    log.info("agent pipeline configured")
+
     try:
         yield
     finally:
@@ -81,4 +111,31 @@ app = FastAPI(
     description="Answers questions about a documented data model.",
     lifespan=lifespan,
 )
+
+
+@app.middleware("http")
+async def limit_request_size(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Refuse an oversized body on Content-Length, before it is read.
+
+    MAX_QUESTION_CHARS cannot do this: it is checked in the handler, by which
+    point uvicorn has received the whole body and pydantic has parsed it. A
+    100 MB question would be fully allocated before being told it was too long.
+
+    The two limits do different jobs. This one stops something absurd; the
+    handler's stays the one that answers with a friendly message naming the
+    limit, which is what a caller who pasted a document actually needs.
+    """
+    declared = request.headers.get("content-length")
+    if declared is not None and declared.isdigit():
+        limit = request.app.state.settings.max_request_bytes
+        if int(declared) > limit:
+            return JSONResponse(
+                status_code=413,
+                content={"detail": f"request body is larger than the {limit} byte limit"},
+            )
+    return await call_next(request)
+
+
 app.include_router(router)
