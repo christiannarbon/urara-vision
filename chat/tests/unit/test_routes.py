@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
 
+from urara_chat.agent.pipeline import AgentAnswer
 from urara_chat.api.routes import router
 from urara_chat.backend.errors import BackendError, BackendNotFound, BackendUnavailable
 from urara_chat.backend.models import Domain, SearchHit
@@ -75,6 +76,53 @@ class FakeModel:
         if self.raises:
             raise self.raises
         return AIMessage(content=self.reply)
+
+
+class FakePipeline:
+    """Stands in for the agent, recording what the route handed it.
+
+    The route's job is the arguments and the error mapping, not the answer, so
+    everything below the call is scripted -- and the recorded snapshot is what
+    proves `latest` never reaches a pipeline that would refuse it.
+    """
+
+    def __init__(self, result: Any = None, raises: Exception | None = None) -> None:
+        self.result = result if result is not None else agent_answer()
+        self.raises = raises
+        self.calls: list[dict[str, Any]] = []
+
+    async def __call__(
+        self,
+        question: str,
+        snapshot_id: str,
+        history: Any,
+        language: str = "EN",
+    ) -> Any:
+        self.calls.append(
+            {
+                "question": question,
+                "snapshot_id": snapshot_id,
+                "history": history,
+                "language": language,
+            }
+        )
+        if self.raises:
+            raise self.raises
+        return self.result
+
+
+def agent_answer(**over: Any) -> AgentAnswer:
+    base: dict[str, Any] = {
+        "text": "fact_orders is one row per order.",
+        "citations": ["ordering/fact_orders"],
+        "tool_calls": [{"name": "get_tables", "args": {"ids": ["ordering/fact_orders"]}}],
+        "iterations": 2,
+        "truncated": False,
+        "model": "gemini-2.5-flash",
+        "latency_ms": 1234,
+        "usage": {"input_tokens": 900, "output_tokens": 120},
+    }
+    return AgentAnswer(**(base | over))
 
 
 def fake_settings(**over: Any) -> Settings:
@@ -391,6 +439,236 @@ class TestInvokeTool:
             "/debug/tool", json={"snapshotId": "snap-1", "tool": "list_domains"}
         )
         assert response.status_code == 200
+
+
+class TestDebugAnswer:
+    """The one-turn path, with the pipeline faked.
+
+    What is worth asserting here is the route's own work: the arguments the
+    pipeline is handed, the status for each way a turn can fail, and that no
+    provider text reaches the body. What the agent answers is tested in
+    test_pipeline.py, and against a real model in the integration suite.
+    """
+
+    def post(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake: FakeClient | None = None,
+        pipeline: FakePipeline | None = None,
+        settings: Settings | None = None,
+        **body: Any,
+    ) -> Any:
+        import urara_chat.api.routes as routes
+
+        monkeypatch.setattr(routes, "answer", pipeline or FakePipeline())
+        return client_for(fake or FakeClient(), None, settings).post("/debug/answer", json=body)
+
+    def test_it_returns_every_documented_field(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Text alone is not enough: without toolCalls and iterations a wrong
+        answer is unexplainable, which is why this route exists."""
+        response = self.post(
+            monkeypatch, snapshotId="snap-1", question="What is the grain of fact_orders?"
+        )
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "text": "fact_orders is one row per order.",
+            "citations": ["ordering/fact_orders"],
+            "toolCalls": [{"name": "get_tables", "args": {"ids": ["ordering/fact_orders"]}}],
+            "iterations": 2,
+            "truncated": False,
+            "model": "gemini-2.5-flash",
+            "latencyMs": 1234,
+            "usage": {"input_tokens": 900, "output_tokens": 120},
+        }
+
+    def test_latest_is_resolved_before_the_pipeline_sees_it(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """answer() refuses the alias, and rightly: reading the wrong snapshot
+        produces a confidently wrong answer."""
+        fake, pipeline = FakeClient(), FakePipeline()
+        response = self.post(
+            monkeypatch, fake, pipeline, snapshotId="latest", question="the grain of fact_orders?"
+        )
+
+        assert response.status_code == 200
+        assert fake.resolved == ["latest"]
+        assert pipeline.calls[0]["snapshot_id"] == "real-id"
+
+    def test_nothing_is_persisted_so_the_history_is_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pipeline = FakePipeline()
+        self.post(monkeypatch, None, pipeline, snapshotId="snap-1", question="q")
+
+        assert pipeline.calls[0]["history"] == []
+
+    def test_the_question_reaches_the_pipeline_trimmed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pipeline = FakePipeline()
+        self.post(monkeypatch, None, pipeline, snapshotId="snap-1", question="  the grain?  ")
+
+        assert pipeline.calls[0]["question"] == "the grain?"
+
+    @pytest.mark.parametrize("question", ["", "   ", "\n\t "])
+    def test_an_empty_question_is_400_naming_the_field(
+        self, monkeypatch: pytest.MonkeyPatch, question: str
+    ) -> None:
+        """Whitespace is empty, not short: it costs a prompt and answers nothing."""
+        response = self.post(monkeypatch, snapshotId="snap-1", question=question)
+
+        assert response.status_code == 400
+        assert "question" in str(response.json()["detail"])
+
+    def test_an_over_long_question_is_400_naming_the_limit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Whoever hit this is pasting a document, and needs to know how much to
+        cut rather than only that it was too much."""
+        settings = fake_settings(max_question_chars=50)
+        response = self.post(
+            monkeypatch, None, None, settings, snapshotId="snap-1", question="x" * 51
+        )
+
+        assert response.status_code == 400
+        assert "50" in str(response.json()["detail"])
+
+    def test_a_question_at_the_limit_is_answered(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        settings = fake_settings(max_question_chars=50)
+        response = self.post(
+            monkeypatch, None, None, settings, snapshotId="snap-1", question="x" * 50
+        )
+        assert response.status_code == 200
+
+    def test_the_limit_is_measured_after_trimming(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The prompt is built from what is left, so that is what is counted."""
+        settings = fake_settings(max_question_chars=10)
+        response = self.post(
+            monkeypatch, None, None, settings, snapshotId="snap-1", question="   short   "
+        )
+        assert response.status_code == 200
+
+    def test_an_unknown_snapshot_is_404(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        response = self.post(monkeypatch, snapshotId="nosuch", question="q")
+        assert response.status_code == 404
+
+    def test_the_pipeline_is_not_called_for_a_bad_request(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A validation failure should cost nothing: the model is the expensive
+        part of this route."""
+        pipeline = FakePipeline()
+        self.post(monkeypatch, None, pipeline, snapshotId="nosuch", question="  ")
+
+        assert pipeline.calls == []
+
+    def test_an_unreachable_backend_is_502(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake = FakeClient(raises=BackendUnavailable(502, "backend unreachable: refused"))
+        response = self.post(monkeypatch, fake, snapshotId="snap-1", question="q")
+        assert response.status_code == 502
+
+    def test_a_provider_failure_is_502(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        pipeline = FakePipeline(raises=RuntimeError("boom"))
+        response = self.post(monkeypatch, None, pipeline, snapshotId="snap-1", question="q")
+        assert response.status_code == 502
+
+    def test_a_provider_timeout_is_502(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        pipeline = FakePipeline(raises=TimeoutError())
+        response = self.post(monkeypatch, None, pipeline, snapshotId="snap-1", question="q")
+        assert response.status_code == 502
+
+    def test_the_provider_error_text_is_not_echoed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Provider errors quote the request back, so they can carry prompt
+        fragments and occasionally credentials."""
+        secret = f"quota exceeded for key {FAKE_KEY}; prompt was 'the grain of fact_orders'"
+        pipeline = FakePipeline(raises=RuntimeError(secret))
+
+        response = self.post(monkeypatch, None, pipeline, snapshotId="snap-1", question="q")
+
+        assert response.status_code == 502
+        assert FAKE_KEY not in response.text
+        assert FAKE_KEY[:12] not in response.text
+        assert "quota exceeded" not in response.text
+        assert "the grain of fact_orders" not in response.text
+
+    def test_the_real_reason_is_logged(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        pipeline = FakePipeline(raises=RuntimeError("the real reason"))
+
+        with caplog.at_level(logging.ERROR, logger="urara_chat.api.routes"):
+            self.post(monkeypatch, None, pipeline, snapshotId="snap-1", question="q")
+
+        record = next(r for r in caplog.records if r.message == "answer failed")
+        assert record.snapshot_id == "snap-1"  # type: ignore[attr-defined]
+        assert "the real reason" in str(record.exc_info[1])  # type: ignore[index]
+
+    def test_a_spent_tool_budget_is_200_with_truncated_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A partial answer that names its own gaps beats an error, and by now
+        the reader has already waited."""
+        pipeline = FakePipeline(agent_answer(truncated=True, iterations=6))
+        response = self.post(monkeypatch, None, pipeline, snapshotId="snap-1", question="q")
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["truncated"] is True
+        assert body["text"]
+
+    def test_usage_may_be_empty_when_the_provider_reports_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Never guessed: a fabricated number in a cost report is worse than a
+        gap."""
+        pipeline = FakePipeline(agent_answer(usage={}))
+        body = self.post(monkeypatch, None, pipeline, snapshotId="snap-1", question="q").json()
+
+        assert body["usage"] == {}
+
+    @pytest.mark.parametrize("sent", ["EN", "JA", "ja"])
+    def test_a_known_language_reaches_the_pipeline_upper_cased(
+        self, monkeypatch: pytest.MonkeyPatch, sent: str
+    ) -> None:
+        pipeline = FakePipeline()
+        self.post(monkeypatch, None, pipeline, snapshotId="snap-1", question="q", language=sent)
+
+        assert pipeline.calls[0]["language"] == sent.upper()
+
+    @pytest.mark.parametrize("sent", ["FR", "klingon", ""])
+    def test_an_unknown_language_falls_back_to_en(
+        self, monkeypatch: pytest.MonkeyPatch, sent: str
+    ) -> None:
+        """Not worth failing a question over: refusing the turn loses the answer
+        as well as the language."""
+        pipeline = FakePipeline()
+        response = self.post(
+            monkeypatch, None, pipeline, snapshotId="snap-1", question="q", language=sent
+        )
+
+        assert response.status_code == 200
+        assert pipeline.calls[0]["language"] == "EN"
+
+    def test_the_language_defaults_to_en(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        pipeline = FakePipeline()
+        self.post(monkeypatch, None, pipeline, snapshotId="snap-1", question="q")
+
+        assert pipeline.calls[0]["language"] == "EN"
+
+    def test_snake_case_body_is_accepted_too(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        response = self.post(monkeypatch, snapshot_id="snap-1", question="q")
+        assert response.status_code == 200
+
+    def test_an_unknown_body_field_is_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A misspelled key should be reported, not silently dropped."""
+        response = self.post(monkeypatch, snapshotId="snap-1", question="q", langauge="JA")
+        assert response.status_code == 422
+
+    def test_a_missing_snapshot_field_is_422(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        response = self.post(monkeypatch, question="q")
+        assert response.status_code == 422
 
 
 class TestLifespan:
