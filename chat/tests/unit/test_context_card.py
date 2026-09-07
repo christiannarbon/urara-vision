@@ -311,3 +311,34 @@ class TestTheCache:
 
         assert client.calls == 2
         assert elapsed < 0.18, "the two fetches were serialised"
+
+
+class TestTheCacheIsBoundedIncludingItsLocks:
+    """The locks used to live in a dict beside the cards, pruned only when a
+    card was evicted -- so a failed fetch or an expired card left its lock
+    behind for the life of the process. 500 failing fetches left 500 locks and
+    no cards."""
+
+    async def test_failing_fetches_do_not_accumulate(self) -> None:
+        class Failing:
+            async def get_context(self, sid: str) -> SnapshotContext:
+                raise RuntimeError("the backend is down")
+
+        cache = ContextCardCache(ttl_seconds=300.0, max_entries=4)
+
+        for i in range(500):
+            with pytest.raises(RuntimeError):
+                await cache.get(Failing(), f"snap-{i}")  # type: ignore[arg-type]
+
+        assert len(cache._cards) <= 4
+
+    async def test_an_expired_entry_does_not_leak(self) -> None:
+        client = CountingClient()
+        clock = Clock()
+        cache = ContextCardCache(ttl_seconds=10.0, max_entries=4, clock=clock)
+
+        for i in range(50):
+            clock.now = i * 100.0
+            await cache.get(client, f"snap-{i}")  # type: ignore[arg-type]
+
+        assert len(cache._cards) <= 4
