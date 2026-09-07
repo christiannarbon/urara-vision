@@ -79,6 +79,14 @@ class Settings(BaseSettings):
     # memory and to pick up a re-ingest under the same ID, not for correctness.
     context_cache_ttl_seconds: float = 300.0
 
+    # An unbounded transcript is an unbounded bill: the whole history is resent
+    # on every turn. Twenty messages is roughly ten exchanges, which is more
+    # context than a follow-up question has ever needed here.
+    max_history_messages: int = 20
+    # How many times the model may ask for tools before it must answer with what
+    # it has. Six is generous for the nine tools available.
+    max_tool_iterations: int = 6
+
     # SecretStr so redaction is the default rather than something to remember at
     # every point the settings are printed. No credential has a default value.
     google_api_key: SecretStr = SecretStr("")
