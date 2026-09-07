@@ -35,6 +35,7 @@ from urara_chat.api.schemas import AnswerRequest, AnswerResponse, ToolInvokeRequ
 from urara_chat.backend.client import BackendClient
 from urara_chat.backend.errors import BackendError, BackendNotFound
 from urara_chat.config import Settings
+from urara_chat.llm.content import flatten_content
 from urara_chat.llm.factory import describe_model
 from urara_chat.tools.registry import ToolSpec, build_tools
 
@@ -230,7 +231,14 @@ async def debug_answer(request: Request, body: AnswerRequest) -> AnswerResponse:
         raise HTTPException(status_code=502, detail=UPSTREAM_FAILURE) from exc
 
     try:
-        result = await answer(question, snapshot_id, history=[], language=body.language)
+        # A deadline on the whole turn. Every call inside it is bounded already,
+        # but a turn is up to seven model calls plus their tools, and this route
+        # holds the connection for all of them -- Phase 08's eval runner drives
+        # it thousands of times, where one hung turn hangs the run.
+        result = await asyncio.wait_for(
+            answer(question, snapshot_id, history=[], language=body.language),
+            timeout=settings.answer_timeout_seconds,
+        )
     except BackendNotFound as exc:
         # The snapshot resolved a moment ago, so this is one deleted mid-turn.
         # Still the caller's answer to have: the ID they asked about is gone.
@@ -285,21 +293,7 @@ async def debug_llm(request: Request) -> dict[str, Any]:
         ) from exc
 
     return {
-        "text": _text_of(reply.content),
+        "text": flatten_content(reply.content),
         "latencyMs": round((time.perf_counter() - started) * 1000, 2),
         **describe_model(settings),
     }
-
-
-def _text_of(content: Any) -> str:
-    """Flatten a reply's content to text.
-
-    A provider may answer with a string or with a list of parts, and a probe
-    that reports `[{'type': 'text', ...}]` has failed at its one job.
-    """
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = [p if isinstance(p, str) else p.get("text", "") for p in content]
-        return "".join(str(p) for p in parts)
-    return str(content)
