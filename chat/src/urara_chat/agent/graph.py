@@ -24,6 +24,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
     BaseMessage,
+    HumanMessage,
     RemoveMessage,
     SystemMessage,
     ToolMessage,
@@ -35,8 +36,14 @@ from langgraph.prebuilt import ToolNode
 
 from urara_chat.agent.citations import extract_citations
 from urara_chat.agent.context_card import ContextCardCache
-from urara_chat.agent.prompts import TOOL_BUDGET_SPENT, build_system_prompt
+from urara_chat.agent.prompts import (
+    NO_ANSWER_PRODUCED,
+    TOOL_BUDGET_SPENT,
+    TOOL_BUDGET_SPENT_RESULT,
+    build_system_prompt,
+)
 from urara_chat.backend.client import BackendClient
+from urara_chat.llm.content import flatten_content
 
 log = logging.getLogger(__name__)
 
@@ -125,7 +132,7 @@ def build_graph(
 
     async def finalise(state: AgentState) -> dict[str, Any]:
         """Assemble the answer and work out what it rested on. No model call."""
-        answer = _text_of(state["messages"][-1])
+        answer = _last_answer(state["messages"])
         citations = extract_citations(state["tool_results"], answer)
 
         log.debug(
@@ -141,11 +148,31 @@ def build_graph(
         return {"answer": answer, "citations": citations}
 
     async def spend_budget(state: AgentState) -> dict[str, Any]:
-        """Tell the model its budget is gone and let it answer from what it has."""
+        """Tell the model its budget is gone and let it answer from what it has.
+
+        Two things have to be true of what this appends, and neither was before
+        04.R.
+
+        Every tool call the model just asked for is answered, with a result
+        saying it was not run. A turn whose last model message holds a call with
+        no result is one most providers refuse to continue from -- and the whole
+        point of this node is that there *is* a continuation.
+
+        The notice itself goes in as a human turn, not a system one. The Google
+        adapter collects every SystemMessage into the system instruction wherever
+        it sits in the list, so a system-shaped notice arrives at the *front* of
+        the context: an instruction to stop retrieving and answer, read before
+        the retrieval it is talking about.
+        """
+        last = state["messages"][-1]
+        refusals: list[BaseMessage] = [
+            ToolMessage(content=TOOL_BUDGET_SPENT_RESULT, tool_call_id=call["id"] or "")
+            for call in (last.tool_calls if isinstance(last, AIMessage) else [])
+        ]
         return {
             "truncated": True,
             "budget_notice_sent": True,
-            "messages": [SystemMessage(content=TOOL_BUDGET_SPENT)],
+            "messages": [*refusals, HumanMessage(content=TOOL_BUDGET_SPENT)],
         }
 
     def route(state: AgentState) -> str:
@@ -205,6 +232,23 @@ def initial_state(snapshot_id: str, language: str, messages: list[BaseMessage]) 
     )
 
 
+def _last_answer(messages: Sequence[BaseMessage]) -> str:
+    """The text the model actually wrote, latest first.
+
+    Not simply the final message. A turn that spends its whole budget can end on
+    an AIMessage that is *only* a tool call, whose content is the empty string --
+    which is what a model emits when it wants a tool, and what this returned
+    until 04.R. The loop is supposed to degrade to a partial answer; an empty
+    body is not one, and the reader has already waited for it.
+    """
+    for message in reversed(messages):
+        if isinstance(message, AIMessage):
+            text = flatten_content(message.content).strip()
+            if text:
+                return text
+    return NO_ANSWER_PRODUCED
+
+
 def _parsed(content: Any) -> Any:
     """A tool result as an object where it is one, and as text where it is not."""
     if isinstance(content, str):
@@ -213,13 +257,3 @@ def _parsed(content: Any) -> Any:
         except ValueError:
             return content
     return content
-
-
-def _text_of(message: BaseMessage) -> str:
-    content = message.content
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        parts = [p if isinstance(p, str) else p.get("text", "") for p in content]
-        return "".join(str(p) for p in parts)
-    return str(content)
