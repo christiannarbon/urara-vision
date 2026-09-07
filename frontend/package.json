@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "cytoscape": "^3.30.2",
-    "cytoscape-dagre": "^2.5.0",
+    "cytoscape-dagre": "^4.0.1",
     "cytoscape-fcose": "^2.2.0",
     "pinia": "^2.2.6",
     "vue": "^3.5.13"
