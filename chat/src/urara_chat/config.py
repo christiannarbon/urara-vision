@@ -87,6 +87,11 @@ class Settings(BaseSettings):
     # it has. Six is generous for the nine tools available.
     max_tool_iterations: int = 6
 
+    # A question long enough to be a pasted document is not a question, and the
+    # prompt it would build is paid for in full before the model reads a word of
+    # it. Four thousand characters is several paragraphs.
+    max_question_chars: int = 4000
+
     # SecretStr so redaction is the default rather than something to remember at
     # every point the settings are printed. No credential has a default value.
     google_api_key: SecretStr = SecretStr("")
