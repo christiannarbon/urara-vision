@@ -138,3 +138,75 @@ def test_configure_logging_emits_json_at_the_configured_level(
     assert record["level"] == "warning"
     assert record["msg"] == "kept"
     assert record["time"]
+
+
+class TestStructuredFieldsReachTheOutput:
+    """Fields passed through `extra=` must survive to stdout.
+
+    They did not until 04.R: the formatter read four fixed attributes and
+    dropped the rest, so the per-turn cost line Phase 08 bills from arrived as a
+    bare message with no tokens, no iterations and no tool names.
+
+    Every assertion here is on the *rendered* line. A test that reads
+    `record.snapshot_id` passes against the broken formatter, because the
+    attribute is real -- it is the rendering that lost it.
+    """
+
+    def rendered(self, caplog: pytest.LogCaptureFixture, **extra: object) -> dict[str, object]:
+        from urara_chat.config import JSONLogFormatter
+
+        formatter = JSONLogFormatter()
+        with caplog.at_level(logging.INFO, logger="rendering"):
+            logging.getLogger("rendering").info("turn answered", extra=extra)
+        parsed: dict[str, object] = json.loads(formatter.format(caplog.records[-1]))
+        return parsed
+
+    def test_extra_fields_are_rendered(self, caplog: pytest.LogCaptureFixture) -> None:
+        line = self.rendered(
+            caplog,
+            snapshot_id="s1",
+            iterations=3,
+            usage={"input_tokens": 900},
+            tools=["get_tables"],
+        )
+
+        assert line["snapshot_id"] == "s1"
+        assert line["iterations"] == 3
+        assert line["usage"] == {"input_tokens": 900}
+        assert line["tools"] == ["get_tables"]
+
+    def test_the_four_fixed_keys_are_still_there(self, caplog: pytest.LogCaptureFixture) -> None:
+        line = self.rendered(caplog, snapshot_id="s1")
+
+        assert line["msg"] == "turn answered"
+        assert line["level"] == "info"
+        assert line["logger"] == "rendering"
+        assert line["time"]
+
+    def test_an_extra_field_cannot_displace_a_fixed_key(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """`logging` itself refuses to overwrite `msg`; `level`, `time` and
+        `logger` are not record attributes, so nothing but this stops them."""
+        line = self.rendered(caplog, level="nonsense", time="nonsense", logger="nonsense")
+
+        assert line["level"] == "info"
+        assert line["logger"] == "rendering"
+        assert line["time"] != "nonsense"
+
+    def test_a_value_that_is_not_json_renders_rather_than_raising(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A formatter that throws takes out the line it was writing and tells
+        nobody why. A log call must not be able to fail a request."""
+        line = self.rendered(caplog, thing=object())
+
+        assert isinstance(line["thing"], str)
+
+    def test_logging_internals_do_not_leak_into_the_line(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        line = self.rendered(caplog, snapshot_id="s1")
+
+        for internal in ("args", "pathname", "levelno", "created", "exc_info", "stack_info"):
+            assert internal not in line
