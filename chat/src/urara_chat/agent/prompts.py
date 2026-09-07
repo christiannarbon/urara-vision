@@ -11,12 +11,31 @@ reproduce, which is the one thing Phase 08 will need most.
 
 from __future__ import annotations
 
-# Appended by the graph when the tool loop hits its cap. Phrased as an
-# instruction to answer rather than to stop, because a model told only to stop
-# tends to apologise instead of using what it already has.
+# Delivered by the graph as a *human* turn when the tool loop hits its cap, so
+# it is the last thing the model reads. It was a SystemMessage until 04.R, which
+# the Google adapter hoists into the system instruction along with the prompt --
+# putting a "you have run out, answer now" instruction at the *front* of the
+# context, before the work it is talking about.
+#
+# Phrased as an instruction to answer rather than to stop, because a model told
+# only to stop tends to apologise instead of using what it already has.
 TOOL_BUDGET_SPENT = (
     "You have used your tool budget for this turn. Answer from what you have "
     "retrieved, and say plainly which parts you could not confirm."
+)
+
+# What a tool call is answered with once the budget is gone. Every call the
+# model asked for must still get a result: a turn whose last message is an
+# unanswered tool call is one most providers refuse to continue from.
+TOOL_BUDGET_SPENT_RESULT = "Not run: the tool budget for this turn is spent."
+
+# The reader's answer when the model never wrote one -- it spent its whole
+# budget asking for tools and asked again on its final pass. Rare, and not
+# impossible: an empty answer body is worse than a short honest one, and the
+# reader has already waited for it.
+NO_ANSWER_PRODUCED = (
+    "I ran out of tool budget for this question before I could put an answer "
+    "together. Try asking about one table at a time, or narrowing the question."
 )
 
 # The card is documentation someone uploaded. Fencing it as data is what keeps a
@@ -62,11 +81,27 @@ tags: strip the tag and use the text in the reader's language, or the primary \
 text where their language is absent.
 """
 
+# The prompt names the language rather than its code. "Answer in JA" is followed
+# less reliably than "Answer in Japanese", and this one instruction is the whole
+# of the bilingual behaviour.
+_LANGUAGE_NAMES = {"EN": "English", "JA": "Japanese"}
+_DEFAULT_LANGUAGE_NAME = "English"
+
+
+def language_name(code: str) -> str:
+    """The language to answer in, named.
+
+    `AnswerRequest` already narrows the code to one this knows, so the fallback
+    is belt and braces rather than a real branch -- but a prompt is not the
+    place to raise, and English is the primary language of every demo set.
+    """
+    return _LANGUAGE_NAMES.get(code.strip().upper(), _DEFAULT_LANGUAGE_NAME)
+
 
 def build_system_prompt(context_card: str, language: str) -> str:
     """The instruction the model works under, with the snapshot inventory."""
     return (
-        f"{_INSTRUCTIONS.format(language=language)}\n"
+        f"{_INSTRUCTIONS.format(language=language_name(language))}\n"
         f"{_UNTRUSTED_FENCE}\n\n"
         "--- BEGIN SNAPSHOT INVENTORY ---\n"
         f"{context_card.rstrip()}\n"
