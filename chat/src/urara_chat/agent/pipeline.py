@@ -4,17 +4,19 @@ It does **no persistence**. The caller supplies the history and stores the
 result, which keeps this testable without a backend and leaves the transcript's
 home to whoever owns it.
 
-The dependencies -- model, tools, context cache, backend client -- are installed
-once by the lifespan rather than passed on every call, so the graph is compiled
-once and the process keeps one client. `configure_pipeline` is how they get
-here; calling `answer` before that is a programming error and says so.
+The dependencies -- model, tool factory, context cache, backend client -- are
+installed once by the lifespan rather than passed on every call, so a graph is
+compiled once per snapshot and the process keeps one client. `configure_pipeline`
+is how they get here; calling `answer` before that is a programming error and
+says so.
 """
 
 from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Sequence
+from collections import OrderedDict
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -22,12 +24,17 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain_core.tools import BaseTool
 
-from urara_chat.agent.context_card import ContextCardCache
+from urara_chat.agent.context_card import MAX_CACHED_CARDS, ContextCardCache
 from urara_chat.agent.graph import build_graph, initial_state
 from urara_chat.backend.client import BackendClient
 from urara_chat.backend.models import Message
 
 log = logging.getLogger(__name__)
+
+# One graph per snapshot, bounded like the cards beside them. The same
+# ceiling: a pod that is holding a card for a snapshot is the pod that will
+# be asked about it again.
+MAX_CACHED_GRAPHS = MAX_CACHED_CARDS
 
 
 @dataclass
@@ -81,24 +88,66 @@ def to_langchain_messages(history: Sequence[Message]) -> list[BaseMessage]:
 
 
 class Pipeline:
-    """The agent, wired. Built once."""
+    """The agent, wired. One compiled graph per snapshot.
+
+    Not one graph for the process, which is what this was until 04.R. A tool
+    closes over the snapshot it reads (`tools/registry.py`), so a graph built
+    from one snapshot's tools can only ever answer about that snapshot -- while
+    the HTTP layer takes a snapshot per request, and at start-up there is no
+    snapshot to bind. A process-wide graph would have answered every question
+    from whichever snapshot happened to be bound first.
+
+    So the tools arrive as a factory and the graph is built on first use for
+    each snapshot. 04.4's "compiled once" still holds, per snapshot rather than
+    per process: a turn never compiles a graph a previous turn on the same
+    snapshot already built.
+    """
 
     def __init__(
         self,
         model: BaseChatModel,
-        tools: Sequence[BaseTool],
+        tools_for: Callable[[str], Sequence[BaseTool]],
         cache: ContextCardCache,
         client: BackendClient,
         *,
         model_name: str,
         max_history_messages: int = 20,
         max_tool_iterations: int = 6,
+        max_graphs: int = MAX_CACHED_GRAPHS,
     ) -> None:
+        self._model = model
+        self._tools_for = tools_for
+        self._cache = cache
+        self._client = client
         self._model_name = model_name
         self._max_history = max_history_messages
-        self._graph = build_graph(
-            model, tools, cache, client, max_tool_iterations=max_tool_iterations
+        self._max_tool_iterations = max_tool_iterations
+        self._max_graphs = max_graphs
+        self._graphs: OrderedDict[str, Any] = OrderedDict()
+
+    def _graph_for(self, snapshot_id: str) -> Any:
+        """This snapshot's compiled graph, building it once.
+
+        Bounded like the context card cache beside it, and for the same reason:
+        a long-running pod asked about many snapshots would otherwise hold a
+        compiled graph for every one it had ever seen.
+        """
+        graph = self._graphs.get(snapshot_id)
+        if graph is not None:
+            self._graphs.move_to_end(snapshot_id)
+            return graph
+
+        graph = build_graph(
+            self._model,
+            self._tools_for(snapshot_id),
+            self._cache,
+            self._client,
+            max_tool_iterations=self._max_tool_iterations,
         )
+        self._graphs[snapshot_id] = graph
+        while len(self._graphs) > self._max_graphs:
+            self._graphs.popitem(last=False)
+        return graph
 
     async def answer(
         self,
@@ -124,7 +173,8 @@ class Pipeline:
         messages.append(HumanMessage(content=question))
 
         started = time.perf_counter()
-        final = await self._graph.ainvoke(initial_state(snapshot_id, language, messages))
+        graph = self._graph_for(snapshot_id)
+        final = await graph.ainvoke(initial_state(snapshot_id, language, messages))
         latency_ms = int((time.perf_counter() - started) * 1000)
 
         produced: list[BaseMessage] = final["messages"]
