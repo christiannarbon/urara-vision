@@ -13,6 +13,7 @@ import asyncio
 import time
 from collections import OrderedDict
 from collections.abc import Callable
+from dataclasses import dataclass
 
 from urara_chat.backend.client import BackendClient
 from urara_chat.backend.models import SnapshotContext
@@ -125,6 +126,24 @@ def _tables(ctx: SnapshotContext) -> list[str]:
     return lines
 
 
+@dataclass
+class _Entry:
+    """One snapshot's slot in the cache.
+
+    The lock lives here rather than in a dict beside the cards, so one LRU bound
+    governs both. Until 04.R the locks were a separate dict pruned only when a
+    card was evicted, which meant a failed fetch or an expired card left its
+    lock behind forever -- 500 failing fetches left 500 locks and no cards.
+    """
+
+    lock: asyncio.Lock
+    # Empty until a fetch succeeds, and emptied again when the TTL passes. The
+    # slot itself survives expiry so the lock stays with it and the LRU ceiling
+    # keeps governing.
+    card: str | None = None
+    expires_at: float = 0.0
+
+
 class ContextCardCache:
     """Rendered cards, by snapshot ID.
 
@@ -144,12 +163,7 @@ class ContextCardCache:
         self._max_entries = max_entries
         # Injected so a test can expire an entry without sleeping.
         self._clock = clock
-        self._cards: OrderedDict[str, tuple[float, str]] = OrderedDict()
-        # One lock per snapshot rather than one for the cache: two turns on
-        # different snapshots have no reason to wait for each other's fetch,
-        # and the fetch is the slow part. The registry itself is only ever
-        # mutated from the event loop, so it needs no lock of its own.
-        self._locks: dict[str, asyncio.Lock] = {}
+        self._cards: OrderedDict[str, _Entry] = OrderedDict()
 
     async def get(self, client: BackendClient, snapshot_id: str) -> str:
         """The card for a snapshot, fetching and rendering on a miss."""
@@ -161,35 +175,52 @@ class ContextCardCache:
                 "ContextCardCache requires a concrete snapshot ID, not 'latest'; resolve it first"
             )
 
-        cached = self._live(snapshot_id)
+        entry = self._slot(snapshot_id)
+        cached = self._live(entry)
         if cached is not None:
             return cached
 
-        async with self._locks.setdefault(snapshot_id, asyncio.Lock()):
+        # One lock per snapshot rather than one for the cache: two turns on
+        # different snapshots have no reason to wait for each other's fetch, and
+        # the fetch is the slow part.
+        async with entry.lock:
             # Checked again inside the lock: two turns starting together on a
             # cold cache should cost one fetch, not two.
-            cached = self._live(snapshot_id)
+            cached = self._live(entry)
             if cached is not None:
                 return cached
 
             card = render_context_card(await client.get_context(snapshot_id))
-            self._store(snapshot_id, card)
+            entry.card = card
+            entry.expires_at = self._clock() + self._ttl
             return card
 
-    def _live(self, snapshot_id: str) -> str | None:
+    def _slot(self, snapshot_id: str) -> _Entry:
+        """This snapshot's entry, creating and making room for it if new.
+
+        Creating one for a snapshot whose fetch then fails is deliberate: the
+        slot is what bounds the lock, and an empty slot costs a few bytes and
+        is evicted like any other.
+        """
         entry = self._cards.get(snapshot_id)
         if entry is None:
-            return None
-        expires_at, card = entry
-        if self._clock() >= expires_at:
-            del self._cards[snapshot_id]
-            return None
-        self._cards.move_to_end(snapshot_id)
-        return card
+            entry = _Entry(lock=asyncio.Lock())
+            self._cards[snapshot_id] = entry
+            self._evict()
+        else:
+            self._cards.move_to_end(snapshot_id)
+        return entry
 
-    def _store(self, snapshot_id: str, card: str) -> None:
-        self._cards[snapshot_id] = (self._clock() + self._ttl, card)
-        self._cards.move_to_end(snapshot_id)
+    def _live(self, entry: _Entry) -> str | None:
+        if entry.card is None:
+            return None
+        if self._clock() >= entry.expires_at:
+            # The card goes, the slot stays. Dropping the slot would drop the
+            # lock with it, and a concurrent waiter is holding that lock.
+            entry.card = None
+            return None
+        return entry.card
+
+    def _evict(self) -> None:
         while len(self._cards) > self._max_entries:
-            evicted, _ = self._cards.popitem(last=False)
-            self._locks.pop(evicted, None)
+            self._cards.popitem(last=False)
