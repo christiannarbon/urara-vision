@@ -97,8 +97,22 @@ async def provider_failed(request: Request, exc: Exception) -> Response:
     return _body(request, 502, error=PROVIDER_FAILED)
 
 
+# Where FastAPI says a bad field came from. The first element of an error's
+# `loc` is one of these for anything parsed out of a request, and is part of the
+# field path for a ValidationError raised anywhere else.
+_LOCATIONS = frozenset({"body", "query", "path", "header", "cookie"})
+
+
 def _fields(exc: ValidationError | RequestValidationError) -> list[dict[str, str]]:
-    """Which field was wrong and why, and nothing else from the error.
+    """Which field was wrong, where it lives, and why.
+
+    The location is its own key rather than a prefix on the field name. A
+    caller sent `snapshotId` in a body and `snapshot` in a query string, and
+    told only the name they cannot tell which one to go and fix -- while
+    folding it into the name would leave "body.args.limit" with no way to say
+    where the location stops and the field path starts. It is omitted, rather
+    than guessed at, for a ValidationError that did not come from parsing a
+    request: that one is a bug here, not a bad request.
 
     Deliberately not pydantic's full error dicts: those embed the input that
     failed, which for a question is the caller's own prose being echoed back
@@ -106,8 +120,14 @@ def _fields(exc: ValidationError | RequestValidationError) -> list[dict[str, str
     """
     out: list[dict[str, str]] = []
     for err in exc.errors():
-        location = [str(part) for part in err.get("loc", ()) if part != "body"]
-        out.append({"field": ".".join(location) or "body", "reason": str(err.get("msg", ""))})
+        loc = [str(part) for part in err.get("loc", ())]
+        location = loc[0] if loc and loc[0] in _LOCATIONS else ""
+        path = loc[1:] if location else loc
+        field = {"field": ".".join(path) or location or "the request body"}
+        if location:
+            field["location"] = location
+        field["reason"] = str(err.get("msg", ""))
+        out.append(field)
     return out
 
 

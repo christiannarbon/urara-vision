@@ -231,6 +231,7 @@ class TestErrorMapping:
         body = response.json()
         assert body["requestId"]
         assert body["fields"][0]["field"] == "question"
+        assert body["fields"][0]["location"] == "body"
         assert body["fields"][0]["reason"]
 
     def test_every_error_body_carries_the_id(self) -> None:

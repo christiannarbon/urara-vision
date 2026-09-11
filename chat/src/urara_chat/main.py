@@ -22,6 +22,7 @@ from pydantic import ValidationError
 
 from urara_chat.agent.context_card import ContextCardCache
 from urara_chat.agent.pipeline import Pipeline, configure_pipeline
+from urara_chat.api.chat_routes import router as chat_router
 from urara_chat.api.errors import install_error_handlers
 from urara_chat.api.middleware import RequestIDMiddleware
 from urara_chat.api.routes import router
@@ -149,4 +150,7 @@ app.add_middleware(RequestIDMiddleware)
 # try/except for a backend, provider or validation failure.
 install_error_handlers(app)
 
+app.include_router(chat_router)
+# The debug routes stay mounted alongside them: they are how Phase 08 explains a
+# bad answer, and /debug/answer is promoted rather than replaced in 05.7.
 app.include_router(router)
