@@ -20,17 +20,18 @@ and mapped by the handlers installed in `api.errors`.
 
 from __future__ import annotations
 
-import asyncio
 import logging
+from dataclasses import asdict
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Query, Request
 
-from urara_chat.agent.pipeline import AgentAnswer, answer
-from urara_chat.api.errors import ProviderError
+from urara_chat.api.answering import answer_question, clean_question, run_pipeline
 from urara_chat.api.locks import ConversationLocks, TurnLimiter
 from urara_chat.api.middleware import current_request_id
 from urara_chat.api.routes import get_client, get_settings_for
 from urara_chat.api.schemas import (
+    AnswerRequest,
+    AnswerResponse,
     ConversationListResponse,
     ConversationResponse,
     CreateConversationRequest,
@@ -39,7 +40,6 @@ from urara_chat.api.schemas import (
     TurnResponse,
 )
 from urara_chat.backend.client import BackendClient
-from urara_chat.backend.errors import BackendError
 from urara_chat.backend.models import Conversation, Message
 from urara_chat.config import Settings
 
@@ -131,6 +131,36 @@ async def delete_conversation(request: Request, cid: str) -> None:
     await get_client(request).delete_conversation(cid)
 
 
+@router.post("/answer", response_model=AnswerResponse)
+async def answer_once(request: Request, body: AnswerRequest) -> AnswerResponse:
+    """One question, one answer. **Nothing is written.**
+
+    No conversation, no message, no title -- this route never touches the
+    transcript store. Phase 08's eval runner drives it thousands of times, and
+    a run that left a thousand transcripts behind is a run nobody repeats.
+
+    A slot is taken, because a turn here costs a provider call like any other
+    and the eval runner is precisely the client that fires many at once. No
+    conversation lock, because there is no conversation: nothing can interleave
+    with anything, and serialising callers who share no state would only make
+    the bulk case slower.
+
+    The same implementation `/debug/answer` serves, so the route the eval runner
+    drives and the route used to explain a bad answer cannot drift apart.
+    """
+    async with get_limiter(request).hold():
+        result = await answer_question(
+            get_client(request),
+            get_settings_for(request),
+            body.snapshot_id,
+            body.question,
+            body.language,
+        )
+    # asdict() gives the dataclass's own field names; the schema carries the
+    # camelCase wire names and populate_by_name lets it be built from either.
+    return AnswerResponse(**asdict(result))
+
+
 @router.post("/conversations/{cid}/turn", response_model=TurnResponse)
 async def take_turn(request: Request, cid: str, body: TurnRequest) -> TurnResponse:
     """Ask one question of an existing conversation, and store both messages.
@@ -144,25 +174,10 @@ async def take_turn(request: Request, cid: str, body: TurnRequest) -> TurnRespon
     client = get_client(request)
     settings = get_settings_for(request)
 
-    # Checked before anything is fetched or stored: these cost no round trip,
-    # and a rejected question should not leave a conversation looking touched.
-    #
-    # Trimmed before it is measured, so a body of spaces is empty rather than
-    # short, and so the limit counts characters the model will actually read.
-    question = body.question.strip()
-    if not question:
-        raise HTTPException(status_code=400, detail='"question" must not be empty')
-    if len(question) > settings.max_question_chars:
-        # The limit is in the message: a caller that hit it is usually pasting a
-        # document, and needs to know how much to cut rather than that it was
-        # too much.
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f'"question" is {len(question)} characters, over the '
-                f"{settings.max_question_chars} character limit"
-            ),
-        )
+    # Checked before anything is held, fetched or stored: it costs no round
+    # trip, and a rejected question should not occupy a slot, block a thread or
+    # leave a conversation looking touched.
+    question = clean_question(body.question, settings.max_question_chars)
 
     # A slot first, then the conversation. That order is not incidental: taking
     # the conversation lock first would let a turn hold it while queueing for a
@@ -199,7 +214,7 @@ async def _run_turn(
     # failure, which is exactly when losing it hurts most.
     user_message = await client.append_message(cid, "user", question)
 
-    result = await _answer(question, conversation.snapshot_id, history, language, settings)
+    result = await run_pipeline(question, conversation.snapshot_id, history, language, settings)
 
     assistant_message = await client.append_message(
         cid,
@@ -231,37 +246,6 @@ async def _run_turn(
         latency_ms=result.latency_ms,
         model=result.model,
     )
-
-
-async def _answer(
-    question: str,
-    snapshot_id: str,
-    history: list[Message],
-    language: str,
-    settings: Settings,
-) -> AgentAnswer:
-    """Run the turn, classifying what went wrong rather than mapping it.
-
-    The wrap is what lets `api.errors` keep one handler per kind of failure: a
-    provider raises its own SDK's exception types, several per provider, and
-    listing them there would mean importing every SDK and keeping the list
-    current. A backend failure is re-raised untouched -- it reached here from a
-    tool, and telling a reader the model did not answer when the store was down
-    sends them to the wrong service.
-
-    The deadline is the one `/debug/answer` already carries, for the same
-    reason: a turn is up to seven model calls plus their tools, and this route
-    holds the connection for all of them.
-    """
-    try:
-        return await asyncio.wait_for(
-            answer(question, snapshot_id, history=history, language=language),
-            timeout=settings.answer_timeout_seconds,
-        )
-    except BackendError:
-        raise
-    except Exception as exc:
-        raise ProviderError(f"the turn failed for snapshot {snapshot_id}") from exc
 
 
 def _message(stored: Message) -> MessageResponse:
