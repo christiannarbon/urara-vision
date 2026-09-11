@@ -21,12 +21,14 @@ and mapped by the handlers installed in `api.errors`.
 from __future__ import annotations
 
 import asyncio
+import logging
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from urara_chat.agent.pipeline import AgentAnswer, answer
 from urara_chat.api.errors import ProviderError
 from urara_chat.api.locks import ConversationLocks, TurnLimiter
+from urara_chat.api.middleware import current_request_id
 from urara_chat.api.routes import get_client, get_settings_for
 from urara_chat.api.schemas import (
     ConversationListResponse,
@@ -42,6 +44,22 @@ from urara_chat.backend.models import Conversation, Message
 from urara_chat.config import Settings
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+log = logging.getLogger(__name__)
+
+# How long a derived title may be. Counted in runes: a Japanese question cut at
+# 60 *bytes* lands mid-character and renders as mojibake in the one place the
+# reader looks to tell two conversations apart.
+MAX_TITLE_RUNES = 60
+
+# How far back to look for a word boundary before giving up and cutting hard.
+# Wide enough to save most English questions from ending mid-word, narrow enough
+# that a title never loses a quarter of itself to the search.
+TITLE_BOUNDARY_WINDOW = 15
+
+# Quotes a pasted question tends to arrive wrapped in, in the scripts this
+# service is asked about. Stripped from both ends so a title does not open with
+# a mark that never closes.
+_QUOTES = "\"'\u201c\u201d\u2018\u2019\u300c\u300d\u300e\u300f"
 
 
 def get_locks(request: Request) -> ConversationLocks:
@@ -200,6 +218,10 @@ async def _run_turn(
         },
     )
 
+    # After the assistant message is stored, so a title never exists for a turn
+    # that produced nothing.
+    await _set_title_once(client, conversation, question)
+
     return TurnResponse(
         conversation_id=cid,
         user_message=_message(user_message),
@@ -245,3 +267,57 @@ async def _answer(
 def _message(stored: Message) -> MessageResponse:
     """A stored turn as this service returns it."""
     return MessageResponse.model_validate(stored, from_attributes=True)
+
+
+def title_from_question(question: str) -> str:
+    """A conversation title derived from its first question.
+
+    The model is deliberately not asked to write one. That is a second provider
+    call, paid for on every new thread, for a string nobody reads closely -- and
+    the question itself is already the most accurate summary of the question.
+
+    Truncation is by rune throughout. `str` indexes codepoints in Python, so
+    slicing and `rfind` here are both safe for text that is not ASCII; the byte
+    length of the result is nobody's business but the database's.
+
+    A word boundary is used only when one falls within the last few runes. A
+    language that does not put spaces between words has no boundary to find, and
+    hunting further back for one would throw away half a Japanese title to end
+    it at the only space in the sentence.
+    """
+    # Collapsed first: a question pasted across three lines would otherwise
+    # carry its newlines into a list row and break the layout.
+    collapsed = " ".join(question.split()).strip(_QUOTES).strip()
+
+    if len(collapsed) <= MAX_TITLE_RUNES:
+        return collapsed
+
+    head = collapsed[:MAX_TITLE_RUNES]
+    boundary = head.rfind(" ")
+    if boundary >= MAX_TITLE_RUNES - TITLE_BOUNDARY_WINDOW:
+        head = head[:boundary]
+    return head.rstrip() + "\u2026"
+
+
+async def _set_title_once(client: BackendClient, conversation: Conversation, question: str) -> None:
+    """Title a thread from its first question, if it has none.
+
+    Set once and never revised. A reader who clears a title has made a choice,
+    and a service that puts one back the next time they ask something is
+    arguing with them.
+
+    **A failure here must not fail the turn.** By this point the answer has been
+    computed, paid for and stored; losing all of that because a cosmetic PATCH
+    came back 500 would be absurd. It is logged with the request ID and
+    swallowed -- the one place in this module where a broad except is right.
+    """
+    if conversation.title.strip():
+        return
+    try:
+        await client.set_conversation_title(conversation.id, title_from_question(question))
+    except Exception as exc:
+        log.warning(
+            "could not set the conversation title",
+            extra={"request_id": current_request_id(), "conversation_id": conversation.id},
+            exc_info=exc,
+        )
