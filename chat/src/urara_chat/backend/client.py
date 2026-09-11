@@ -101,6 +101,13 @@ class BackendClient:
             raise self._error(response)
         return response.json()
 
+    async def _patch(self, path: str, body: dict[str, Any]) -> Any:
+        """Issue a PATCH and return decoded JSON, or raise."""
+        response = await self._send("PATCH", path, json=body)
+        if response.status_code >= 400:
+            raise self._error(response)
+        return response.json()
+
     async def _delete(self, path: str) -> None:
         """Issue a DELETE, raising on failure.
 
@@ -162,10 +169,16 @@ class BackendClient:
         A bool rather than an exception: /readyz answering 503 is information
         about a dependency, not an error in the caller. It sits outside
         /api/v1 because kubelet cannot carry a credential.
+
+        Through _send like every other call, so this one is not the single
+        request in the service that leaves without a request ID -- a /readyz
+        that cannot be traced into the backend's own log is the one call where
+        you most want to know which side said no. The transport failure _send
+        raises is caught here and becomes the same False a 503 does.
         """
         try:
-            response = await self._client.get("/readyz")
-        except httpx.HTTPError:
+            response = await self._send("GET", "/readyz")
+        except BackendUnavailable:
             return False
         return response.status_code == 200
 
@@ -280,6 +293,17 @@ class BackendClient:
     async def get_conversation(self, cid: str) -> Conversation:
         """One thread with its full transcript."""
         return Conversation.model_validate(await self._get(f"{_API}/conversations/{cid}"))
+
+    async def set_conversation_title(self, cid: str, title: str) -> Conversation:
+        """Retitle a thread.
+
+        The title is the only thing about a conversation the backend will
+        change. Its snapshot in particular is not patchable -- resolving it once
+        at creation is what stops a transcript changing subject -- so this sends
+        that one field and nothing else.
+        """
+        data = await self._patch(f"{_API}/conversations/{cid}", {"title": title})
+        return Conversation.model_validate(data)
 
     async def delete_conversation(self, cid: str) -> None:
         await self._delete(f"{_API}/conversations/{cid}")
