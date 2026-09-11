@@ -11,7 +11,12 @@ import logging
 import pytest
 from pydantic import ValidationError
 
-from urara_chat.config import Settings, configure_logging, get_settings
+from urara_chat.config import (
+    MAX_ANSWER_TIMEOUT_SECONDS,
+    Settings,
+    configure_logging,
+    get_settings,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -138,6 +143,34 @@ def test_configure_logging_emits_json_at_the_configured_level(
     assert record["level"] == "warning"
     assert record["msg"] == "kept"
     assert record["time"]
+
+
+class TestTheTurnDeadline:
+    """A turn holds a connection for its whole duration, so the ceiling on that
+    is not a preference."""
+
+    def test_a_generous_setting_is_clamped(self) -> None:
+        assert (
+            Settings(answer_timeout_seconds=3600).answer_timeout_seconds
+            == MAX_ANSWER_TIMEOUT_SECONDS
+        )
+
+    def test_the_ceiling_is_five_minutes(self) -> None:
+        assert MAX_ANSWER_TIMEOUT_SECONDS == 300.0
+
+    def test_a_shorter_setting_is_left_alone(self) -> None:
+        """Clamping is an upper bound, not a target: a deployment that wants to
+        give up sooner is making a decision, not a mistake."""
+        assert Settings(answer_timeout_seconds=30).answer_timeout_seconds == 30.0
+
+    def test_the_default_is_already_under_the_ceiling(self) -> None:
+        assert Settings().answer_timeout_seconds <= MAX_ANSWER_TIMEOUT_SECONDS
+
+    def test_zero_is_refused_at_start_up(self) -> None:
+        """It would time out every turn instantly, and look like the provider."""
+        with pytest.raises(ValidationError) as caught:
+            Settings(answer_timeout_seconds=0)
+        assert "ANSWER_TIMEOUT_SECONDS" in str(caught.value)
 
 
 class TestStructuredFieldsReachTheOutput:
