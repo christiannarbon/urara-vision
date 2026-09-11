@@ -36,6 +36,16 @@ _LANGUAGES = frozenset({"EN", "JA"})
 _DEFAULT_LANGUAGE = "EN"
 
 
+def _normalise_language(v: str) -> str:
+    """Fall back rather than reject, as the log level in `config` does.
+
+    An unknown language is a frontend that has moved on, not a bad question.
+    Refusing the turn over it loses the answer as well as the language.
+    """
+    language = v.strip().upper()
+    return language if language in _LANGUAGES else _DEFAULT_LANGUAGE
+
+
 class AnswerRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="forbid")
 
@@ -51,13 +61,7 @@ class AnswerRequest(BaseModel):
     @field_validator("language")
     @classmethod
     def _known_language(cls, v: str) -> str:
-        """Fall back rather than reject, as the log level in `config` does.
-
-        An unknown language is a frontend that has moved on, not a bad question.
-        Refusing the turn over it loses the answer as well as the language.
-        """
-        language = v.strip().upper()
-        return language if language in _LANGUAGES else _DEFAULT_LANGUAGE
+        return _normalise_language(v)
 
 
 class AnswerResponse(BaseModel):
@@ -141,3 +145,52 @@ class ConversationListResponse(BaseModel):
     """Threads about one snapshot, newest first and without their transcripts."""
 
     conversations: list[ConversationResponse]
+
+
+class TurnRequest(BaseModel):
+    """One question put to an existing conversation.
+
+    **There is deliberately no `snapshotId` here.** The conversation pinned its
+    snapshot when it was created, and that is the whole point: a re-ingest
+    between two turns must not change which model is being discussed. A field
+    the caller could send is a field that can disagree with the thread, so the
+    schema does not have one -- and `extra="forbid"` means sending one anyway is
+    refused rather than quietly ignored.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    question: str = Field(description="The reader's question, in any language.")
+    language: str = Field(
+        default=_DEFAULT_LANGUAGE, description="Language to answer in. 'EN' or 'JA'."
+    )
+
+    @field_validator("language")
+    @classmethod
+    def _known_language(cls, v: str) -> str:
+        return _normalise_language(v)
+
+
+class TurnResponse(BaseModel):
+    """What one turn produced, and both messages as they were stored.
+
+    The stored messages are returned rather than the text alone: ordinals are
+    the database's to assign, and a client that renders what it sent instead of
+    what was written will eventually render a turn that was never persisted.
+    """
+
+    # `model` collides with pydantic's protected prefix, and the warning it
+    # emits is noise: the field is the model's name and there is no better one.
+    model_config = ConfigDict(
+        populate_by_name=True, alias_generator=to_camel, protected_namespaces=()
+    )
+
+    conversation_id: str
+    user_message: MessageResponse
+    assistant_message: MessageResponse
+    # What the turn actually looked at. Without it a wrong answer can only be
+    # argued about, not traced.
+    tool_calls: list[dict[str, Any]]
+    truncated: bool
+    latency_ms: int
+    model: str

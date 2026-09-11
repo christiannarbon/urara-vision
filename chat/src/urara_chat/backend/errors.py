@@ -24,6 +24,20 @@ class BackendNotFound(BackendError):  # noqa: N818
     """404 -- the snapshot, table or conversation does not exist."""
 
 
+class BackendRejected(BackendError):  # noqa: N818
+    """4xx other than 404 -- the backend refused the request this service built.
+
+    Held apart from its parent because it is **not** the backend failing. The
+    backend worked: it read a request, found it invalid, and said so. Reporting
+    that as an upstream outage sends whoever is on call to the wrong service and
+    leaves the actual bug -- a request this service assembled wrongly -- looking
+    like someone else's problem.
+
+    A caller sees a plain internal error, because that is what it is. The
+    backend's own words go to the log with the request ID.
+    """
+
+
 class BackendUnavailable(BackendError):  # noqa: N818
     """The backend could not be reached at all: refused, unresolved or timed out.
 

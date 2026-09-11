@@ -18,7 +18,12 @@ from typing import Any
 import httpx
 
 from urara_chat.api.middleware import REQUEST_ID_HEADER, current_request_id
-from urara_chat.backend.errors import BackendError, BackendNotFound, BackendUnavailable
+from urara_chat.backend.errors import (
+    BackendError,
+    BackendNotFound,
+    BackendRejected,
+    BackendUnavailable,
+)
 from urara_chat.backend.models import (
     Conversation,
     Diagnostic,
@@ -38,6 +43,22 @@ from urara_chat.backend.models import (
 from urara_chat.config import Settings
 
 _API = "/api/v1"
+
+
+def _classify(status: int) -> type[BackendError]:
+    """Which exception a failed status deserves.
+
+    Only a 5xx is the backend failing. A 4xx means it read the request and
+    refused it, which is a bug on this side of the wire, and a 404 is neither --
+    it is an answer about a snapshot, table or conversation that is not there.
+    Collapsing all three into one class is how a malformed request ends up
+    reported as an outage in the service that correctly rejected it.
+    """
+    if status == 404:
+        return BackendNotFound
+    if 400 <= status < 500:
+        return BackendRejected
+    return BackendError
 
 
 class BackendClient:
@@ -131,8 +152,7 @@ class BackendClient:
             if isinstance(body, dict) and isinstance(body.get("error"), str):
                 message = body["error"]
 
-        cls = BackendNotFound if response.status_code == 404 else BackendError
-        return cls(response.status_code, message)
+        return _classify(response.status_code)(response.status_code, message)
 
     # --- reads --------------------------------------------------------------
 

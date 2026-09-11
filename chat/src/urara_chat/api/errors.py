@@ -27,7 +27,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from urara_chat.api.middleware import REQUEST_ID_HEADER, request_id_of
-from urara_chat.backend.errors import BackendError, BackendNotFound
+from urara_chat.backend.errors import BackendError, BackendNotFound, BackendRejected
 
 log = logging.getLogger(__name__)
 
@@ -83,6 +83,22 @@ async def backend_failed(request: Request, exc: Exception) -> Response:
         extra={"request_id": request_id_of(request), "backend_error": detail},
     )
     return _body(request, 502, error=BACKEND_UNAVAILABLE)
+
+
+async def backend_rejected(request: Request, exc: Exception) -> Response:
+    """500 -- the backend refused a request this service built.
+
+    Not a 502, deliberately. The backend did its job; what failed is the request
+    assembled here, which makes this an internal error like any other bug and
+    puts the investigation in the right place. The backend's own words go to the
+    log, never to the caller.
+    """
+    detail = exc.message if isinstance(exc, BackendError) else str(exc)
+    log.error(
+        "the backend refused a request built here",
+        extra={"request_id": request_id_of(request), "backend_error": detail},
+    )
+    return _body(request, 500, error=INTERNAL)
 
 
 async def provider_failed(request: Request, exc: Exception) -> Response:
@@ -172,12 +188,14 @@ async def unhandled(request: Request, exc: Exception) -> Response:
 def install_error_handlers(app: FastAPI) -> None:
     """Map every exception this service can raise onto a response.
 
-    Order matters only in that BackendNotFound is registered after BackendError
-    it subclasses; Starlette walks an exception's MRO and takes the most
-    specific handler, so both are reachable.
+    Order does not matter: Starlette walks an exception's MRO and takes the most
+    specific handler registered, so BackendNotFound and BackendRejected are both
+    reachable despite subclassing BackendError. Only three of the four map to an
+    upstream fault -- a refused request is this service's own bug.
     """
     app.add_exception_handler(BackendError, backend_failed)
     app.add_exception_handler(BackendNotFound, backend_not_found)
+    app.add_exception_handler(BackendRejected, backend_rejected)
     app.add_exception_handler(ProviderError, provider_failed)
     # asyncio.TimeoutError is this class in 3.11 and later, so the deadline on a
     # turn and a provider that never answers arrive at the same place.
