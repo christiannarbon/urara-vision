@@ -8,9 +8,11 @@ brevity.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic.alias_generators import to_camel
 
 
 class ToolInvokeRequest(BaseModel):
@@ -78,3 +80,64 @@ class AnswerResponse(BaseModel):
     model: str
     latency_ms: int = Field(alias="latencyMs")
     usage: dict[str, int]
+
+
+# --- conversations ----------------------------------------------------------
+#
+# Thin mirrors of what the Go backend stores. They are declared here rather than
+# reused from `backend.models` so this service's own wire contract is visible in
+# one file and in its OpenAPI schema -- but they are mirrors, not a second
+# opinion: the backend owns the conversation schema, and nothing here validates
+# a field it owns.
+
+
+class CreateConversationRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    snapshot_id: str = Field(
+        alias="snapshotId",
+        description=(
+            "Snapshot the thread is about. 'latest' is passed through untouched: "
+            "the backend resolves it and stores the concrete ID it resolved to."
+        ),
+    )
+    title: str = Field(default="", description="Optional; 05.6 sets it from the first question.")
+
+
+class MessageResponse(BaseModel):
+    """One stored turn."""
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    ordinal: int
+    role: str
+    content: str
+    # Always a list. "Drew on no tables" is a real answer, and it must not come
+    # back as null and become indistinguishable from not having been asked.
+    citations: list[str] = []
+    meta: dict[str, Any] = {}
+    created_at: datetime | None = None
+
+
+class ConversationResponse(BaseModel):
+    """One thread.
+
+    `messages` is empty in a listing and populated when one conversation is
+    fetched, which mirrors the backend exactly -- including the consequence that
+    an empty thread and an unfetched one look the same.
+    """
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    id: str
+    snapshot_id: str = ""
+    title: str = ""
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    messages: list[MessageResponse] = []
+
+
+class ConversationListResponse(BaseModel):
+    """Threads about one snapshot, newest first and without their transcripts."""
+
+    conversations: list[ConversationResponse]
