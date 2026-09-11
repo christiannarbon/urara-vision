@@ -71,6 +71,7 @@ UV_IMAGE    := ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 # contributor is using locally. The cache volume is what keeps a rerun quick.
 CHAT_RUN    := docker run --rm \
                  -v "$(PWD)/chat":/src \
+                 -v "$(PWD)/docker-compose.yml":/compose/docker-compose.yml:ro \
                  -v urara-vision-uv-cache:/root/.cache/uv \
                  -e UV_PROJECT_ENVIRONMENT=/venv \
                  -e UV_LINK_MODE=copy \

@@ -12,6 +12,7 @@ import pytest
 from pydantic import ValidationError
 
 from urara_chat.config import (
+    MAX_ADMISSION_WAIT_SECONDS,
     MAX_ANSWER_TIMEOUT_SECONDS,
     Settings,
     configure_logging,
@@ -171,6 +172,35 @@ class TestTheTurnDeadline:
         with pytest.raises(ValidationError) as caught:
             Settings(answer_timeout_seconds=0)
         assert "ANSWER_TIMEOUT_SECONDS" in str(caught.value)
+
+
+class TestTheAdmissionWait:
+    """How long a turn waits for a slot before it is refused."""
+
+    def test_a_long_wait_is_clamped(self) -> None:
+        """Past the Retry-After a refused caller is given, a wait is a queue --
+        which is the thing the cap exists to avoid."""
+        assert (
+            Settings(turn_admission_wait_seconds=60).turn_admission_wait_seconds
+            == MAX_ADMISSION_WAIT_SECONDS
+        )
+
+    def test_zero_is_refused_because_it_would_refuse_everything(self) -> None:
+        """asyncio.wait_for cancels a non-positive timeout before the loop runs
+        the acquisition, so zero refuses every turn rather than only the ones
+        over the cap -- a service answering nothing while reporting itself
+        ready."""
+        with pytest.raises(ValidationError) as caught:
+            Settings(turn_admission_wait_seconds=0)
+        assert "TURN_ADMISSION_WAIT_SECONDS" in str(caught.value)
+
+    def test_a_negative_wait_is_refused(self) -> None:
+        with pytest.raises(ValidationError) as caught:
+            Settings(turn_admission_wait_seconds=-1)
+        assert "TURN_ADMISSION_WAIT_SECONDS" in str(caught.value)
+
+    def test_the_default_absorbs_a_burst_without_queueing(self) -> None:
+        assert 0 < Settings().turn_admission_wait_seconds <= MAX_ADMISSION_WAIT_SECONDS
 
 
 class TestStructuredFieldsReachTheOutput:

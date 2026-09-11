@@ -70,12 +70,40 @@ services:
       context: ./chat
       dockerfile: Dockerfile
     environment:
+      # Every setting the service reads appears here, and all but one in the
+      # ${VAR:-default} form. Compose does not pass the host environment into a
+      # container -- it only substitutes variables this file names -- so a
+      # setting missing from this block cannot be changed without editing the
+      # file, and the attempt fails silently: the container starts happily on
+      # the default and the run looks like the feature is broken rather than
+      # like the setting never arrived. A test in the chat suite fails if a new
+      # setting is not listed here.
+      #
+      # The exception is APP_ADDR. The port below is mapped from :8090, so
+      # moving the address alone would leave the service listening where nothing
+      # is published.
       APP_ADDR: ":8090"
-      BACKEND_BASE_URL: "http://backend:8080"
+
+      BACKEND_BASE_URL: "${BACKEND_BASE_URL:-http://backend:8080}"
       # The same committed dev token the frontend presents. The chat service
       # is an API client like any other.
-      BACKEND_API_TOKEN: "relviz-dev-token-not-for-production"
-      LOG_LEVEL: "info"
+      BACKEND_API_TOKEN: "${BACKEND_API_TOKEN:-relviz-dev-token-not-for-production}"
+      BACKEND_TIMEOUT_SECONDS: "${BACKEND_TIMEOUT_SECONDS:-30}"
+      LOG_LEVEL: "${LOG_LEVEL:-info}"
+
+      # The limits. Lowering one for a single run is how the behaviour behind it
+      # is exercised at all: MAX_CONCURRENT_TURNS=1 makes a second simultaneous
+      # turn a 429 rather than something that needs four readers to reproduce.
+      MAX_CONCURRENT_TURNS: "${MAX_CONCURRENT_TURNS:-4}"
+      TURN_ADMISSION_WAIT_SECONDS: "${TURN_ADMISSION_WAIT_SECONDS:-0.5}"
+      MAX_QUESTION_CHARS: "${MAX_QUESTION_CHARS:-4000}"
+      MAX_REQUEST_BYTES: "${MAX_REQUEST_BYTES:-1048576}"
+      ANSWER_TIMEOUT_SECONDS: "${ANSWER_TIMEOUT_SECONDS:-120}"
+
+      # What a turn is allowed to spend before it must answer with what it has.
+      MAX_HISTORY_MESSAGES: "${MAX_HISTORY_MESSAGES:-20}"
+      MAX_TOOL_ITERATIONS: "${MAX_TOOL_ITERATIONS:-6}"
+      CONTEXT_CACHE_TTL_SECONDS: "${CONTEXT_CACHE_TTL_SECONDS:-300}"
       # The only settings in this file that are not committed values. They come
       # from the host environment or a .env file, because a model credential is
       # the one thing here that must never be in the repository.
@@ -91,6 +119,9 @@ services:
       # a machine with no gcloud.
       LLM_PROVIDER: "${LLM_PROVIDER:-gemini-studio}"
       LLM_MODEL: "${LLM_MODEL:-gemini-2.5-flash}"
+      LLM_TEMPERATURE: "${LLM_TEMPERATURE:-0.2}"
+      LLM_MAX_OUTPUT_TOKENS: "${LLM_MAX_OUTPUT_TOKENS:-2048}"
+      LLM_TIMEOUT_SECONDS: "${LLM_TIMEOUT_SECONDS:-60}"
       GOOGLE_API_KEY: "${GOOGLE_API_KEY:-}"
       VERTEX_PROJECT: "${VERTEX_PROJECT:-}"
       VERTEX_LOCATION: "${VERTEX_LOCATION:-us-central1}"

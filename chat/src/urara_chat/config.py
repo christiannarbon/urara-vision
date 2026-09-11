@@ -35,6 +35,11 @@ _DEFAULT_LOG_LEVEL = "info"
 # pod. A larger setting is clamped rather than refused -- it is a judgement about
 # patience, not a broken address.
 MAX_ANSWER_TIMEOUT_SECONDS = 300.0
+
+# The longest a turn may wait for a free slot. Deliberately the same as the
+# Retry-After a refused caller is told to honour: waiting longer than that is
+# queueing, which is the thing the cap exists to avoid.
+MAX_ADMISSION_WAIT_SECONDS = 5.0
 # A container listens on every interface; the pod's NetworkPolicy is what
 # narrows who may reach it.
 _DEFAULT_HOST = "0.0.0.0"
@@ -58,6 +63,14 @@ class Settings(BaseSettings):
     Neo4j only through the Go backend's HTTP API, and holding no credentials is
     what keeps it unable to write anything the backend has not given it an
     endpoint for.
+
+    **A new field here is not reachable until it is declared elsewhere too.**
+    Compose passes a container only the variables `docker-compose.yml` names, so
+    a setting missing from that file cannot be changed without editing it -- and
+    the attempt fails silently, the container starting on the default while the
+    run reads as the feature being broken. `tests/unit/test_settings_are_reachable.py`
+    fails if the two drift apart. The cluster's ConfigMap is the third place,
+    once Phase 07 lands.
     """
 
     model_config = SettingsConfigDict(
@@ -93,6 +106,19 @@ class Settings(BaseSettings):
     # How many times the model may ask for tools before it must answer with what
     # it has. Six is generous for the nine tools available.
     max_tool_iterations: int = 6
+
+    # How many turns may be in flight at once, across every conversation. Each
+    # one is a provider call being paid for, so the ceiling is on the bill as
+    # much as on the pod. Four is enough for a handful of readers and small
+    # enough that a refresh loop cannot run away.
+    max_concurrent_turns: int = 4
+
+    # How long a turn waits for a free slot before it is refused. Short on
+    # purpose: long enough to absorb two requests that arrived together, not
+    # long enough for a reader to wonder whether anything is happening. Past a
+    # few seconds this stops being a grace period and becomes the queue the
+    # limiter exists to avoid.
+    turn_admission_wait_seconds: float = 0.5
 
     # A question long enough to be a pasted document is not a question, and the
     # prompt it would build is paid for in full before the model reads a word of
@@ -157,6 +183,41 @@ class Settings(BaseSettings):
             # needs no key -- only somewhere to send the request.
             raise ValueError("VERTEX_PROJECT must be set when LLM_PROVIDER is 'vertex'")
         return self
+
+    @field_validator("max_concurrent_turns")
+    @classmethod
+    def _at_least_one_turn(cls, v: int) -> int:
+        """Refuse a cap that lets nothing through.
+
+        Zero would refuse every turn with a 429 while the service reported
+        itself ready, which reads as an outage rather than as the setting it is.
+        """
+        if v < 1:
+            raise ValueError(f"MAX_CONCURRENT_TURNS must be at least 1, got {v}")
+        return v
+
+    @field_validator("turn_admission_wait_seconds")
+    @classmethod
+    def _bounded_admission_wait(cls, v: float) -> float:
+        """Keep the grace period from becoming a queue, and from becoming zero.
+
+        Clamped above the ceiling because waiting longer than the Retry-After a
+        refused caller is given is the queueing this cap exists to prevent,
+        wearing a different name.
+
+        Refused at zero for a subtler reason: `asyncio.wait_for` with a
+        non-positive timeout cancels the acquisition before the event loop ever
+        runs it, so a wait of zero refuses *every* turn rather than only the
+        ones that found the cap full -- a service answering nothing while
+        reporting itself ready. Anything positive, however small, behaves as
+        "refuse when full".
+        """
+        if v <= 0:
+            raise ValueError(
+                f"TURN_ADMISSION_WAIT_SECONDS must be greater than zero, got {v}; "
+                "zero would refuse every turn, not only the ones over the cap"
+            )
+        return min(v, MAX_ADMISSION_WAIT_SECONDS)
 
     @field_validator("answer_timeout_seconds")
     @classmethod

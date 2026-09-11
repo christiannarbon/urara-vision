@@ -26,6 +26,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from urara_chat.agent.pipeline import AgentAnswer, answer
 from urara_chat.api.errors import ProviderError
+from urara_chat.api.locks import ConversationLocks, TurnLimiter
 from urara_chat.api.routes import get_client, get_settings_for
 from urara_chat.api.schemas import (
     ConversationListResponse,
@@ -35,11 +36,43 @@ from urara_chat.api.schemas import (
     TurnRequest,
     TurnResponse,
 )
+from urara_chat.backend.client import BackendClient
 from urara_chat.backend.errors import BackendError
 from urara_chat.backend.models import Conversation, Message
 from urara_chat.config import Settings
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+
+def get_locks(request: Request) -> ConversationLocks:
+    """The process's conversation locks, made on first use.
+
+    Built here rather than in the lifespan so that every application which
+    mounts this router has them by construction. Wiring them in a second place
+    would mean a router that is correct only when someone remembered, and the
+    symptom of forgetting -- interleaved transcripts under concurrent turns --
+    is one that no single-request test would ever show.
+
+    Creating it is safe without a lock of its own: nothing here awaits, so on
+    one event loop two requests cannot both find it missing.
+    """
+    state = request.app.state
+    if not hasattr(state, "conversation_locks"):
+        state.conversation_locks = ConversationLocks()
+    locks: ConversationLocks = state.conversation_locks
+    return locks
+
+
+def get_limiter(request: Request) -> TurnLimiter:
+    """The process's turn limiter, made on first use from the configured cap."""
+    state = request.app.state
+    if not hasattr(state, "turn_limiter"):
+        settings = get_settings_for(request)
+        state.turn_limiter = TurnLimiter(
+            settings.max_concurrent_turns, settings.turn_admission_wait_seconds
+        )
+    limiter: TurnLimiter = state.turn_limiter
+    return limiter
 
 
 @router.post("/conversations", status_code=201, response_model=ConversationResponse)
@@ -113,6 +146,29 @@ async def take_turn(request: Request, cid: str, body: TurnRequest) -> TurnRespon
             ),
         )
 
+    # A slot first, then the conversation. That order is not incidental: taking
+    # the conversation lock first would let a turn hold it while queueing for a
+    # slot, so a second turn on the same thread would block behind a first that
+    # is not even running yet -- and would go on blocking for as long as the
+    # service stayed busy with other conversations entirely.
+    async with get_limiter(request).hold(), get_locks(request).hold(cid):
+        return await _run_turn(client, settings, cid, question, body.language)
+
+
+async def _run_turn(
+    client: BackendClient,
+    settings: Settings,
+    cid: str,
+    question: str,
+    language: str,
+) -> TurnResponse:
+    """One turn, with the conversation already held.
+
+    Everything from reading the history to storing the answer happens inside
+    that hold. Read and append have to be one unit: two turns that both read
+    before either appends produce a transcript that reads question, question,
+    answer, answer.
+    """
     # 404 for an unknown conversation, through the shared handler.
     conversation = await client.get_conversation(cid)
     # Read before the new message is written, so the history handed to the
@@ -125,7 +181,7 @@ async def take_turn(request: Request, cid: str, body: TurnRequest) -> TurnRespon
     # failure, which is exactly when losing it hurts most.
     user_message = await client.append_message(cid, "user", question)
 
-    result = await _answer(question, conversation.snapshot_id, history, body.language, settings)
+    result = await _answer(question, conversation.snapshot_id, history, language, settings)
 
     assistant_message = await client.append_message(
         cid,
