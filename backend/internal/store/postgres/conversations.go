@@ -123,6 +123,27 @@ func (s *Store) GetConversation(ctx context.Context, id string) (*model.Conversa
 	return &c, nil
 }
 
+// UpdateConversationTitle sets a conversation's title. The row comes back from
+// the UPDATE itself rather than from a second read, so the caller sees the
+// updated_at the database actually wrote instead of one guessed in Go.
+//
+// The title is the only mutable field a conversation has. The snapshot it was
+// started on is deliberately not updatable here: resolving it once at creation
+// is what stops a transcript changing subject under a later ingest.
+func (s *Store) UpdateConversationTitle(ctx context.Context, id, title string) (*model.Conversation, error) {
+	c, err := scanConversation(s.pool.QueryRow(ctx,
+		`UPDATE conversations SET title = $2, updated_at = now()
+		  WHERE id = $1
+		 RETURNING `+conversationColumns, id, title))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &c, nil
+}
+
 // DeleteConversation removes a thread and its messages.
 func (s *Store) DeleteConversation(ctx context.Context, id string) error {
 	tag, err := s.pool.Exec(ctx, `DELETE FROM conversations WHERE id = $1`, id)

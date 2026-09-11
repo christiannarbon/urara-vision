@@ -8,8 +8,10 @@ package api_test
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"urara-vision/backend/internal/model"
 	"urara-vision/backend/internal/store/postgres"
@@ -118,6 +120,129 @@ func TestGetConversationUnknownIs404(t *testing.T) {
 	rec := do(t, h, http.MethodGet, "/api/v1/conversations/nope", nil, "")
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)
+	}
+}
+
+// patchJSON issues a PATCH with a JSON body.
+func patchJSON(t *testing.T, h http.Handler, target, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	return do(t, h, http.MethodPatch, target, strings.NewReader(body), "application/json")
+}
+
+func TestPatchConversationSetsTitle(t *testing.T) {
+	before := time.Now().Add(-time.Hour)
+	meta := &fakeMeta{conversation: &model.Conversation{ID: "conv-1", Title: "old", UpdatedAt: before}}
+	h := newServer(t, meta, &fakeGraphs{})
+
+	rec := patchJSON(t, h, "/api/v1/conversations/conv-1", `{"title":"a new title"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	if meta.convID != "conv-1" || meta.patchedTitle != "a new title" {
+		t.Errorf("store got (%q, %q)", meta.convID, meta.patchedTitle)
+	}
+
+	body := decode(t, rec.Body.Bytes())
+	if body["title"] != "a new title" {
+		t.Errorf("title = %v, want the new one", body["title"])
+	}
+	// A rename touches the thread, so a client sorting by recency sees it move.
+	stamp, _ := body["updatedAt"].(string)
+	updated, err := time.Parse(time.RFC3339Nano, stamp)
+	if err != nil {
+		t.Fatalf("updatedAt %q: %v", stamp, err)
+	}
+	if !updated.After(before) {
+		t.Errorf("updatedAt = %s, want it bumped past %s", updated, before)
+	}
+}
+
+// An empty title is an edit, not an omission: it clears the title.
+func TestPatchConversationAcceptsEmptyTitle(t *testing.T) {
+	meta := &fakeMeta{conversation: &model.Conversation{ID: "conv-1", Title: "old"}}
+	h := newServer(t, meta, &fakeGraphs{})
+
+	rec := patchJSON(t, h, "/api/v1/conversations/conv-1", `{"title":""}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	if got := decode(t, rec.Body.Bytes())["title"]; got != "" {
+		t.Errorf("title = %v, want it cleared", got)
+	}
+}
+
+func TestPatchConversationRejectsBadInput(t *testing.T) {
+	t.Run("unknown conversation", func(t *testing.T) {
+		h := newServer(t, &fakeMeta{}, &fakeGraphs{})
+		rec := patchJSON(t, h, "/api/v1/conversations/nope", `{"title":"x"}`)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", rec.Code)
+		}
+	})
+
+	// Truncating would store something other than what was sent, under a status
+	// saying it worked, so an over-long title is refused and the limit named.
+	t.Run("title over the limit", func(t *testing.T) {
+		meta := &fakeMeta{conversation: &model.Conversation{ID: "conv-1"}}
+		h := newServer(t, meta, &fakeGraphs{})
+
+		rec := patchJSON(t, h, "/api/v1/conversations/conv-1",
+			`{"title":"`+strings.Repeat("a", 201)+`"}`)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rec.Code)
+		}
+		if msg, _ := decode(t, rec.Body.Bytes())["error"].(string); !strings.Contains(msg, "200") {
+			t.Errorf("error %q does not name the limit", msg)
+		}
+		if meta.patchedTitle != "" {
+			t.Error("an over-long title reached the store")
+		}
+	})
+
+	// A title of exactly the limit is not over it. Runes, not bytes: a
+	// multi-byte title within the limit must not be refused for its encoding.
+	t.Run("title at the limit in multi-byte runes", func(t *testing.T) {
+		meta := &fakeMeta{conversation: &model.Conversation{ID: "conv-1"}}
+		h := newServer(t, meta, &fakeGraphs{})
+
+		rec := patchJSON(t, h, "/api/v1/conversations/conv-1",
+			`{"title":"`+strings.Repeat("名", 200)+`"}`)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+		}
+	})
+
+	// The one this endpoint exists to refuse. A movable snapshot ID would undo
+	// the whole point of resolving it once, when the thread was created.
+	t.Run("snapshotId is not patchable", func(t *testing.T) {
+		meta := &fakeMeta{conversation: &model.Conversation{ID: "conv-1"}}
+		h := newServer(t, meta, &fakeGraphs{})
+
+		rec := patchJSON(t, h, "/api/v1/conversations/conv-1", `{"snapshotId":"something-else"}`)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400", rec.Code)
+		}
+		if meta.convID != "" {
+			t.Error("a patch carrying snapshotId reached the store")
+		}
+	})
+}
+
+// TestCORSAllowsPatch is the check the endpoint's own tests cannot make: the
+// handler works server-side whatever CORS says, and a missing method only
+// surfaces as a preflight rejection in a browser, which looks nothing like a
+// CORS problem in the server's logs.
+func TestCORSAllowsPatch(t *testing.T) {
+	h := newServer(t, &fakeMeta{}, &fakeGraphs{})
+
+	r := httptest.NewRequest(http.MethodOptions, "/api/v1/conversations/conv-1", nil)
+	r.Header.Set("Origin", "http://localhost:5173")
+	r.Header.Set("Access-Control-Request-Method", "PATCH")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, r)
+
+	if got := rec.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(got, "PATCH") {
+		t.Fatalf("Access-Control-Allow-Methods = %q, want PATCH allowed", got)
 	}
 }
 
