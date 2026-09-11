@@ -62,6 +62,7 @@ type MetaStore interface {
 	CreateConversation(ctx context.Context, snapshotID, title string) (*model.Conversation, error)
 	ListConversations(ctx context.Context, snapshotID string) ([]model.Conversation, error)
 	GetConversation(ctx context.Context, id string) (*model.Conversation, error)
+	UpdateConversationTitle(ctx context.Context, id, title string) (*model.Conversation, error)
 	DeleteConversation(ctx context.Context, id string) error
 	AppendMessage(ctx context.Context, conversationID string, m model.Message) (*model.Message, error)
 	ListMessages(ctx context.Context, conversationID string) ([]model.Message, error)
@@ -94,8 +95,12 @@ func (s *Server) Routes() http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(120 * 1e9))
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   s.cfg.CORSOrigins,
-		AllowedMethods:   []string{"GET", "POST", "DELETE", "OPTIONS"},
+		AllowedOrigins: s.cfg.CORSOrigins,
+		// This list is load-bearing, not decorative: a browser preflights
+		// PATCH /api/v1/conversations/{cid}, and a method missing here is
+		// refused before the handler is reached, which shows up in the logs as
+		// nothing at all rather than as a CORS problem.
+		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Requested-With"},
 		AllowCredentials: false,
 		MaxAge:           300,
@@ -137,6 +142,7 @@ func (s *Server) Routes() http.Handler {
 			r.Get("/", s.handleListConversations)
 			r.Route("/{cid}", func(r chi.Router) {
 				r.Get("/", s.handleGetConversation)
+				r.Patch("/", s.handlePatchConversation)
 				r.Delete("/", s.handleDeleteConversation)
 				r.Post("/messages", s.handleAppendMessage)
 			})
