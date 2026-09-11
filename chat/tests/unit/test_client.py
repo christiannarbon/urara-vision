@@ -17,7 +17,12 @@ import pytest
 import respx
 
 from urara_chat.backend.client import BackendClient
-from urara_chat.backend.errors import BackendError, BackendNotFound, BackendUnavailable
+from urara_chat.backend.errors import (
+    BackendError,
+    BackendNotFound,
+    BackendRejected,
+    BackendUnavailable,
+)
 from urara_chat.config import Settings
 
 BASE = "http://backend:8080"
@@ -222,6 +227,39 @@ class TestErrorMapping:
             await client.get_context(SID)
         assert "boom" in caught.value.message
         assert not isinstance(caught.value, BackendNotFound)
+
+    @respx.mock
+    async def test_a_4xx_is_a_refusal_not_an_outage(self, client: BackendClient) -> None:
+        """The backend read the request and said no, which is a bug on this side
+        of the wire. Calling it an upstream failure sends whoever is on call to
+        the service that behaved correctly."""
+        respx.get(f"{BASE}/api/v1/snapshots/{SID}/context").mock(
+            return_value=httpx.Response(400, json={"error": "malformed parameter"})
+        )
+        with pytest.raises(BackendRejected) as caught:
+            await client.get_context(SID)
+        assert caught.value.status == 400
+        assert "malformed parameter" in caught.value.message
+
+    @respx.mock
+    async def test_a_5xx_is_not_a_refusal(self, client: BackendClient) -> None:
+        respx.get(f"{BASE}/api/v1/snapshots/{SID}/context").mock(
+            return_value=httpx.Response(503, json={"error": "down"})
+        )
+        with pytest.raises(BackendError) as caught:
+            await client.get_context(SID)
+        assert not isinstance(caught.value, BackendRejected)
+
+    @respx.mock
+    async def test_a_404_stays_its_own_thing(self, client: BackendClient) -> None:
+        """Neither an outage nor a bad request: an answer about something that
+        is not there."""
+        respx.get(f"{BASE}/api/v1/snapshots/gone/context").mock(
+            return_value=httpx.Response(404, json={"error": "snapshot not found"})
+        )
+        with pytest.raises(BackendNotFound) as caught:
+            await client.get_context("gone")
+        assert not isinstance(caught.value, BackendRejected)
 
     @respx.mock
     async def test_a_non_json_body_still_raises_cleanly(self, client: BackendClient) -> None:
