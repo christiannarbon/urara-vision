@@ -22,6 +22,8 @@ from pydantic import ValidationError
 
 from urara_chat.agent.context_card import ContextCardCache
 from urara_chat.agent.pipeline import Pipeline, configure_pipeline
+from urara_chat.api.errors import install_error_handlers
+from urara_chat.api.middleware import RequestIDMiddleware
 from urara_chat.api.routes import router
 from urara_chat.backend.client import BackendClient
 from urara_chat.config import ConfigurationError, configure_logging, get_settings
@@ -137,5 +139,14 @@ async def limit_request_size(
             )
     return await call_next(request)
 
+
+# Added last, so it wraps everything else: Starlette applies middleware
+# outermost-last, and the ID has to be assigned before any other middleware can
+# answer -- otherwise the 413 above leaves without one.
+app.add_middleware(RequestIDMiddleware)
+
+# One place decides what an exception becomes, so no route needs its own
+# try/except for a backend, provider or validation failure.
+install_error_handlers(app)
 
 app.include_router(router)
