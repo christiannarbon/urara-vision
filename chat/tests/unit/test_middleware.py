@@ -32,7 +32,7 @@ from urara_chat.api.middleware import (
     sanitise_request_id,
 )
 from urara_chat.backend.client import BackendClient
-from urara_chat.backend.errors import BackendError, BackendNotFound
+from urara_chat.backend.errors import BackendError, BackendNotFound, BackendRejected
 from urara_chat.config import Settings
 
 BASE = "http://backend:8080"
@@ -196,6 +196,16 @@ class TestErrorMapping:
         assert response.status_code == 502
         body = response.json()
         assert body["error"] == BACKEND_UNAVAILABLE
+        assert SECRET not in response.text
+
+    def test_a_refused_request_is_500_not_502(self) -> None:
+        """A 4xx from the backend is this service having built a bad request.
+        502 would blame the service that correctly refused it, and hide the bug
+        in the one that made it."""
+        response = self.response_for(BackendRejected(400, SECRET))
+
+        assert response.status_code == 500
+        assert response.json()["error"] == "internal error"
         assert SECRET not in response.text
 
     def test_a_provider_failure_is_502_and_says_nothing(self) -> None:
