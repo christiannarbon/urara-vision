@@ -487,6 +487,31 @@ class TestDeleteConversation:
             await client.delete_conversation("nope")
 
 
+class TestSetConversationTitle:
+    @respx.mock
+    async def test_it_patches_only_the_title(self, client: BackendClient) -> None:
+        """The snapshot is not patchable, and this must not try: resolving it
+        once at creation is what stops a transcript changing subject, and the
+        backend answers 400 for any other field."""
+        route = respx.patch(f"{BASE}/api/v1/conversations/conv-1").mock(
+            return_value=httpx.Response(
+                200, json={"id": "conv-1", "snapshotId": SID, "title": "a new title"}
+            )
+        )
+        conv = await client.set_conversation_title("conv-1", "a new title")
+
+        assert conv.title == "a new title"
+        assert json.loads(route.calls.last.request.content) == {"title": "a new title"}
+
+    @respx.mock
+    async def test_404_raises_not_found(self, client: BackendClient) -> None:
+        respx.patch(f"{BASE}/api/v1/conversations/nope").mock(
+            return_value=httpx.Response(404, json={"error": "conversation not found"})
+        )
+        with pytest.raises(BackendNotFound):
+            await client.set_conversation_title("nope", "x")
+
+
 class TestAppendMessage:
     @respx.mock
     async def test_returns_the_server_assigned_ordinal(self, client: BackendClient) -> None:
