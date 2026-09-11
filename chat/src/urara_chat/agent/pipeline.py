@@ -26,6 +26,7 @@ from langchain_core.tools import BaseTool
 
 from urara_chat.agent.context_card import MAX_CACHED_CARDS, ContextCardCache
 from urara_chat.agent.graph import build_graph, initial_state
+from urara_chat.api.middleware import current_request_id
 from urara_chat.backend.client import BackendClient
 from urara_chat.backend.models import Message
 
@@ -194,6 +195,9 @@ class Pipeline:
         log.info(
             "turn answered",
             extra={
+                # Ties the turn's cost to the HTTP request that paid for it;
+                # without it the two logs cannot be joined.
+                "request_id": current_request_id(),
                 "snapshot_id": snapshot_id,
                 "language": language,
                 "iterations": answer.iterations,
