@@ -7,6 +7,7 @@ package api_test
 import (
 	"context"
 	"errors"
+	"time"
 
 	"urara-vision/backend/internal/model"
 	"urara-vision/backend/internal/store/postgres"
@@ -65,6 +66,7 @@ type fakeMeta struct {
 	createdTitle  string
 	listedFor     string
 	convID        string
+	patchedTitle  string
 	appendedTo    string
 	appendedMsg   model.Message
 }
@@ -167,6 +169,23 @@ func (f *fakeMeta) GetConversation(_ context.Context, id string) (*model.Convers
 		return nil, postgres.ErrNotFound
 	}
 	return f.conversation, nil
+}
+
+// UpdateConversationTitle echoes the conversation the test set with the new
+// title and a fresh updated_at, which is what a real UPDATE ... RETURNING does.
+// A nil conversation is a missing one, matching GetConversation.
+func (f *fakeMeta) UpdateConversationTitle(_ context.Context, id, title string) (*model.Conversation, error) {
+	f.convID, f.patchedTitle = id, title
+	if f.errConversation != nil {
+		return nil, f.errConversation
+	}
+	if f.conversation == nil {
+		return nil, postgres.ErrNotFound
+	}
+	updated := *f.conversation
+	updated.Title = title
+	updated.UpdatedAt = time.Now()
+	return &updated, nil
 }
 
 func (f *fakeMeta) DeleteConversation(_ context.Context, id string) error {
