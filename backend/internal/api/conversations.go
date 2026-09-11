@@ -1,5 +1,5 @@
 // Chat conversation endpoints: starting a thread about a snapshot, reading it
-// back, and appending turns to it.
+// back, renaming it, and appending turns to it.
 //
 // A conversation is addressed by its own ID rather than under a snapshot,
 // because the snapshot it is about is decided once, when it is created. That is
@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 
@@ -29,6 +30,17 @@ const maxConversationBody = 1 << 20 // 1 MiB
 type createConversationRequest struct {
 	SnapshotID string `json:"snapshotId"`
 	Title      string `json:"title"`
+}
+
+// maxConversationTitleRunes caps a title. Counted in runes rather than bytes so
+// the limit a caller is told about is the one they can count in what they sent.
+const maxConversationTitleRunes = 200
+
+// patchConversationRequest is the whole of what a conversation can be changed
+// to. It has one field on purpose: with DisallowUnknownFields, anything else --
+// "snapshotId" above all -- is a 400 rather than a silently ignored edit.
+type patchConversationRequest struct {
+	Title string `json:"title"`
 }
 
 type appendMessageRequest struct {
@@ -122,6 +134,36 @@ func (s *Server) failConversation(w http.ResponseWriter, r *http.Request, err er
 // handleGetConversation returns one thread with its full transcript.
 func (s *Server) handleGetConversation(w http.ResponseWriter, r *http.Request) {
 	conv, err := s.pg.GetConversation(r.Context(), chi.URLParam(r, "cid"))
+	if err != nil {
+		s.failConversation(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, conv)
+}
+
+// handlePatchConversation sets a conversation's title, which is the only thing
+// about a thread that can change.
+//
+// The snapshot in particular is not patchable. Resolving it once, when the
+// thread is created, is what stops a transcript changing subject under a later
+// ingest; an editable snapshot ID would hand that back.
+func (s *Server) handlePatchConversation(w http.ResponseWriter, r *http.Request) {
+	var req patchConversationRequest
+	if err := decodeBody(w, r, &req); err != nil {
+		s.badRequest(w, err.Error())
+		return
+	}
+	// Refused rather than truncated: a caller whose title came back shorter
+	// than they sent it, under a 200 saying all was well, has no way to notice.
+	if n := utf8.RuneCountInString(req.Title); n > maxConversationTitleRunes {
+		s.badRequest(w, fmt.Sprintf("\"title\" is %d characters; the limit is %d",
+			n, maxConversationTitleRunes))
+		return
+	}
+
+	// An empty title is a legitimate edit -- it clears one -- so it is not
+	// checked for, unlike a message's content.
+	conv, err := s.pg.UpdateConversationTitle(r.Context(), chi.URLParam(r, "cid"), req.Title)
 	if err != nil {
 		s.failConversation(w, r, err)
 		return
