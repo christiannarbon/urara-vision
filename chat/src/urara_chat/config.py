@@ -28,6 +28,13 @@ _LOG_LEVELS: dict[str, int] = {
 }
 
 _DEFAULT_LOG_LEVEL = "info"
+
+# The longest a turn may hold a connection. Five minutes is already far past the
+# point where a reader has given up and reloaded, and past it the deadline stops
+# being a deadline: a hung provider holds a worker, and enough of them hold the
+# pod. A larger setting is clamped rather than refused -- it is a judgement about
+# patience, not a broken address.
+MAX_ANSWER_TIMEOUT_SECONDS = 300.0
 # A container listens on every interface; the pod's NetworkPolicy is what
 # narrows who may reach it.
 _DEFAULT_HOST = "0.0.0.0"
@@ -150,6 +157,20 @@ class Settings(BaseSettings):
             # needs no key -- only somewhere to send the request.
             raise ValueError("VERTEX_PROJECT must be set when LLM_PROVIDER is 'vertex'")
         return self
+
+    @field_validator("answer_timeout_seconds")
+    @classmethod
+    def _bounded_answer_timeout(cls, v: float) -> float:
+        """Cap the turn deadline, and refuse one that cannot be met.
+
+        Zero or less is refused rather than clamped: it would time out every
+        turn instantly, and a service that answers nothing at all should say why
+        at start-up instead of failing each request in a way that looks like the
+        provider.
+        """
+        if v <= 0:
+            raise ValueError(f"ANSWER_TIMEOUT_SECONDS must be greater than zero, got {v}")
+        return min(v, MAX_ANSWER_TIMEOUT_SECONDS)
 
     @field_validator("backend_base_url")
     @classmethod
