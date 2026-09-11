@@ -18,7 +18,7 @@ import httpx
 import pytest
 from fastapi import FastAPI
 
-import urara_chat.api.chat_routes as chat_routes
+import urara_chat.api.answering as answering
 from urara_chat.agent.pipeline import AgentAnswer
 from urara_chat.api.chat_routes import router as chat_router
 from urara_chat.api.errors import install_error_handlers
@@ -111,7 +111,7 @@ def build_app(
     monkeypatch: pytest.MonkeyPatch,
     config: Settings | None = None,
 ) -> tuple[FastAPI, ConversationLocks]:
-    monkeypatch.setattr(chat_routes, "answer", pipeline)
+    monkeypatch.setattr(answering, "answer", pipeline)
 
     app = FastAPI()
     app.add_middleware(RequestIDMiddleware)

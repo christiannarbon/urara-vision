@@ -17,7 +17,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import urara_chat.api.chat_routes as chat_routes
+import urara_chat.api.answering as answering
 from urara_chat.agent.pipeline import AgentAnswer
 from urara_chat.api.chat_routes import (
     MAX_TITLE_RUNES,
@@ -165,7 +165,7 @@ class FakePipeline:
 
 
 def turn(monkeypatch: pytest.MonkeyPatch, fake: FakeClient, question: str) -> Any:
-    monkeypatch.setattr(chat_routes, "answer", FakePipeline())
+    monkeypatch.setattr(answering, "answer", FakePipeline())
 
     app = FastAPI()
     app.add_middleware(RequestIDMiddleware)

@@ -20,7 +20,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-import urara_chat.api.chat_routes as chat_routes
+import urara_chat.api.answering as answering
 from urara_chat.agent.pipeline import AgentAnswer
 from urara_chat.api.chat_routes import router as chat_router
 from urara_chat.api.errors import PROVIDER_FAILED, install_error_handlers
@@ -135,7 +135,7 @@ def turn(
     **body: Any,
 ) -> Any:
     """POST one turn against an app wired the way it is actually served."""
-    monkeypatch.setattr(chat_routes, "answer", pipeline or FakePipeline())
+    monkeypatch.setattr(answering, "answer", pipeline or FakePipeline())
 
     app = FastAPI()
     app.add_middleware(RequestIDMiddleware)

@@ -30,7 +30,7 @@ from fastapi.responses import JSONResponse, Response
 from langchain_core.language_models import BaseChatModel
 from pydantic import ValidationError
 
-from urara_chat.agent.pipeline import answer
+from urara_chat.api.answering import answer_question
 from urara_chat.api.schemas import AnswerRequest, AnswerResponse, ToolInvokeRequest
 from urara_chat.backend.client import BackendClient
 from urara_chat.backend.errors import BackendError, BackendNotFound
@@ -50,13 +50,6 @@ PROBE_TIMEOUT_SECONDS = 15.0
 # Fixed, and short enough to cost nothing. The point is whether credentials work
 # and the provider answers, not what it says.
 PROBE_PROMPT = "Reply with exactly: pong"
-
-# What a caller is told when a turn fails upstream. Deliberately says nothing
-# about why: a provider error quotes the request back, so it can carry prompt
-# fragments and occasionally credentials. The real reason is logged. This
-# mirrors Server.fail in backend/internal/api/respond.go.
-UPSTREAM_FAILURE = "the answer could not be produced; see the service logs"
-
 
 def get_client(request: Request) -> BackendClient:
     """The one client, built in the lifespan.
@@ -193,68 +186,26 @@ async def _run(spec: ToolSpec, args: dict[str, Any]) -> Any:
 async def debug_answer(request: Request, body: AnswerRequest) -> AnswerResponse:
     """One turn through the whole pipeline. Nothing is persisted.
 
-    This is how the pipeline is checked without polluting a transcript store,
-    and it returns the full result rather than the text alone: `toolCalls` and
-    `iterations` are what turn a wrong answer from a mystery into a bug you can
-    point at.
+    The same implementation `/api/chat/answer` serves -- see `api.answering`.
+    Two copies would drift, and the one that drifted would be this one, so the
+    route used to explain a wrong answer would stop describing the route that
+    produced it.
+
+    It stays mounted alongside its promoted twin rather than being replaced:
+    Phase 08 explains a bad answer from here, and a path that has been in
+    somebody's notes for two phases should not stop resolving.
+
+    Unlike /api/chat/answer this takes no slot from the turn limiter. It is a
+    debugging path driven by hand, and one that could be refused because readers
+    are busy is one that is unavailable exactly when it is wanted.
     """
-    settings = get_settings_for(request)
-    client = get_client(request)
-
-    # Trimmed before it is measured, so a body of spaces is empty rather than
-    # short, and so the limit counts characters the model will actually read.
-    question = body.question.strip()
-    if not question:
-        raise HTTPException(status_code=400, detail="question must not be empty")
-    if len(question) > settings.max_question_chars:
-        # The limit is in the message: a caller that hit it is usually pasting a
-        # document, and needs to know how much to cut rather than that it was
-        # too much.
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"question is {len(question)} characters, over the "
-                f"{settings.max_question_chars} character limit"
-            ),
-        )
-
-    # Resolved here rather than in the pipeline, so "latest" works as it does
-    # everywhere else and the concrete ID is what reaches answer() -- which
-    # refuses the alias, because reading the wrong snapshot produces a
-    # confidently wrong answer.
-    try:
-        snapshot_id = await client.resolve_snapshot(body.snapshot_id)
-    except BackendNotFound as exc:
-        raise HTTPException(status_code=404, detail=exc.message) from exc
-    except BackendError as exc:
-        log.error("snapshot could not be resolved", exc_info=exc)
-        raise HTTPException(status_code=502, detail=UPSTREAM_FAILURE) from exc
-
-    try:
-        # A deadline on the whole turn. Every call inside it is bounded already,
-        # but a turn is up to seven model calls plus their tools, and this route
-        # holds the connection for all of them -- Phase 08's eval runner drives
-        # it thousands of times, where one hung turn hangs the run.
-        result = await asyncio.wait_for(
-            answer(question, snapshot_id, history=[], language=body.language),
-            timeout=settings.answer_timeout_seconds,
-        )
-    except BackendNotFound as exc:
-        # The snapshot resolved a moment ago, so this is one deleted mid-turn.
-        # Still the caller's answer to have: the ID they asked about is gone.
-        raise HTTPException(status_code=404, detail=exc.message) from exc
-    except Exception as exc:
-        # Broad on purpose, and the same posture as /debug/llm: every provider
-        # raises its own exception types, a spent tool budget is already a 200
-        # with truncated set, and what is left is "upstream did not answer".
-        # The detail is logged and not returned.
-        log.error(
-            "answer failed",
-            extra={"snapshot_id": snapshot_id, "language": body.language},
-            exc_info=exc,
-        )
-        raise HTTPException(status_code=502, detail=UPSTREAM_FAILURE) from exc
-
+    result = await answer_question(
+        get_client(request),
+        get_settings_for(request),
+        body.snapshot_id,
+        body.question,
+        body.language,
+    )
     # asdict() gives the dataclass's own field names; the schema carries the
     # camelCase wire names and populate_by_name lets it be built from either.
     return AnswerResponse(**asdict(result))

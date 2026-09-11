@@ -7,17 +7,25 @@ failure becomes the documented status through the shared exception handlers
 rather than through a try/except in a route.
 """
 
+import asyncio
 from datetime import UTC, datetime
 from typing import Any
 
+import httpx
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+import urara_chat.api.answering as answering
+from urara_chat.agent.pipeline import AgentAnswer
 from urara_chat.api.chat_routes import router as chat_router
-from urara_chat.api.errors import BACKEND_UNAVAILABLE, install_error_handlers
+from urara_chat.api.errors import BACKEND_UNAVAILABLE, PROVIDER_FAILED, install_error_handlers
+from urara_chat.api.locks import ConversationLocks
 from urara_chat.api.middleware import RequestIDMiddleware
+from urara_chat.api.routes import router as debug_router
 from urara_chat.backend.errors import BackendError, BackendNotFound
 from urara_chat.backend.models import Conversation, Message
+from urara_chat.config import Settings
 
 CREATED = datetime(2026, 9, 11, 12, 0, tzinfo=UTC)
 
@@ -229,3 +237,253 @@ class TestUpstreamFailures:
         assert ok.headers["x-request-id"]
         assert failed.headers["x-request-id"]
         assert failed.json()["requestId"] == failed.headers["x-request-id"]
+
+
+# --- the stateless answer route --------------------------------------------
+#
+# Phase 08's eval runner drives this thousands of times, which is what makes
+# "writes nothing" the assertion that matters: a run leaving a thousand
+# transcripts behind is a run nobody repeats.
+
+FAKE_KEY = "test-key-shaped-value-0123456789abcdef"
+
+# What the provider would say. Never seen by a caller: the text quotes the
+# request back, so it can carry prompt fragments and credentials.
+PROVIDER_TEXT = "429 quota exceeded, prompt was: AIza-shaped-thing"
+
+
+def agent_answer(**over: Any) -> AgentAnswer:
+    base: dict[str, Any] = {
+        "text": "dim_customers and dim_date are conformed.",
+        "citations": ["shared_kernel/dim_date"],
+        "tool_calls": [{"name": "list_tables", "args": {}}],
+        "iterations": 2,
+        "truncated": False,
+        "model": "gemini-2.5-flash",
+        "latency_ms": 1234,
+        "usage": {"input_tokens": 900, "output_tokens": 120},
+    }
+    return AgentAnswer(**(base | over))
+
+
+class WritelessClient:
+    """A backend that fails loudly if anything tries to write through it.
+
+    The route's whole promise is that it does not, so the fake does not merely
+    record writes -- it refuses them. A test asserting on a counter afterwards
+    would still have let the write happen.
+    """
+
+    def __init__(self, raises: Exception | None = None) -> None:
+        self.raises = raises
+        self.resolved: list[str] = []
+
+    async def resolve_snapshot(self, sid: str) -> str:
+        self.resolved.append(sid)
+        if self.raises:
+            raise self.raises
+        return "real-snapshot-id" if sid == "latest" else sid
+
+    async def create_conversation(self, *args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("the answer route created a conversation")
+
+    async def append_message(self, *args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("the answer route stored a message")
+
+    async def set_conversation_title(self, *args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("the answer route set a title")
+
+
+class FakePipeline:
+    def __init__(self, result: AgentAnswer | None = None, raises: Exception | None = None) -> None:
+        self.result = result if result is not None else agent_answer()
+        self.raises = raises
+        self.calls: list[dict[str, Any]] = []
+
+    async def __call__(
+        self, question: str, snapshot_id: str, history: Any, language: str = "EN"
+    ) -> AgentAnswer:
+        self.calls.append(
+            {"question": question, "snapshot_id": snapshot_id, "history": list(history)}
+        )
+        if self.raises:
+            raise self.raises
+        return self.result
+
+
+def answer_app(
+    fake: WritelessClient, pipeline: FakePipeline, monkeypatch: pytest.MonkeyPatch
+) -> TestClient:
+    """Both answer paths on one app, so their shapes can be compared."""
+    monkeypatch.setattr(answering, "answer", pipeline)
+
+    app = FastAPI()
+    app.add_middleware(RequestIDMiddleware)
+    install_error_handlers(app)
+    app.include_router(chat_router)
+    app.include_router(debug_router)
+    app.state.client = fake
+    app.state.settings = Settings(google_api_key=FAKE_KEY)  # type: ignore[arg-type]
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def ask(client: TestClient, **body: Any) -> Any:
+    return client.post("/api/chat/answer", json=body)
+
+
+class TestAnswerWritesNothing:
+    def test_no_conversation_or_message_is_created(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The fake raises on every write, so this passes only if none was
+        attempted."""
+        client = answer_app(WritelessClient(), FakePipeline(), monkeypatch)
+        response = ask(client, snapshotId="latest", question="Which tables are conformed?")
+
+        assert response.status_code == 200
+
+    def test_the_pipeline_is_given_no_history(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """There is no conversation to read one from, which is what makes this
+        path cheap enough to run in bulk."""
+        pipeline = FakePipeline()
+        ask(answer_app(WritelessClient(), pipeline, monkeypatch), snapshotId="s1", question="q")
+
+        assert pipeline.calls[0]["history"] == []
+
+
+class TestAnswerShape:
+    def test_it_returns_every_documented_field(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = answer_app(WritelessClient(), FakePipeline(), monkeypatch)
+        response = ask(client, snapshotId="latest", question="Which tables are conformed?")
+
+        assert response.json() == {
+            "text": "dim_customers and dim_date are conformed.",
+            "citations": ["shared_kernel/dim_date"],
+            "toolCalls": [{"name": "list_tables", "args": {}}],
+            "iterations": 2,
+            "truncated": False,
+            "model": "gemini-2.5-flash",
+            "latencyMs": 1234,
+            "usage": {"input_tokens": 900, "output_tokens": 120},
+        }
+
+    def test_both_paths_answer_in_the_same_shape(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """They share an implementation. If these ever differ, the route used to
+        explain a bad answer has stopped describing the one that produced it."""
+        client = answer_app(WritelessClient(), FakePipeline(), monkeypatch)
+        body = {"snapshotId": "latest", "question": "Which tables are conformed?"}
+
+        promoted = client.post("/api/chat/answer", json=body)
+        debug = client.post("/debug/answer", json=body)
+
+        assert promoted.status_code == debug.status_code == 200
+        assert promoted.json() == debug.json()
+
+
+class TestAnswerValidation:
+    def test_latest_is_resolved_before_the_pipeline_sees_it(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """answer() refuses the alias, and rightly: reading the wrong snapshot
+        produces a confidently wrong answer."""
+        fake, pipeline = WritelessClient(), FakePipeline()
+        ask(answer_app(fake, pipeline, monkeypatch), snapshotId="latest", question="q")
+
+        assert fake.resolved == ["latest"]
+        assert pipeline.calls[0]["snapshot_id"] == "real-snapshot-id"
+
+    @pytest.mark.parametrize("question", ["", "   ", "\n\t "])
+    def test_an_empty_question_is_400(self, question: str, monkeypatch: pytest.MonkeyPatch) -> None:
+        pipeline = FakePipeline()
+        response = ask(
+            answer_app(WritelessClient(), pipeline, monkeypatch), snapshotId="s1", question=question
+        )
+
+        assert response.status_code == 400
+        assert "question" in response.json()["detail"]
+        assert pipeline.calls == []
+
+    def test_an_over_long_question_is_400(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = answer_app(WritelessClient(), FakePipeline(), monkeypatch)
+        response = ask(client, snapshotId="s1", question="x" * 4001)
+
+        assert response.status_code == 400
+        assert "4000" in response.json()["detail"]
+
+    def test_an_unknown_snapshot_is_404(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake = WritelessClient(raises=BackendNotFound(404, "snapshot not found"))
+        pipeline = FakePipeline()
+        response = ask(answer_app(fake, pipeline, monkeypatch), snapshotId="nope", question="q")
+
+        assert response.status_code == 404
+        assert pipeline.calls == []
+
+    def test_a_provider_failure_is_502_without_its_text(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pipeline = FakePipeline(raises=RuntimeError(PROVIDER_TEXT))
+        response = ask(
+            answer_app(WritelessClient(), pipeline, monkeypatch), snapshotId="s1", question="q"
+        )
+
+        assert response.status_code == 502
+        assert response.json()["error"] == PROVIDER_FAILED
+        assert "quota" not in response.text
+        assert "AIza" not in response.text
+
+
+class TestAnswerTakesASlotButNoLock:
+    """It costs a provider call like any other, and the eval runner is exactly
+    the client that fires many at once. There is no conversation to serialise,
+    so there is nothing for a lock to protect -- and holding one would only slow
+    the bulk case down."""
+
+    def build(
+        self, monkeypatch: pytest.MonkeyPatch, seconds: float
+    ) -> tuple[Any, ConversationLocks]:
+        class Slow(FakePipeline):
+            async def __call__(self, *args: Any, **kwargs: Any) -> AgentAnswer:
+                await asyncio.sleep(seconds)
+                return agent_answer()
+
+        monkeypatch.setattr(answering, "answer", Slow())
+
+        app = FastAPI()
+        app.add_middleware(RequestIDMiddleware)
+        install_error_handlers(app)
+        app.include_router(chat_router)
+        app.state.client = WritelessClient()
+        app.state.settings = Settings(  # type: ignore[call-arg]
+            google_api_key=FAKE_KEY, max_concurrent_turns=1
+        )
+        locks = ConversationLocks()
+        app.state.conversation_locks = locks
+        return app, locks
+
+    async def test_over_the_cap_is_429(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        app, _ = self.build(monkeypatch, seconds=1.0)
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            first, second = await asyncio.gather(
+                client.post("/api/chat/answer", json={"snapshotId": "s1", "question": "one"}),
+                client.post("/api/chat/answer", json={"snapshotId": "s1", "question": "two"}),
+            )
+
+        assert {first.status_code, second.status_code} == {200, 429}
+
+    async def test_no_conversation_lock_is_taken(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Sampled while the request is in flight: a lock taken and released
+        would be invisible afterwards."""
+        app, locks = self.build(monkeypatch, seconds=0.3)
+
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            running = asyncio.create_task(
+                client.post("/api/chat/answer", json={"snapshotId": "s1", "question": "q"})
+            )
+            await asyncio.sleep(0.1)
+            tracked_while_running = locks.tracked
+            assert (await running).status_code == 200
+
+        assert tracked_while_running == set(), "the answer route took a conversation lock"

@@ -14,7 +14,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
 
+import urara_chat.api.answering as answering
 from urara_chat.agent.pipeline import AgentAnswer
+from urara_chat.api.errors import PROVIDER_FAILED, install_error_handlers
+from urara_chat.api.middleware import RequestIDMiddleware
 from urara_chat.api.routes import router
 from urara_chat.backend.errors import BackendError, BackendNotFound, BackendUnavailable
 from urara_chat.backend.models import Domain, SearchHit
@@ -139,8 +142,17 @@ def app_with(
     model: FakeModel | None = None,
     settings: Settings | None = None,
 ) -> FastAPI:
-    """An app whose state carries the fakes, skipping the real lifespan."""
+    """An app whose state carries the fakes, skipping the real lifespan.
+
+    Wired like the real one: the middleware assigns a request ID and the
+    exception handlers decide what a failure becomes. Without them these tests
+    would assert against a shape nobody ships -- a validation error would be
+    FastAPI's 422 here and a 400 in production, and a provider failure would
+    escape as a 500 rather than the 502 it is.
+    """
     app = FastAPI()
+    app.add_middleware(RequestIDMiddleware)
+    install_error_handlers(app)
     app.include_router(router)
     app.state.client = client
     app.state.chat_model = model or FakeModel()
@@ -420,7 +432,8 @@ class TestInvokeTool:
             "/debug/tool",
             json={"snapshotId": "snap-1", "tool": "list_domains", "args": {}, "toolz": "x"},
         )
-        assert response.status_code == 422
+        assert response.status_code == 400
+        assert response.json()["fields"][0]["field"] == "toolz"
 
     def test_a_misspelled_argument_is_rejected(self) -> None:
         """`limt` would otherwise take the default and the caller would reason
@@ -458,9 +471,7 @@ class TestDebugAnswer:
         settings: Settings | None = None,
         **body: Any,
     ) -> Any:
-        import urara_chat.api.routes as routes
-
-        monkeypatch.setattr(routes, "answer", pipeline or FakePipeline())
+        monkeypatch.setattr(answering, "answer", pipeline or FakePipeline())
         return client_for(fake or FakeClient(), None, settings).post("/debug/answer", json=body)
 
     def test_it_returns_every_documented_field(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -596,14 +607,18 @@ class TestDebugAnswer:
     def test_the_real_reason_is_logged(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
+        """Kept out of the response and put in the log, by the one handler that
+        renders every provider failure. The chain still carries the original:
+        a generic answer is not the same as a lost cause."""
         pipeline = FakePipeline(raises=RuntimeError("the real reason"))
 
-        with caplog.at_level(logging.ERROR, logger="urara_chat.api.routes"):
+        with caplog.at_level(logging.ERROR, logger="urara_chat.api.errors"):
             self.post(monkeypatch, None, pipeline, snapshotId="snap-1", question="q")
 
-        record = next(r for r in caplog.records if r.message == "answer failed")
-        assert record.snapshot_id == "snap-1"  # type: ignore[attr-defined]
-        assert "the real reason" in str(record.exc_info[1])  # type: ignore[index]
+        record = next(r for r in caplog.records if r.message == "language model call failed")
+        assert record.request_id  # type: ignore[attr-defined]
+        assert "snap-1" in str(record.exc_info[1])  # type: ignore[index]
+        assert "the real reason" in str(record.exc_info[1].__cause__)  # type: ignore[index,union-attr]
 
     def test_a_spent_tool_budget_is_200_with_truncated_set(
         self, monkeypatch: pytest.MonkeyPatch
@@ -664,11 +679,16 @@ class TestDebugAnswer:
     def test_an_unknown_body_field_is_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A misspelled key should be reported, not silently dropped."""
         response = self.post(monkeypatch, snapshotId="snap-1", question="q", langauge="JA")
-        assert response.status_code == 422
+        assert response.status_code == 400
+        assert response.json()["fields"][0]["field"] == "langauge"
 
-    def test_a_missing_snapshot_field_is_422(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_a_missing_snapshot_field_is_400(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """400 rather than FastAPI's 422: the Go backend answers a malformed
+        request with 400, and one service in a pair using a different status for
+        the same mistake is a small permanent confusion."""
         response = self.post(monkeypatch, question="q")
-        assert response.status_code == 422
+        assert response.status_code == 400
+        assert response.json()["fields"][0]["field"] == "snapshotId"
 
 
 class TestTheTurnDeadline:
@@ -677,12 +697,11 @@ class TestTheTurnDeadline:
     the run."""
 
     def test_a_hung_turn_is_502_rather_than_hanging(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import urara_chat.api.routes as routes
 
         async def never(*args: Any, **kwargs: Any) -> Any:
             await asyncio.sleep(10)
 
-        monkeypatch.setattr(routes, "answer", never)
+        monkeypatch.setattr(answering, "answer", never)
         settings = fake_settings(answer_timeout_seconds=0.05)
         response = client_for(FakeClient(), None, settings).post(
             "/debug/answer", json={"snapshotId": "snap-1", "question": "q"}
@@ -691,18 +710,17 @@ class TestTheTurnDeadline:
         assert response.status_code == 502
 
     def test_the_timeout_leaks_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        import urara_chat.api.routes as routes
 
         async def never(*args: Any, **kwargs: Any) -> Any:
             await asyncio.sleep(10)
 
-        monkeypatch.setattr(routes, "answer", never)
+        monkeypatch.setattr(answering, "answer", never)
         settings = fake_settings(answer_timeout_seconds=0.05)
         response = client_for(FakeClient(), None, settings).post(
             "/debug/answer", json={"snapshotId": "snap-1", "question": "q"}
         )
 
-        assert response.json()["detail"] == routes.UPSTREAM_FAILURE
+        assert response.json()["error"] == PROVIDER_FAILED
 
 
 class TestLifespan:
