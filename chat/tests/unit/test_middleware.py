@@ -166,6 +166,25 @@ class TestTheIdReachesTheBackend:
         assert route.calls.last.request.headers["x-request-id"] == "trace-out"
 
     @respx.mock
+    def test_the_readiness_check_carries_it_too(self) -> None:
+        """/readyz is the call you most want to trace: when it says the backend
+        is unreachable, the backend's own log is where the reason is."""
+        route = respx.get(f"{BASE}/readyz").mock(return_value=httpx.Response(200))
+        app = build_app()
+        app.state.client = BackendClient(settings())
+
+        @app.get("/probe")
+        async def probe() -> dict[str, bool]:
+            client: BackendClient = app.state.client
+            return {"ready": await client.health()}
+
+        with TestClient(app) as client:
+            response = client.get("/probe", headers={"X-Request-ID": "trace-probe"})
+
+        assert response.json() == {"ready": True}
+        assert route.calls.last.request.headers["x-request-id"] == "trace-probe"
+
+    @respx.mock
     async def test_no_header_is_sent_outside_a_request(self) -> None:
         """A tool driven from a script or a test is not in a request, and an
         empty header would be worse than none."""
