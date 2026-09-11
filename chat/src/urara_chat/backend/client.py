@@ -17,6 +17,7 @@ from typing import Any
 
 import httpx
 
+from urara_chat.api.middleware import REQUEST_ID_HEADER, current_request_id
 from urara_chat.backend.errors import BackendError, BackendNotFound, BackendUnavailable
 from urara_chat.backend.models import (
     Conversation,
@@ -98,8 +99,16 @@ class BackendClient:
         failure already arrives as a BackendError; an unreachable backend is the
         most likely of them and should not be the exception.
         """
+        # The request ID is forwarded on every call, which is what makes one ID
+        # span both services: the Go side reads this header rather than minting
+        # its own, so a turn's log lines here and there carry the same value.
+        # Read from the ContextVar rather than taken as an argument -- no tool
+        # that calls this knows it is inside an HTTP request, and none should
+        # have to grow a parameter to say so.
+        request_id = current_request_id()
+        headers = {REQUEST_ID_HEADER: request_id} if request_id else None
         try:
-            return await self._client.request(method, path, **kwargs)
+            return await self._client.request(method, path, headers=headers, **kwargs)
         except httpx.HTTPError as exc:
             raise BackendUnavailable(502, f"backend unreachable: {exc}") from exc
 
