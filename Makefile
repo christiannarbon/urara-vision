@@ -72,6 +72,7 @@ UV_IMAGE    := ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 CHAT_RUN    := docker run --rm \
                  -v "$(PWD)/chat":/src \
                  -v "$(PWD)/docker-compose.yml":/compose/docker-compose.yml:ro \
+                 -v "$(PWD)/k8s/base/chat.yaml":/manifests/chat.yaml:ro \
                  -v urara-vision-uv-cache:/root/.cache/uv \
                  -e UV_PROJECT_ENVIRONMENT=/venv \
                  -e UV_LINK_MODE=copy \
@@ -217,11 +218,15 @@ k8s-up: ## Bring the whole Kubernetes stack up and open a tunnel to it
 	kubectl -n $(NS) wait --for=condition=Ready pod/neo4j-0 --timeout=300s
 	kubectl -n $(NS) rollout status deploy/backend --timeout=300s
 	kubectl -n $(NS) rollout status deploy/frontend --timeout=180s
-	@# chat mounts the out-of-band ADC secret, so it cannot start without it.
-	@if kubectl -n $(NS) get secret relviz-adc >/dev/null 2>&1; then \
-	  kubectl -n $(NS) rollout status deploy/chat --timeout=180s; \
-	else \
+	@# chat needs both the out-of-band ADC secret and a project, and is optional
+	@# to the rest of the stack, so nothing here may fail the target.
+	@if ! kubectl -n $(NS) get secret relviz-adc >/dev/null 2>&1; then \
 	  echo "    no relviz-adc secret: chat stays down (see k8s/README.md)"; \
+	elif [ -z "$$(kubectl -n $(NS) get configmap relviz-chat-config -o jsonpath='{.data.VERTEX_PROJECT}' 2>/dev/null)" ]; then \
+	  echo "    VERTEX_PROJECT is empty: chat stays down (set it in k8s/overlays/dev/kustomization.yaml)"; \
+	elif ! kubectl -n $(NS) rollout status deploy/chat --timeout=180s; then \
+	  echo "    chat did not roll out; the rest of the stack is up:"; \
+	  kubectl -n $(NS) get pods -l app.kubernetes.io/name=chat | sed 's/^/      /'; \
 	fi
 	@$(MAKE) --no-print-directory k8s-tunnel
 	@echo
