@@ -1,9 +1,4 @@
-"""Settings parsing.
-
-The cases here are the ones that would otherwise be found in production: a base
-URL with a trailing slash produces a double slash and a 404 that reads like a
-missing route, and a mistyped log level should not stop a service from starting.
-"""
+"""Settings parsing."""
 
 import json
 import logging
@@ -22,9 +17,6 @@ from urara_chat.config import (
 
 @pytest.fixture(autouse=True)
 def _llm_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Settings now refuses to construct without the credential its provider
-    needs. These tests are about the backend settings, so a dummy key keeps each
-    one about the thing it actually asserts."""
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key-not-real")
 
 
@@ -74,8 +66,7 @@ class TestBaseURL:
 
 
 def test_an_empty_token_is_valid(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Empty means "send no Authorization header", which is the backend's own
-    documented unauthenticated mode -- not a misconfiguration."""
+    """Empty means "send no Authorization header", which is the backend's own"""
     monkeypatch.setenv("BACKEND_API_TOKEN", "")
     assert Settings().backend_api_token == ""
 
@@ -114,8 +105,7 @@ def test_get_settings_is_cached() -> None:
 
 
 class TestAppAddrIsRefusedWhenMalformed:
-    """There is no sensible fallback for a listen address, so unlike a log level
-    a bad one stops the service at start rather than at first use."""
+    """There is no sensible fallback for a listen address, so unlike a log level"""
 
     @pytest.mark.parametrize("addr", ["", "not-an-address", "localhost:", "localhost:http"])
     def test_a_port_that_is_not_a_number_is_refused(
@@ -129,8 +119,7 @@ class TestAppAddrIsRefusedWhenMalformed:
 def test_configure_logging_emits_json_at_the_configured_level(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """The Go service logs JSON through slog; a second shape in the same cluster
-    is a permanent tax on whoever is reading the logs."""
+    """The Go service logs JSON through slog; a second shape in the same cluster"""
     monkeypatch.setenv("LOG_LEVEL", "warn")
     configure_logging(Settings())
 
@@ -147,8 +136,7 @@ def test_configure_logging_emits_json_at_the_configured_level(
 
 
 class TestTheTurnDeadline:
-    """A turn holds a connection for its whole duration, so the ceiling on that
-    is not a preference."""
+    """A turn holds a connection for its whole duration, so the ceiling on that"""
 
     def test_a_generous_setting_is_clamped(self) -> None:
         assert (
@@ -160,8 +148,7 @@ class TestTheTurnDeadline:
         assert MAX_ANSWER_TIMEOUT_SECONDS == 300.0
 
     def test_a_shorter_setting_is_left_alone(self) -> None:
-        """Clamping is an upper bound, not a target: a deployment that wants to
-        give up sooner is making a decision, not a mistake."""
+        """Clamping is an upper bound, not a target: a deployment that wants to"""
         assert Settings(answer_timeout_seconds=30).answer_timeout_seconds == 30.0
 
     def test_the_default_is_already_under_the_ceiling(self) -> None:
@@ -178,18 +165,14 @@ class TestTheAdmissionWait:
     """How long a turn waits for a slot before it is refused."""
 
     def test_a_long_wait_is_clamped(self) -> None:
-        """Past the Retry-After a refused caller is given, a wait is a queue --
-        which is the thing the cap exists to avoid."""
+        """Past the Retry-After a refused caller is given, a wait is a queue --"""
         assert (
             Settings(turn_admission_wait_seconds=60).turn_admission_wait_seconds
             == MAX_ADMISSION_WAIT_SECONDS
         )
 
     def test_zero_is_refused_because_it_would_refuse_everything(self) -> None:
-        """asyncio.wait_for cancels a non-positive timeout before the loop runs
-        the acquisition, so zero refuses every turn rather than only the ones
-        over the cap -- a service answering nothing while reporting itself
-        ready."""
+        """asyncio.wait_for cancels a non-positive timeout before the loop runs"""
         with pytest.raises(ValidationError) as caught:
             Settings(turn_admission_wait_seconds=0)
         assert "TURN_ADMISSION_WAIT_SECONDS" in str(caught.value)
@@ -204,16 +187,7 @@ class TestTheAdmissionWait:
 
 
 class TestStructuredFieldsReachTheOutput:
-    """Fields passed through `extra=` must survive to stdout.
-
-    They did not until 04.R: the formatter read four fixed attributes and
-    dropped the rest, so the per-turn cost line Phase 08 bills from arrived as a
-    bare message with no tokens, no iterations and no tool names.
-
-    Every assertion here is on the *rendered* line. A test that reads
-    `record.snapshot_id` passes against the broken formatter, because the
-    attribute is real -- it is the rendering that lost it.
-    """
+    """Fields passed through `extra=` must survive to stdout."""
 
     def rendered(self, caplog: pytest.LogCaptureFixture, **extra: object) -> dict[str, object]:
         from urara_chat.config import JSONLogFormatter
@@ -249,8 +223,7 @@ class TestStructuredFieldsReachTheOutput:
     def test_an_extra_field_cannot_displace_a_fixed_key(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """`logging` itself refuses to overwrite `msg`; `level`, `time` and
-        `logger` are not record attributes, so nothing but this stops them."""
+        """`logging` itself refuses to overwrite `msg`; `level`, `time` and"""
         line = self.rendered(caplog, level="nonsense", time="nonsense", logger="nonsense")
 
         assert line["level"] == "info"
@@ -260,8 +233,7 @@ class TestStructuredFieldsReachTheOutput:
     def test_a_value_that_is_not_json_renders_rather_than_raising(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """A formatter that throws takes out the line it was writing and tells
-        nobody why. A log call must not be able to fail a request."""
+        """A formatter that throws takes out the line it was writing and tells"""
         line = self.rendered(caplog, thing=object())
 
         assert isinstance(line["thing"], str)

@@ -1,13 +1,4 @@
-"""The model factory.
-
-Two things are worth asserting here and both are about what reaches the SDK: the
-generation parameters, because a temperature that silently fails to arrive
-changes every answer without failing anything; and the credential, because this
-is the only place in the service that unwraps it.
-
-Nothing is called. Constructing a chat model makes no network request, so the
-real classes are used and the arguments are read back off the instance.
-"""
+"""The model factory."""
 
 import json
 
@@ -18,9 +9,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from urara_chat.config import Settings
 from urara_chat.llm.factory import build_chat_model, describe_model
 
-# Deliberately not shaped like a real Google key. A fixture with an
-# AIza prefix trips every secret scanner in the repository, and a leak
-# detector that always cries wolf is one nobody reads.
+# Deliberately not shaped like a real Google key.
 FAKE_KEY = "test-key-shaped-value-0123456789abcdef"
 
 
@@ -72,8 +61,7 @@ class TestStudio:
         assert isinstance(model, ChatGoogleGenerativeAI)
 
     def test_the_generation_parameters_reach_the_sdk(self) -> None:
-        """A temperature that fails to arrive changes every answer without
-        failing anything, so the values are read back rather than assumed."""
+        """A temperature that fails to arrive changes every answer without"""
         model = build_chat_model(
             studio_settings(
                 llm_model="gemini-2.5-pro",
@@ -117,16 +105,14 @@ class TestVertex:
         assert model.timeout == 30.0
 
     def test_no_api_key_is_passed(self) -> None:
-        """Vertex authenticates with Application Default Credentials. Passing a
-        key would be both unnecessary and a credential in a second place."""
+        """Vertex authenticates with Application Default Credentials."""
         model = build_chat_model(vertex_settings())
         assert not model.google_api_key or not model.google_api_key.get_secret_value()
 
     def test_a_key_in_the_environment_is_still_not_forwarded(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Someone with both configured should not have the key sent to Vertex
-        just because it happened to be set."""
+        """Someone with both configured should not have the key sent to Vertex"""
         model = build_chat_model(vertex_settings(google_api_key=FAKE_KEY))
         assert not model.google_api_key or model.google_api_key.get_secret_value() != FAKE_KEY
 
@@ -136,8 +122,8 @@ class TestDescribeModel:
         described = describe_model(studio_settings())
         assert described["provider"] == "gemini-studio"
         assert described["model"] == "gemini-2.5-flash"
-        # Studio has no region; an empty string would read as one that failed to
-        # resolve rather than one that does not apply.
+        # Studio has no region; an empty string would read as one that failed to resolve rather
+        # than one that does not apply.
         assert "location" not in described
 
     def test_vertex(self) -> None:
@@ -148,8 +134,7 @@ class TestDescribeModel:
 
     @pytest.mark.parametrize("build", [studio_settings, vertex_settings])
     def test_carries_no_part_of_the_key(self, build: object) -> None:
-        """This ends up in a readiness response and in stored message metadata,
-        both read by people who should not be able to read the key."""
+        """This ends up in a readiness response and in stored message metadata,"""
         settings = build(google_api_key=FAKE_KEY)  # type: ignore[operator]
         rendered = json.dumps(describe_model(settings))
 
@@ -166,16 +151,14 @@ class TestDescribeModel:
 
 class TestNoSilentFallback:
     def test_an_unknown_provider_is_refused_by_the_settings(self) -> None:
-        """The Literal is the guard; the factory's raise is only for a provider
-        added to the type and forgotten here."""
+        """The Literal is the guard; the factory's raise is only for a provider"""
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError):
             Settings(llm_provider="openai", google_api_key=FAKE_KEY)  # type: ignore[arg-type]
 
     def test_the_factory_raises_rather_than_defaulting(self) -> None:
-        """A service quietly answering from the wrong provider is worse than one
-        that stops."""
+        """A service quietly answering from the wrong provider is worse than one"""
         settings = studio_settings()
         object.__setattr__(settings, "llm_provider", "openai")
 

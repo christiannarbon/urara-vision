@@ -1,13 +1,4 @@
-"""All nine tools against a real backend.
-
-This is the phase's point: retrieval checked before a model's judgement is in
-the way. A tool that returns something thin or wrong is invisible later, because
-the model will write fluent prose around it and the prose reads as an answer.
-
-Expected counts come from `backend/tests/unit/demo/demo_test.go`, which already
-pins this set's statistics. Two suites disagreeing about one fixture is worse
-than one suite asserting less.
-"""
+"""All nine tools against a real backend."""
 
 import json
 from typing import Any
@@ -39,8 +30,8 @@ async def test_list_domains(tools: dict[str, ToolSpec]) -> None:
     assert result["total"] == DEMO_DOMAINS
     ids = {d["id"] for d in result["items"]}
     assert {"ordering", "customer_identity"} <= ids
-    # This set deliberately carries a domain with no table directory, so a
-    # domain count and a directory count are not the same number.
+    # This set deliberately carries a domain with no table directory, so a domain count and a
+    # directory count are not the same number.
     assert "delivery_logistics" in ids
 
 
@@ -142,15 +133,13 @@ LIVE_CALLS: dict[str, dict[str, Any]] = {
 
 
 def test_the_sweep_covers_every_tool() -> None:
-    """Guards the parameterisation below against a tenth tool being added and
-    quietly not exercised."""
+    """Guards the parameterisation below against a tenth tool being added and"""
     assert set(LIVE_CALLS) == set(TOOL_NAMES)
 
 
 @pytest.mark.parametrize("name", TOOL_NAMES)
 async def test_every_result_is_json_serialisable(tools: dict[str, ToolSpec], name: str) -> None:
-    """Whatever a tool returns goes into a prompt as text. Something
-    unserialisable fails at the model call, where it reads as a model problem."""
+    """Whatever a tool returns goes into a prompt as text."""
     result = await tools[name].fn(**LIVE_CALLS[name])
 
     encoded = json.dumps(result)
@@ -160,8 +149,7 @@ async def test_every_result_is_json_serialisable(tools: dict[str, ToolSpec], nam
 
 @pytest.mark.parametrize("name", TOOL_NAMES)
 async def test_every_result_has_the_uniform_shape(tools: dict[str, ToolSpec], name: str) -> None:
-    """One shape either way. A result that is sometimes a list and sometimes an
-    object is one the model handles inconsistently."""
+    """One shape either way."""
     result = await tools[name].fn(**LIVE_CALLS[name])
 
     assert isinstance(result, dict)

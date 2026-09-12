@@ -1,15 +1,4 @@
-"""Titles derived from a conversation's first question.
-
-A list of four rows reading "Untitled" is useless, and the first question is the
-best title available for nothing: no second provider call, no summarisation of a
-string nobody reads closely.
-
-Two rules carry the weight. Truncation is by rune, because a Japanese question
-cut at sixty *bytes* lands mid-character and renders as mojibake in exactly the
-place a reader looks to tell two threads apart. And a title that cannot be set
-must not take the turn down with it -- by then the answer has been computed,
-paid for and stored.
-"""
+"""Titles derived from a conversation's first question."""
 
 from typing import Any
 
@@ -30,13 +19,13 @@ from urara_chat.config import Settings
 FAKE_KEY = "test-key-shaped-value-0123456789abcdef"
 ELLIPSIS = "…"
 
-# Questions that survive clean_question -- they are not empty before stripping
-# -- and derive nothing at all.
+# Questions that survive clean_question -- they are not empty before stripping -- and derive
+# nothing at all.
 QUOTES_ONLY_ASCII = chr(34) * 3
 QUOTES_ONLY_CJK = chr(0x300C) + chr(0x300D)
 
-# Sixty runes of Japanese and then some: none of it ASCII, and every character
-# three bytes in UTF-8, so a byte-wise cut cannot help but land mid-character.
+# Sixty runes of Japanese and then some: none of it ASCII, and every character three bytes in
+# UTF-8, so a byte-wise cut cannot help but land mid-character.
 JAPANESE = (
     "fact_orders の粒度と、顧客テーブルとの関係について教えてください。"
     + "詳しく説明してほしいです。" * 6
@@ -53,8 +42,7 @@ class TestDerivation:
         assert ELLIPSIS not in title_from_question("What is fact_orders?")
 
     def test_whitespace_is_collapsed(self) -> None:
-        """A question pasted across three lines would otherwise carry its
-        newlines into a list row and break the layout."""
+        """A question pasted across three lines would otherwise carry its"""
         assert title_from_question("  What\n  is\tthe   grain?  ") == "What is the grain?"
 
     @pytest.mark.parametrize("quote", ['"', "'", "“", "「"])
@@ -74,16 +62,14 @@ class TestDerivation:
         assert title.removesuffix(ELLIPSIS).split()[-1] == "to"
 
     def test_no_boundary_means_a_hard_cut(self) -> None:
-        """A language without spaces has no boundary to find, and hunting
-        further back for one would throw half the title away."""
+        """A language without spaces has no boundary to find, and hunting"""
         title = title_from_question("a" * 100)
 
         assert len(title) == MAX_TITLE_RUNES + 1
         assert title == "a" * MAX_TITLE_RUNES + ELLIPSIS
 
     def test_a_distant_boundary_is_not_used(self) -> None:
-        """Only a boundary near the end is worth honouring. One at rune 20 of 60
-        would cost the title two thirds of its content."""
+        """Only a boundary near the end is worth honouring."""
         question = "word " + "x" * 100
         assert title_from_question(question).startswith("word x")
 
@@ -99,8 +85,7 @@ class TestJapanese:
         assert len(title.encode()) > MAX_TITLE_RUNES, "the test text is not multi-byte"
 
     def test_it_is_still_valid_text(self) -> None:
-        """The failure a byte cut produces: a trailing partial character that
-        cannot be encoded and renders as a replacement glyph."""
+        """The failure a byte cut produces: a trailing partial character that"""
         title = title_from_question(JAPANESE)
 
         assert title.encode().decode() == title
@@ -113,11 +98,7 @@ class TestJapanese:
 
 
 class FakeClient:
-    """A backend that records the order it was called in.
-
-    The order is the assertion: a title must never exist for a turn that
-    produced nothing, so the PATCH has to come after the assistant message.
-    """
+    """A backend that records the order it was called in."""
 
     def __init__(self, title: str = "", patch_raises: Exception | None = None) -> None:
         self.title = title
@@ -212,10 +193,7 @@ class TestSettingIt:
 
 
 class TestAnEmptyTitleIsNotWritten:
-    """`clean_question` lets a question of nothing but quotes through -- it is
-    not empty before stripping -- and the derivation then returns "". Writing
-    that leaves the thread untitled anyway, so the check for an existing title
-    never becomes true and every later turn tries again."""
+    """`clean_question` lets a question of nothing but quotes through -- it is"""
 
     @pytest.mark.parametrize("question", [QUOTES_ONLY_ASCII, QUOTES_ONLY_CJK])
     def test_nothing_is_written(self, question: str, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -236,8 +214,7 @@ class TestAnEmptyTitleIsNotWritten:
 
 
 class TestAFailedTitleDoesNotFailTheTurn:
-    """By this point the answer has been computed, paid for and stored. Losing
-    all of it because a cosmetic PATCH came back 500 would be absurd."""
+    """By this point the answer has been computed, paid for and stored."""
 
     def test_the_turn_still_answers(self, monkeypatch: pytest.MonkeyPatch) -> None:
         fake = FakeClient(patch_raises=BackendError(500, "titles table is on fire"))
@@ -249,8 +226,7 @@ class TestAFailedTitleDoesNotFailTheTurn:
     def test_the_failure_is_logged_with_the_request_id(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Swallowed, not hidden: a title that silently never appears is a bug
-        report nobody can act on."""
+        """Swallowed, not hidden: a title that silently never appears is a bug"""
         fake = FakeClient(patch_raises=BackendError(500, "titles table is on fire"))
         with caplog.at_level("WARNING", logger="urara_chat.api.chat_routes"):
             turn(monkeypatch, fake, "What is fact_orders?")

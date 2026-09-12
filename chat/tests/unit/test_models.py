@@ -1,10 +1,4 @@
-"""The models against real captured backend JSON.
-
-The fixtures in `fixtures/` came off a running stack with the jaffle-shop demo
-set ingested, not from invented shapes: the point is to catch a field name that
-was guessed wrong, and an invented fixture would agree with whatever the model
-happens to say.
-"""
+"""The models against real captured backend JSON."""
 
 import json
 from pathlib import Path
@@ -109,8 +103,7 @@ class TestRealResponsesParse:
 
 
 class TestKnownValuesSurvive:
-    """A field name guessed wrong parses to its default rather than failing, so
-    the aliases are checked against values that are actually in the fixture."""
+    """A field name guessed wrong parses to its default rather than failing, so"""
 
     def test_grain_survives_the_round_trip(self) -> None:
         detail = TableDetail.model_validate(load("table"))
@@ -123,8 +116,7 @@ class TestKnownValuesSurvive:
         assert any(c.is_pk for c in detail.table.columns), "isPk did not map to is_pk"
 
     def test_path_hop_reads_the_from_key(self) -> None:
-        """ "from" is a Python keyword, so this alias is written by hand and is
-        the one most likely to be silently wrong."""
+        """ "from" is a Python keyword, so this alias is written by hand and is"""
         path = JoinPath.model_validate(load("paths")["paths"][0])
         assert path.hops[0].from_table
         assert path.hops[0].to

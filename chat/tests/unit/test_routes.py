@@ -1,9 +1,4 @@
-"""The service's own routes, with the backend client faked.
-
-The probe split carries the most weight here: /healthz must answer while the
-backend is on fire, because a liveness probe that fails during an outage
-restarts every chat pod and mends nothing.
-"""
+"""The service's own routes, with the backend client faked."""
 
 import asyncio
 import logging
@@ -24,9 +19,7 @@ from urara_chat.backend.models import Domain, SearchHit
 from urara_chat.config import Settings
 from urara_chat.tools.registry import TOOL_NAMES
 
-# Deliberately not shaped like a real Google key. A fixture with an
-# AIza prefix trips every secret scanner in the repository, and a leak
-# detector that always cries wolf is one nobody reads.
+# Deliberately not shaped like a real Google key.
 FAKE_KEY = "test-key-shaped-value-0123456789abcdef"
 
 
@@ -66,8 +59,7 @@ class FakeClient:
 
 
 class FakeModel:
-    """Stands in for the chat model. Records whether it was ever called, which
-    is how /readyz is held to not calling it."""
+    """Stands in for the chat model."""
 
     def __init__(self, reply: Any = "pong", raises: Exception | None = None) -> None:
         self.reply = reply
@@ -82,12 +74,7 @@ class FakeModel:
 
 
 class FakePipeline:
-    """Stands in for the agent, recording what the route handed it.
-
-    The route's job is the arguments and the error mapping, not the answer, so
-    everything below the call is scripted -- and the recorded snapshot is what
-    proves `latest` never reaches a pipeline that would refuse it.
-    """
+    """Stands in for the agent, recording what the route handed it."""
 
     def __init__(self, result: Any = None, raises: Exception | None = None) -> None:
         self.result = result if result is not None else agent_answer()
@@ -142,14 +129,7 @@ def app_with(
     model: FakeModel | None = None,
     settings: Settings | None = None,
 ) -> FastAPI:
-    """An app whose state carries the fakes, skipping the real lifespan.
-
-    Wired like the real one: the middleware assigns a request ID and the
-    exception handlers decide what a failure becomes. Without them these tests
-    would assert against a shape nobody ships -- a validation error would be
-    FastAPI's 422 here and a 400 in production, and a provider failure would
-    escape as a 500 rather than the 502 it is.
-    """
+    """An app whose state carries the fakes, skipping the real lifespan."""
     app = FastAPI()
     app.add_middleware(RequestIDMiddleware)
     install_error_handlers(app)
@@ -186,13 +166,12 @@ class TestProbes:
         assert body["llm"] == {"provider": "gemini-studio", "model": "gemini-2.5-flash"}
 
     def test_readyz_is_503_and_says_why(self) -> None:
-        """A pod that cannot answer leaves the load balancer, but is not killed:
-        the outage is upstream and a restart will not mend it."""
+        """A pod that cannot answer leaves the load balancer, but is not killed:"""
         response = client_for(FakeClient(healthy=False)).get("/readyz")
 
         assert response.status_code == 503
-        # The documented shape, not nested under "detail": a probe and an
-        # operator both read this, and neither should have to unwrap it.
+        # The documented shape, not nested under "detail": a probe and an operator both read this,
+        # and neither should have to unwrap it.
         body = response.json()
         assert body["status"] == "unready"
         assert body["reason"]
@@ -200,8 +179,7 @@ class TestProbes:
 
 class TestReadyzReportsTheModelWithoutCallingIt:
     def test_the_model_is_never_invoked(self) -> None:
-        """Readiness runs every ten seconds per pod. A provider round trip on
-        each would be a standing bill for information nobody asked for."""
+        """Readiness runs every ten seconds per pod."""
         model = FakeModel()
         response = client_for(FakeClient(healthy=True), model).get("/readyz")
 
@@ -209,8 +187,7 @@ class TestReadyzReportsTheModelWithoutCallingIt:
         assert model.calls == 0, "/readyz called the provider"
 
     def test_it_reports_the_configured_model_when_unready_too(self) -> None:
-        """Knowing which model a failing pod is configured for is exactly what
-        you want while it is failing."""
+        """Knowing which model a failing pod is configured for is exactly what"""
         model = FakeModel()
         response = client_for(FakeClient(healthy=False), model).get("/readyz")
 
@@ -253,8 +230,7 @@ class TestDebugLLM:
         assert model.calls == 1
 
     def test_a_list_shaped_reply_is_flattened(self) -> None:
-        """A probe that reports [{'type': 'text', ...}] has failed at its one
-        job, and providers do answer in parts."""
+        """A probe that reports [{'type': 'text', ...}] has failed at its one"""
         model = FakeModel(reply=[{"type": "text", "text": "po"}, {"type": "text", "text": "ng"}])
         body = client_for(FakeClient(), model).get("/debug/llm").json()
 
@@ -266,8 +242,7 @@ class TestDebugLLM:
         assert response.status_code == 502
 
     def test_the_provider_error_text_is_not_echoed(self) -> None:
-        """Provider errors quote the request back, so they can carry prompt
-        fragments and occasionally credentials."""
+        """Provider errors quote the request back, so they can carry prompt"""
         secret = f"quota exceeded for key {FAKE_KEY}"
         model = FakeModel(raises=RuntimeError(secret))
 
@@ -289,8 +264,7 @@ class TestDebugLLM:
         assert "the real reason" in str(record.exc_info[1])  # type: ignore[index]
 
     def test_a_hung_provider_times_out_rather_than_hanging(self) -> None:
-        """The probe you reach for while the provider is wedged must not wedge
-        with it."""
+        """The probe you reach for while the provider is wedged must not wedge"""
         import urara_chat.api.routes as routes
 
         class Hangs(FakeModel):
@@ -310,8 +284,7 @@ class TestDebugLLM:
 
 class TestHealthzIsUnaffectedByTheModel:
     def test_a_model_that_raises_does_not_touch_liveness(self) -> None:
-        """A liveness probe that failed while a provider rate-limits would
-        restart every pod in the deployment at the worst possible moment."""
+        """A liveness probe that failed while a provider rate-limits would"""
         model = FakeModel(raises=RuntimeError("provider is down"))
         response = client_for(FakeClient(), model).get("/healthz")
 
@@ -333,8 +306,7 @@ class TestListTools:
             assert tool["schema"]["type"] == "object"
 
     def test_no_schema_offers_a_snapshot(self) -> None:
-        """The route builds the tools too, so the binding is checked here as
-        well as in the registry's own tests."""
+        """The route builds the tools too, so the binding is checked here as"""
         tools = client_for(FakeClient()).get("/debug/tools").json()
         assert "snapshot" not in str(tools).lower().replace("snapshotid", "")
 
@@ -369,8 +341,7 @@ class TestInvokeTool:
         assert response.json()["items"][0]["tableId"] == "ordering/fact_orders"
 
     def test_an_unknown_tool_is_400_listing_the_valid_names(self) -> None:
-        """Whoever is debugging has usually mistyped one; a bare "unknown tool"
-        sends them to go and look it up."""
+        """Whoever is debugging has usually mistyped one; a bare "unknown tool" """
         response = self.invoke(FakeClient(), snapshotId="snap-1", tool="nope", args={})
 
         assert response.status_code == 400
@@ -407,8 +378,7 @@ class TestInvokeTool:
         assert response.status_code == 404
 
     def test_a_backend_error_is_502_not_500(self) -> None:
-        """The fault is upstream, and the status is what says which service to
-        go and look at."""
+        """The fault is upstream, and the status is what says which service to"""
         fake = FakeClient(raises=BackendError(500, "boom"))
         response = self.invoke(fake, snapshotId="snap-1", tool="list_domains", args={})
 
@@ -416,12 +386,7 @@ class TestInvokeTool:
         assert "boom" in str(response.json()["detail"])
 
     def test_an_unreachable_backend_is_502_not_500(self) -> None:
-        """A transport failure is still the backend's fault. Answering 500 would
-        point at this service for an outage in the one it depends on.
-
-        The wrapping itself lives in BackendClient, so this checks the mapping;
-        test_client.py checks that a refused connection produces the exception.
-        """
+        """A transport failure is still the backend's fault."""
         fake = FakeClient(raises=BackendUnavailable(502, "backend unreachable: refused"))
         response = self.invoke(fake, snapshotId="snap-1", tool="list_domains", args={})
         assert response.status_code == 502
@@ -436,8 +401,7 @@ class TestInvokeTool:
         assert response.json()["fields"][0]["field"] == "toolz"
 
     def test_a_misspelled_argument_is_rejected(self) -> None:
-        """`limt` would otherwise take the default and the caller would reason
-        about a result it did not ask for."""
+        """`limt` would otherwise take the default and the caller would reason"""
         response = self.invoke(
             FakeClient(), snapshotId="snap-1", tool="search_model", args={"query": "x", "limt": 5}
         )
@@ -455,13 +419,7 @@ class TestInvokeTool:
 
 
 class TestDebugAnswer:
-    """The one-turn path, with the pipeline faked.
-
-    What is worth asserting here is the route's own work: the arguments the
-    pipeline is handed, the status for each way a turn can fail, and that no
-    provider text reaches the body. What the agent answers is tested in
-    test_pipeline.py, and against a real model in the integration suite.
-    """
+    """The one-turn path, with the pipeline faked."""
 
     def post(
         self,
@@ -475,8 +433,7 @@ class TestDebugAnswer:
         return client_for(fake or FakeClient(), None, settings).post("/debug/answer", json=body)
 
     def test_it_returns_every_documented_field(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Text alone is not enough: without toolCalls and iterations a wrong
-        answer is unexplainable, which is why this route exists."""
+        """Text alone is not enough: without toolCalls and iterations a wrong"""
         response = self.post(
             monkeypatch, snapshotId="snap-1", question="What is the grain of fact_orders?"
         )
@@ -496,8 +453,7 @@ class TestDebugAnswer:
     def test_latest_is_resolved_before_the_pipeline_sees_it(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """answer() refuses the alias, and rightly: reading the wrong snapshot
-        produces a confidently wrong answer."""
+        """answer() refuses the alias, and rightly: reading the wrong snapshot"""
         fake, pipeline = FakeClient(), FakePipeline()
         response = self.post(
             monkeypatch, fake, pipeline, snapshotId="latest", question="the grain of fact_orders?"
@@ -536,8 +492,7 @@ class TestDebugAnswer:
     def test_an_over_long_question_is_400_naming_the_limit(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Whoever hit this is pasting a document, and needs to know how much to
-        cut rather than only that it was too much."""
+        """Whoever hit this is pasting a document, and needs to know how much to"""
         settings = fake_settings(max_question_chars=50)
         response = self.post(
             monkeypatch, None, None, settings, snapshotId="snap-1", question="x" * 51
@@ -568,8 +523,7 @@ class TestDebugAnswer:
     def test_the_pipeline_is_not_called_for_a_bad_request(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A validation failure should cost nothing: the model is the expensive
-        part of this route."""
+        """A validation failure should cost nothing: the model is the expensive"""
         pipeline = FakePipeline()
         self.post(monkeypatch, None, pipeline, snapshotId="nosuch", question="  ")
 
@@ -591,8 +545,7 @@ class TestDebugAnswer:
         assert response.status_code == 502
 
     def test_the_provider_error_text_is_not_echoed(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Provider errors quote the request back, so they can carry prompt
-        fragments and occasionally credentials."""
+        """Provider errors quote the request back, so they can carry prompt"""
         secret = f"quota exceeded for key {FAKE_KEY}; prompt was 'the grain of fact_orders'"
         pipeline = FakePipeline(raises=RuntimeError(secret))
 
@@ -607,9 +560,7 @@ class TestDebugAnswer:
     def test_the_real_reason_is_logged(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Kept out of the response and put in the log, by the one handler that
-        renders every provider failure. The chain still carries the original:
-        a generic answer is not the same as a lost cause."""
+        """Kept out of the response and put in the log, by the one handler that"""
         pipeline = FakePipeline(raises=RuntimeError("the real reason"))
 
         with caplog.at_level(logging.ERROR, logger="urara_chat.api.errors"):
@@ -623,8 +574,7 @@ class TestDebugAnswer:
     def test_a_spent_tool_budget_is_200_with_truncated_set(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A partial answer that names its own gaps beats an error, and by now
-        the reader has already waited."""
+        """A partial answer that names its own gaps beats an error, and by now"""
         pipeline = FakePipeline(agent_answer(truncated=True, iterations=6))
         response = self.post(monkeypatch, None, pipeline, snapshotId="snap-1", question="q")
 
@@ -636,8 +586,7 @@ class TestDebugAnswer:
     def test_usage_may_be_empty_when_the_provider_reports_none(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Never guessed: a fabricated number in a cost report is worse than a
-        gap."""
+        """Never guessed: a fabricated number in a cost report is worse than a"""
         pipeline = FakePipeline(agent_answer(usage={}))
         body = self.post(monkeypatch, None, pipeline, snapshotId="snap-1", question="q").json()
 
@@ -656,8 +605,7 @@ class TestDebugAnswer:
     def test_an_unknown_language_falls_back_to_en(
         self, monkeypatch: pytest.MonkeyPatch, sent: str
     ) -> None:
-        """Not worth failing a question over: refusing the turn loses the answer
-        as well as the language."""
+        """Not worth failing a question over: refusing the turn loses the answer"""
         pipeline = FakePipeline()
         response = self.post(
             monkeypatch, None, pipeline, snapshotId="snap-1", question="q", language=sent
@@ -683,18 +631,14 @@ class TestDebugAnswer:
         assert response.json()["fields"][0]["field"] == "langauge"
 
     def test_a_missing_snapshot_field_is_400(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """400 rather than FastAPI's 422: the Go backend answers a malformed
-        request with 400, and one service in a pair using a different status for
-        the same mistake is a small permanent confusion."""
+        """400 rather than FastAPI's 422: the Go backend answers a malformed"""
         response = self.post(monkeypatch, question="q")
         assert response.status_code == 400
         assert response.json()["fields"][0]["field"] == "snapshotId"
 
 
 class TestTheTurnDeadline:
-    """Each call inside a turn is bounded already; the turn was not. Phase 08's
-    eval runner drives this route thousands of times, and one hung turn hangs
-    the run."""
+    """Each call inside a turn is bounded already; the turn was not."""
 
     def test_a_hung_turn_is_502_rather_than_hanging(self, monkeypatch: pytest.MonkeyPatch) -> None:
 
@@ -731,9 +675,8 @@ class TestLifespan:
         import urara_chat.main as main
         from urara_chat.config import get_settings
 
-        # The lifespan reads real settings, and since 03.2 those refuse to build
-        # without the credential the default provider needs. This test is about
-        # the client's lifecycle, not about configuration.
+        # The lifespan reads real settings, and since 03.2 those refuse to build without the
+        # credential the default provider needs.
         monkeypatch.setenv("GOOGLE_API_KEY", "test-key-not-real")
         get_settings.cache_clear()
 
@@ -757,15 +700,13 @@ class TestLifespan:
     def test_a_bad_model_setting_does_not_leak_the_key(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The SDK validates its own constructor, and its ValidationError embeds
-        the kwargs it was given -- including the key. A crash loop would put the
-        key's tail in the container log on every restart."""
+        """The SDK validates its own constructor, and its ValidationError embeds"""
         import urara_chat.main as main
         from urara_chat.config import ConfigurationError, get_settings
 
         monkeypatch.setenv("GOOGLE_API_KEY", FAKE_KEY)
-        # In range for Settings, out of range for the SDK, so the failure
-        # happens in build_chat_model rather than in get_settings.
+        # In range for Settings, out of range for the SDK, so the failure happens in
+        # build_chat_model rather than in get_settings.
         monkeypatch.setenv("LLM_TEMPERATURE", "5.0")
         get_settings.cache_clear()
 
@@ -781,9 +722,7 @@ class TestLifespan:
     def test_the_lifespan_installs_the_agent_pipeline(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Nothing called configure_pipeline until 04.R, so every request to
-        /debug/answer raised "the agent pipeline has not been configured" -- and
-        no unit test saw it, because each one builds its own Pipeline."""
+        """Nothing called configure_pipeline until 04.R, so every request to"""
         import urara_chat.agent.pipeline as agent_pipeline
         import urara_chat.main as main
         from urara_chat.config import get_settings
@@ -803,8 +742,7 @@ class TestLifespan:
     def test_the_lifespan_passes_the_configured_limits_through(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """These three settings were read by nothing at all: the history bound,
-        the tool budget and the card TTL."""
+        """These three settings were read by nothing at all: the history bound,"""
         import urara_chat.agent.pipeline as agent_pipeline
         import urara_chat.main as main
         from urara_chat.config import get_settings
@@ -827,8 +765,7 @@ class TestLifespan:
     def test_an_oversized_body_is_refused_before_it_is_read(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """MAX_QUESTION_CHARS cannot do this: it runs in the handler, by which
-        point the whole body has been received and parsed."""
+        """MAX_QUESTION_CHARS cannot do this: it runs in the handler, by which"""
         import urara_chat.main as main
         from urara_chat.config import get_settings
 
@@ -844,10 +781,7 @@ class TestLifespan:
             )
             assert oversized.status_code == 413
             assert "200" in oversized.json()["detail"]
-            # The same request ID in the body as in the header. This answers
-            # from a middleware, before the exception handlers exist, which is
-            # how it came to be the only error a caller could not quote an ID
-            # for.
+            # The same request ID in the body as in the header.
             assert oversized.json()["requestId"] == oversized.headers["x-request-id"]
 
             echoed = c.post(
@@ -858,15 +792,13 @@ class TestLifespan:
             assert echoed.status_code == 413
             assert echoed.json()["requestId"] == "trace-413"
 
-            # A body under the ceiling still reaches the handler, where the
-            # friendly limit lives.
+            # A body under the ceiling still reaches the handler, where the friendly limit lives.
             assert c.get("/healthz").status_code == 200
 
         get_settings.cache_clear()
 
     def test_the_model_is_built_once_in_the_lifespan(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """A model per request adds latency to every turn and, on Vertex, a
-        credential refresh with it."""
+        """A model per request adds latency to every turn and, on Vertex, a"""
         import urara_chat.main as main
         from urara_chat.config import get_settings
 

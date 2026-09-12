@@ -1,11 +1,4 @@
-"""The client against the real Go API.
-
-Everything up to here was mocked, which proves the client asks for the right
-thing but not that the backend answers it. The assertions are on real values
-from the jaffle-shop demo set; the counts are the ones
-`backend/tests/unit/demo/demo_test.go` already pins, so the two suites cannot
-drift into disagreeing about the same fixture.
-"""
+"""The client against the real Go API."""
 
 import pytest
 
@@ -19,8 +12,8 @@ DEMO_DOMAINS = 6
 DEMO_TABLES = 10
 DEMO_COLUMNS = 80
 DEMO_SOURCE_TABLES = 7
-# TestDemoDiagnostics pins exactly one error, which is what makes
-# `uraractl -strict` exit non-zero on the sample.
+# TestDemoDiagnostics pins exactly one error, which is what makes `uraractl -strict` exit non-zero
+# on the sample.
 DEMO_ERRORS = 1
 
 FACT_ORDERS = "ordering/fact_orders"
@@ -59,8 +52,7 @@ async def test_get_context_returns_the_pinned_counts(
 async def test_get_table_survives_a_slash_bearing_id(
     client: BackendClient, snapshot_id: str
 ) -> None:
-    """The assertion that proves a table ID reached the backend intact. A
-    mangled ID 404s in a way indistinguishable from a table that is absent."""
+    """The assertion that proves a table ID reached the backend intact."""
     detail = await client.get_table(snapshot_id, FACT_ORDERS)
 
     assert detail.table.id == FACT_ORDERS
@@ -105,8 +97,7 @@ async def test_search_finds_a_table_by_name(client: BackendClient, snapshot_id: 
 
 
 async def test_diagnostics_are_not_empty(client: BackendClient, snapshot_id: str) -> None:
-    """Every demo set is built around deliberate flaws, so an empty list means
-    the query is wrong rather than the documentation being clean."""
+    """Every demo set is built around deliberate flaws, so an empty list means"""
     diags = await client.diagnostics(snapshot_id)
     assert diags
 

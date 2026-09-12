@@ -1,18 +1,4 @@
-"""Fixtures for the tests that meet a real backend.
-
-Two conventions are borrowed wholesale from the Go suites, because a reader who
-knows one should recognise the other.
-
-**Skip unless told where to connect.** The suite is inert without
-CHAT_TEST_BACKEND_URL, so `uv run pytest` stays fast and needs nothing running.
-CI sets it, and CI treats a skip as a failure: a suite that quietly stops
-testing anything is worse than one that goes red.
-
-**Isolation is by snapshot.** The suite ingests its own copy of the demo set and
-deletes it afterwards, rather than reading `latest`. Asserting against `latest`
-would mean a developer's own ingest, or another suite's, silently changes what
-is being tested.
-"""
+"""Fixtures for the tests that meet a real backend."""
 
 import os
 from collections.abc import AsyncIterator, Callable, Iterator
@@ -24,17 +10,12 @@ import pytest
 from urara_chat.backend.client import BackendClient
 from urara_chat.config import Settings
 
-# The demo set these tests assert against. Located relative to this file rather
-# than the working directory, and by the same arithmetic in both places it runs:
-# from <root>/chat/tests/integration it is <root>/docs/demo/..., and from
-# /src/tests/integration inside the test container it is /docs/demo/..., which
-# is where the Makefile mounts it.
+# The demo set these tests assert against.
 DEMO_DIR = Path(__file__).resolve().parents[3] / "docs" / "demo"
 DEMO_SET = DEMO_DIR / "jaffle-shop-ddd"
 
-# A second, unrelated set. It exists so one test can prove the snapshot binding
-# holds: asking the Jaffle Shop snapshot about a table that lives only here must
-# come back empty rather than answered.
+# A second, unrelated set, so one test can prove the snapshot binding holds:
+# asking Jaffle Shop about a table that lives only here must come back empty.
 OTHER_DEMO_SET = DEMO_DIR / "eshop-ddd"
 
 
@@ -48,7 +29,6 @@ def backend_url() -> str:
 
 @pytest.fixture(scope="session")
 def api_token() -> str:
-    """Empty is valid: it is the backend's own unauthenticated mode."""
     return os.getenv("CHAT_TEST_API_TOKEN", "")
 
 
@@ -60,11 +40,7 @@ def auth_headers(api_token: str) -> dict[str, str]:
 def _ingest(
     demo_set: Path, name: str, backend_url: str, auth_headers: dict[str, str]
 ) -> Iterator[str]:
-    """Ingest one demo set, yield its snapshot ID, and delete it afterwards.
-
-    Synchronous on purpose: it runs once per session, and a sync fixture avoids
-    having to pin an event loop scope for something that is not under test.
-    """
+    """Ingest one demo set, yield its snapshot ID, and delete it afterwards."""
     if not demo_set.is_dir():
         raise RuntimeError(
             f"demo set not found at {demo_set}. Inside the test container the "
@@ -86,10 +62,9 @@ def _ingest(
         try:
             yield sid
         finally:
-            # Deleted whatever happened above, so a failing test does not leave
-            # a snapshot behind for the next run to trip over -- and the outcome
-            # is checked, because a silent failure here is exactly the leak the
-            # teardown exists to prevent.
+            # Deleted whatever happened above, so a failing test does not leave a snapshot behind
+            # for the next run to trip over -- and the outcome is checked, because a silent
+            # failure here is exactly the leak the teardown exists to prevent.
             deleted = http.delete(f"/api/v1/snapshots/{sid}")
             assert deleted.status_code in (204, 404), (
                 f"failed to delete test snapshot {sid}: {deleted.status_code} {deleted.text[:200]}"
@@ -98,41 +73,17 @@ def _ingest(
 
 @pytest.fixture(scope="session")
 def snapshot_id(backend_url: str, auth_headers: dict[str, str]) -> Iterator[str]:
-    """The Jaffle Shop set, in a snapshot of its own."""
     yield from _ingest(DEMO_SET, "chat-integration", backend_url, auth_headers)
 
 
 @pytest.fixture(scope="session")
 def other_snapshot_id(backend_url: str, auth_headers: dict[str, str]) -> Iterator[str]:
-    """A second set, ingested only so a test can ask the first about it.
-
-    Its own snapshot, ingested and deleted like the first: two snapshots that
-    exist at once is the whole point, and neither may outlive the session.
-    """
     yield from _ingest(OTHER_DEMO_SET, "chat-integration-other", backend_url, auth_headers)
 
 
 @pytest.fixture(scope="session")
 def llm_settings() -> Settings:
-    """Settings for a real model call, or a skip.
-
-    Separate from the backend fixtures on purpose: these tests spend money, so
-    they are gated on their own credential and never run because a backend
-    happened to be reachable.
-
-    Gated on VERTEX_PROJECT rather than on an API key. The credential is
-    Application Default Credentials now -- there is no key to look for, and a
-    project is the one setting a Vertex call cannot be made without. Gating on
-    GOOGLE_API_KEY would skip every billed test on a correctly configured
-    machine, and CI counts a skip as a failure.
-
-    The output cap is small but not tiny, and 512 is not arbitrary. Gemini 2.5
-    spends output tokens on reasoning before it emits anything, so at 64 the
-    reply comes back with finish_reason=MAX_TOKENS, 55 reasoning tokens and no
-    tool call at all -- test_binds_tools fails for a reason that looks nothing
-    like a token limit. Cost is dominated by the ~1k input tokens the tool
-    schemas take anyway, so the cap buys little and costs a confusing failure.
-    """
+    """Settings for a real model call, or a skip."""
     project = os.getenv("VERTEX_PROJECT")
     if not project:
         pytest.skip(
@@ -151,24 +102,12 @@ def llm_settings() -> Settings:
 
 @pytest.fixture(scope="session")
 def other_demo_set() -> Path:
-    """The second demo set, as a path a test can ingest itself.
-
-    A fixture rather than an import: the test directory is not a package, so a
-    module here cannot import a sibling, and duplicating the path arithmetic is
-    how the two copies come to disagree.
-    """
     return OTHER_DEMO_SET
 
 
 @pytest.fixture(scope="session")
 def chat_url() -> str:
-    """Where the chat service is, for the tests that drive its HTTP surface.
-
-    Its own variable rather than derived from CHAT_TEST_BACKEND_URL: the two
-    services are reachable at different addresses from inside the compose
-    network and from a developer's shell, and guessing one from the other gets
-    it wrong in exactly one of those places.
-    """
+    """Where the chat service is, for the tests that drive its HTTP surface."""
     url = os.getenv("CHAT_TEST_CHAT_URL")
     if not url:
         pytest.skip("set CHAT_TEST_CHAT_URL to run this test (see: make test-chat-integration)")
@@ -177,25 +116,14 @@ def chat_url() -> str:
 
 @pytest.fixture
 async def chat(chat_url: str) -> AsyncIterator[httpx.AsyncClient]:
-    """An HTTP client for the chat service.
-
-    Generously timed: a turn is several model calls plus their tools, and a
-    client that gives up before the service does turns a slow answer into a
-    failure that looks like the service.
-    """
+    """An HTTP client for the chat service."""
     async with httpx.AsyncClient(base_url=chat_url, timeout=180.0) as client:
         yield client
 
 
 @pytest.fixture
 def ingest(backend_url: str, auth_headers: dict[str, str]) -> Iterator[Callable[[Path, str], str]]:
-    """Ingest a demo set mid-test and clean it up afterwards.
-
-    The session fixtures below cannot do this: their order is decided by which
-    test asked for them first, and the pinning test needs a snapshot that is
-    provably *newer* than the one its conversation was created against. Ingested
-    here, at a moment the test controls, "latest" means something it can rely on.
-    """
+    """Ingest a demo set mid-test and clean it up afterwards."""
     created: list[str] = []
 
     def go(demo_set: Path, name: str) -> str:

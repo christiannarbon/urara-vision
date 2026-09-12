@@ -1,11 +1,4 @@
-"""The conversation routes, with the backend client faked.
-
-These wrappers have almost no logic of their own, so what is worth asserting is
-the little they do decide: that `latest` reaches the backend unchanged, that a
-missing `?snapshot=` is refused here rather than upstream, and that every
-failure becomes the documented status through the shared exception handlers
-rather than through a try/except in a route.
-"""
+"""The conversation routes, with the backend client faked."""
 
 import asyncio
 from datetime import UTC, datetime
@@ -29,8 +22,8 @@ from urara_chat.config import Settings
 
 CREATED = datetime(2026, 9, 11, 12, 0, tzinfo=UTC)
 
-# What the backend would say. Never seen by a caller: an upstream message can
-# name internal hosts, so the handlers answer with their own words.
+# What the backend would say. Never seen by a caller: an upstream message can name internal hosts,
+# so the handlers answer with their own words.
 UPSTREAM = "conversations table is on fire at db-internal-7"
 
 
@@ -90,12 +83,7 @@ class FakeClient:
 
 
 def client_for(fake: FakeClient) -> TestClient:
-    """The routes as they are actually served: middleware, handlers and all.
-
-    The error mapping is part of what these routes promise, and it lives in the
-    handlers rather than in them -- an app without those would test a contract
-    nobody ships.
-    """
+    """The routes as they are actually served: middleware, handlers and all."""
     app = FastAPI()
     app.add_middleware(RequestIDMiddleware)
     install_error_handlers(app)
@@ -106,8 +94,7 @@ def client_for(fake: FakeClient) -> TestClient:
 
 class TestCreate:
     def test_latest_reaches_the_backend_untouched(self) -> None:
-        """The backend resolves the alias and stores what it resolved to. A
-        second opinion here is how a thread ends up pinned to two snapshots."""
+        """The backend resolves the alias and stores what it resolved to."""
         fake = FakeClient()
         response = client_for(fake).post(
             "/api/chat/conversations", json={"snapshotId": "latest", "title": "why"}
@@ -163,8 +150,7 @@ class TestList:
         assert response.json()["conversations"][0]["messages"] == []
 
     def test_the_limit_is_passed_through_when_given(self) -> None:
-        """Defaulting and capping are the backend's job. Two services with their
-        own idea of the default is one more thing to keep in step."""
+        """Defaulting and capping are the backend's job."""
         fake = FakeClient()
         response = client_for(fake).get("/api/chat/conversations?snapshot=latest&limit=5")
 
@@ -190,8 +176,8 @@ class TestList:
 
         assert response.status_code == 400
         assert fake.listed == []
-        # Where to go and fix it. The body carries a "snapshotId" and the query
-        # string a "snapshot"; the name alone does not say which one is meant.
+        # Where to go and fix it. The body carries a "snapshotId" and the query string a
+        # "snapshot"; the name alone does not say which one is meant.
         assert response.json()["fields"][0] == {
             "field": "snapshot",
             "location": "query",
@@ -199,8 +185,7 @@ class TestList:
         }
 
     def test_an_empty_snapshot_is_400_here_not_502_upstream(self) -> None:
-        """Forwarded, it would come back as a 502 blaming the backend for the
-        caller's own missing parameter."""
+        """Forwarded, it would come back as a 502 blaming the backend for the"""
         fake = FakeClient()
         response = client_for(fake).get("/api/chat/conversations?snapshot=")
 
@@ -265,16 +250,13 @@ class TestUpstreamFailures:
         assert failed.json()["requestId"] == failed.headers["x-request-id"]
 
 
-# --- the stateless answer route --------------------------------------------
-#
-# Phase 08's eval runner drives this thousands of times, which is what makes
-# "writes nothing" the assertion that matters: a run leaving a thousand
-# transcripts behind is a run nobody repeats.
+# Phase 08's eval runner drives this thousands of times, which is what makes "writes nothing" the
+# assertion that matters: a run leaving a thousand transcripts behind is a run nobody repeats.
 
 FAKE_KEY = "test-key-shaped-value-0123456789abcdef"
 
-# What the provider would say. Never seen by a caller: the text quotes the
-# request back, so it can carry prompt fragments and credentials.
+# What the provider would say. Never seen by a caller: the text quotes the request back, so it can
+# carry prompt fragments and credentials.
 PROVIDER_TEXT = "429 quota exceeded, prompt was: AIza-shaped-thing"
 
 
@@ -293,12 +275,7 @@ def agent_answer(**over: Any) -> AgentAnswer:
 
 
 class WritelessClient:
-    """A backend that fails loudly if anything tries to write through it.
-
-    The route's whole promise is that it does not, so the fake does not merely
-    record writes -- it refuses them. A test asserting on a counter afterwards
-    would still have let the write happen.
-    """
+    """A backend that fails loudly if anything tries to write through it."""
 
     def __init__(self, raises: Exception | None = None) -> None:
         self.raises = raises
@@ -359,16 +336,14 @@ def ask(client: TestClient, **body: Any) -> Any:
 
 class TestAnswerWritesNothing:
     def test_no_conversation_or_message_is_created(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """The fake raises on every write, so this passes only if none was
-        attempted."""
+        """The fake raises on every write, so this passes only if none was"""
         client = answer_app(WritelessClient(), FakePipeline(), monkeypatch)
         response = ask(client, snapshotId="latest", question="Which tables are conformed?")
 
         assert response.status_code == 200
 
     def test_the_pipeline_is_given_no_history(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """There is no conversation to read one from, which is what makes this
-        path cheap enough to run in bulk."""
+        """There is no conversation to read one from, which is what makes this"""
         pipeline = FakePipeline()
         ask(answer_app(WritelessClient(), pipeline, monkeypatch), snapshotId="s1", question="q")
 
@@ -392,8 +367,7 @@ class TestAnswerShape:
         }
 
     def test_both_paths_answer_in_the_same_shape(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """They share an implementation. If these ever differ, the route used to
-        explain a bad answer has stopped describing the one that produced it."""
+        """They share an implementation."""
         client = answer_app(WritelessClient(), FakePipeline(), monkeypatch)
         body = {"snapshotId": "latest", "question": "Which tables are conformed?"}
 
@@ -408,8 +382,7 @@ class TestAnswerValidation:
     def test_latest_is_resolved_before_the_pipeline_sees_it(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """answer() refuses the alias, and rightly: reading the wrong snapshot
-        produces a confidently wrong answer."""
+        """answer() refuses the alias, and rightly: reading the wrong snapshot"""
         fake, pipeline = WritelessClient(), FakePipeline()
         ask(answer_app(fake, pipeline, monkeypatch), snapshotId="latest", question="q")
 
@@ -457,10 +430,7 @@ class TestAnswerValidation:
 
 
 class TestAnswerTakesASlotButNoLock:
-    """It costs a provider call like any other, and the eval runner is exactly
-    the client that fires many at once. There is no conversation to serialise,
-    so there is nothing for a lock to protect -- and holding one would only slow
-    the bulk case down."""
+    """It costs a provider call like any other, and the eval runner is exactly"""
 
     def build(
         self, monkeypatch: pytest.MonkeyPatch, seconds: float
@@ -498,8 +468,7 @@ class TestAnswerTakesASlotButNoLock:
         assert {first.status_code, second.status_code} == {200, 429}
 
     async def test_no_conversation_lock_is_taken(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Sampled while the request is in flight: a lock taken and released
-        would be invisible afterwards."""
+        """Sampled while the request is in flight: a lock taken and released"""
         app, locks = self.build(monkeypatch, seconds=0.3)
 
         async with httpx.AsyncClient(

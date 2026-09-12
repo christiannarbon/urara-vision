@@ -1,17 +1,4 @@
-"""The turn route: the ordering decisions that cost the most when got wrong.
-
-Three things are load-bearing and each has a test that fails loudly if someone
-"tidies" them:
-
-* the snapshot comes from the conversation, never from the request -- a turn
-  that could choose its own would let a re-ingest change the subject halfway
-  through a transcript;
-* the question is stored *before* the model is called, so a provider failure
-  leaves it in the transcript instead of losing it at the one moment losing it
-  hurts;
-* the history handed to the pipeline is what was already stored, with the new
-  question appearing exactly once.
-"""
+"""The turn route: the ordering decisions that cost the most when got wrong."""
 
 import logging
 from datetime import UTC, datetime
@@ -33,8 +20,8 @@ from urara_chat.config import Settings
 CREATED = datetime(2026, 9, 11, 12, 0, tzinfo=UTC)
 SNAPSHOT = "real-snapshot-id"
 
-# What a provider error says. It must never reach a caller: the text quotes the
-# request back, so it can carry prompt fragments and credentials.
+# What a provider error says. It must never reach a caller: the text quotes the request back, so
+# it can carry prompt fragments and credentials.
 PROVIDER_TEXT = "429 quota exceeded for project, prompt was: AIza-shaped-thing"
 
 FAKE_KEY = "test-key-shaped-value-0123456789abcdef"
@@ -162,8 +149,7 @@ class TestTheSnapshotComesFromTheConversation:
     def test_a_body_carrying_a_snapshot_id_is_refused(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The schema has no such field. A turn that could choose its own
-        snapshot is a turn that can change the subject mid-transcript."""
+        """The schema has no such field."""
         pipeline = FakePipeline()
         response = turn(
             monkeypatch, pipeline=pipeline, question="q", snapshotId="some-other-snapshot"
@@ -177,8 +163,7 @@ class TestTheQuestionIsStoredFirst:
     def test_a_provider_failure_leaves_the_question_stored(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The reason the ordering exists. Store both at the end and the
-        question is lost exactly when the reader most wants it kept."""
+        """The reason the ordering exists."""
         fake = FakeClient()
         response = turn(
             monkeypatch,
@@ -205,9 +190,7 @@ class TestTheQuestionIsStoredFirst:
     def test_a_backend_failure_is_not_reported_as_the_model(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A tool's backend call failing is the store, not the provider, and
-        sending a reader to the wrong service is the whole cost of getting it
-        wrong."""
+        """A tool's backend call failing is the store, not the provider, and"""
         response = turn(
             monkeypatch,
             pipeline=FakePipeline(raises=BackendError(500, "neo4j is down")),
@@ -219,9 +202,7 @@ class TestTheQuestionIsStoredFirst:
 
 
 class TestALostAnswerIsRecoverable:
-    """The turn must still fail -- telling the caller it worked would leave the
-    next fetch disagreeing with what they were told. But the answer is already
-    paid for, and losing it silently means the reader retries and pays again."""
+    """The turn must still fail -- telling the caller it worked would leave the"""
 
     def failing_append(self, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, FakeClient]:
         class LosesTheAnswer(FakeClient):
@@ -277,8 +258,7 @@ class TestHistory:
         assert [(m.ordinal, m.role) for m in sent] == [(0, "user"), (1, "assistant")]
 
     def test_the_new_question_is_not_in_the_history(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """The conversation is read before the question is written, so the
-        pipeline appends it exactly once."""
+        """The conversation is read before the question is written, so the"""
         pipeline = FakePipeline()
         turn(monkeypatch, pipeline=pipeline, question="and what joins to it?")
 
@@ -296,8 +276,8 @@ class TestWhatIsStoredAndReturned:
         assert [m["role"] for m in fake.appended] == ["user", "assistant"]
         stored = fake.appended[1]
         assert stored["citations"] == ["ordering/fact_orders"]
-        # Phase 08 bills from this; a turn that cannot say what it spent cannot
-        # be costed after the fact.
+        # Phase 08 bills from this; a turn that cannot say what it spent cannot be costed after
+        # the fact.
         assert stored["meta"]["usage"] == {"input_tokens": 900, "output_tokens": 120}
         assert stored["meta"]["model"] == "gemini-2.5-flash"
         assert stored["meta"]["iterations"] == 2
@@ -307,8 +287,7 @@ class TestWhatIsStoredAndReturned:
     def test_the_response_carries_both_stored_messages(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Ordinals are the database's to assign, so what comes back is what was
-        written rather than what was sent."""
+        """Ordinals are the database's to assign, so what comes back is what was"""
         response = turn(monkeypatch, question="q")
         body = response.json()
 
@@ -333,8 +312,7 @@ class TestValidation:
 
         assert response.status_code == 400
         assert "question" in response.json()["detail"]
-        # Nothing was stored: a rejected question must not leave the thread
-        # looking touched.
+        # Nothing was stored: a rejected question must not leave the thread looking touched.
         assert fake.appended == []
 
     def test_an_over_long_question_is_400_naming_the_limit(
@@ -360,8 +338,7 @@ class TestValidation:
     def test_an_unknown_language_falls_back_rather_than_failing(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A question is worth answering in the wrong language, and is not worth
-        a 400."""
+        """A question is worth answering in the wrong language, and is not worth"""
         pipeline = FakePipeline()
         response = turn(monkeypatch, pipeline=pipeline, question="q", language="KL")
 
