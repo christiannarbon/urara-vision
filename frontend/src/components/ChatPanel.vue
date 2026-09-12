@@ -40,6 +40,15 @@ const suggestions = computed(() => {
   return out
 })
 
+// Rendered once per message rather than in the template, which would re-parse
+// every answer on each keystroke in the composer.
+const rendered = computed(() =>
+  messages.value.map((m) => ({
+    ...m,
+    html: m.role === 'assistant' ? renderAnswer(m.content) : '',
+  })),
+)
+
 function bareName(id: string): string {
   return id.slice(id.lastIndexOf('/') + 1)
 }
@@ -146,7 +155,7 @@ watch(open, (isOpen) => {
       </div>
 
       <div
-        v-for="(m, i) in messages"
+        v-for="(m, i) in rendered"
         :key="`${m.role}-${m.ordinal}-${i}`"
         class="turn"
         :class="`turn--${m.role}`"
@@ -157,7 +166,7 @@ watch(open, (isOpen) => {
 
         <template v-else>
           <!-- The only v-html here, and safe only because renderAnswer escapes first. -->
-          <div class="answer" v-html="renderAnswer(m.content)" />
+          <div class="answer" v-html="m.html" />
           <template v-if="m.citations.length">
             <h4 class="cite-head">{{ t('chat.citations') }}</h4>
             <ul class="cites">
