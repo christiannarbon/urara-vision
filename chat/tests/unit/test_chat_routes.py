@@ -52,6 +52,7 @@ class FakeClient:
         self.raises = raises
         self.created: list[tuple[str, str]] = []
         self.listed: list[str] = []
+        self.limits: list[int | None] = []
         self.fetched: list[str] = []
         self.deleted: list[str] = []
 
@@ -61,8 +62,11 @@ class FakeClient:
             raise self.raises
         return conversation(snapshot_id="real-snapshot-id", title=title)
 
-    async def list_conversations(self, snapshot_id: str) -> list[Conversation]:
+    async def list_conversations(
+        self, snapshot_id: str, limit: int | None = None
+    ) -> list[Conversation]:
         self.listed.append(snapshot_id)
+        self.limits.append(limit)
         if self.raises:
             raise self.raises
         return [conversation()]
@@ -157,6 +161,28 @@ class TestList:
         response = client_for(FakeClient()).get("/api/chat/conversations?snapshot=latest")
 
         assert response.json()["conversations"][0]["messages"] == []
+
+    def test_the_limit_is_passed_through_when_given(self) -> None:
+        """Defaulting and capping are the backend's job. Two services with their
+        own idea of the default is one more thing to keep in step."""
+        fake = FakeClient()
+        response = client_for(fake).get("/api/chat/conversations?snapshot=latest&limit=5")
+
+        assert response.status_code == 200
+        assert fake.limits == [5]
+
+    def test_no_limit_is_sent_when_none_is_asked_for(self) -> None:
+        fake = FakeClient()
+        client_for(fake).get("/api/chat/conversations?snapshot=latest")
+
+        assert fake.limits == [None]
+
+    def test_a_limit_below_one_is_refused(self) -> None:
+        fake = FakeClient()
+        response = client_for(fake).get("/api/chat/conversations?snapshot=latest&limit=0")
+
+        assert response.status_code == 400
+        assert fake.listed == []
 
     def test_a_missing_snapshot_is_400(self) -> None:
         fake = FakeClient()
