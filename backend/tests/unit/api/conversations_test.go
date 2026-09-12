@@ -115,6 +115,55 @@ func TestListConversationsRequiresSnapshot(t *testing.T) {
 	})
 }
 
+// TestListConversationsIsBounded: a snapshot in use for a month accumulates
+// threads without limit, and every one of them was being returned in a single
+// response to a sidebar that shows twenty.
+func TestListConversationsIsBounded(t *testing.T) {
+	t.Run("a default is applied when none is asked for", func(t *testing.T) {
+		meta := &fakeMeta{latest: "s1"}
+		h := newServer(t, meta, &fakeGraphs{})
+
+		do(t, h, http.MethodGet, "/api/v1/conversations?snapshot=s1", nil, "")
+		if meta.listedLimit != 50 {
+			t.Errorf("limit = %d, want the default 50", meta.listedLimit)
+		}
+	})
+
+	t.Run("a smaller limit is honoured", func(t *testing.T) {
+		meta := &fakeMeta{latest: "s1"}
+		h := newServer(t, meta, &fakeGraphs{})
+
+		do(t, h, http.MethodGet, "/api/v1/conversations?snapshot=s1&limit=5", nil, "")
+		if meta.listedLimit != 5 {
+			t.Errorf("limit = %d, want 5", meta.listedLimit)
+		}
+	})
+
+	// Clamped rather than refused: asking for more than exists is not a mistake
+	// worth a 400. What it must not do is reach the database unbounded.
+	t.Run("an enormous limit is clamped", func(t *testing.T) {
+		meta := &fakeMeta{latest: "s1"}
+		h := newServer(t, meta, &fakeGraphs{})
+
+		do(t, h, http.MethodGet, "/api/v1/conversations?snapshot=s1&limit=1000000", nil, "")
+		if meta.listedLimit != 200 {
+			t.Errorf("limit = %d, want it clamped to 200", meta.listedLimit)
+		}
+	})
+
+	t.Run("nonsense falls back to the default", func(t *testing.T) {
+		for _, raw := range []string{"0", "-1", "banana", ""} {
+			meta := &fakeMeta{latest: "s1"}
+			h := newServer(t, meta, &fakeGraphs{})
+
+			do(t, h, http.MethodGet, "/api/v1/conversations?snapshot=s1&limit="+raw, nil, "")
+			if meta.listedLimit != 50 {
+				t.Errorf("limit=%q gave %d, want the default 50", raw, meta.listedLimit)
+			}
+		}
+	})
+}
+
 func TestGetConversationUnknownIs404(t *testing.T) {
 	h := newServer(t, &fakeMeta{}, &fakeGraphs{})
 	rec := do(t, h, http.MethodGet, "/api/v1/conversations/nope", nil, "")
