@@ -113,12 +113,32 @@ func (s *Server) handleListConversations(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	convs, err := s.pg.ListConversations(r.Context(), sid)
+	convs, err := s.pg.ListConversations(r.Context(), sid, listLimit(r.URL.Query().Get("limit")))
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"conversations": convs})
+}
+
+// How many threads a listing returns, and the most it will return however it is
+// asked. There is no existing cap to copy: atoiDefault supplies a default and
+// nothing else, so ?limit=1000000 is honoured everywhere it is used. Clamped
+// rather than refused, because a caller asking for more than exists is not
+// making a mistake worth a 400 -- they are asking for everything, and this is
+// everything.
+const (
+	defaultConversationLimit = 50
+	maxConversationLimit     = 200
+)
+
+// listLimit reads the limit parameter, defaulting and clamping it.
+func listLimit(raw string) int {
+	limit := atoiDefault(raw, defaultConversationLimit)
+	if limit < 1 {
+		return defaultConversationLimit
+	}
+	return min(limit, maxConversationLimit)
 }
 
 // failConversation maps a store error onto a response, naming the conversation
