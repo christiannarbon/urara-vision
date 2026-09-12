@@ -11,6 +11,9 @@ metadata:
 spec:
   template:
     spec:
+      # The projected file is owned by root, so the group is how 65532 reads it.
+      securityContext:
+        fsGroup: 65532
       containers:
         - name: chat
           env:
@@ -24,3 +27,4 @@ spec:
         - name: adc
           secret:
             secretName: relviz-adc
+            defaultMode: 0440
