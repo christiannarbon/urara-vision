@@ -74,11 +74,17 @@ const diagnosticsOpen = ref(false)
 const chat = useChat()
 const { open: chatOpen } = storeToRefs(chat)
 
-// One right-hand pane, so opening chat closes diagnostics rather than adding a
-// third column: a third would leave the canvas a sliver on a laptop.
+// One right-hand pane, so the two panels take turns rather than adding a third
+// column: a third would leave the canvas a sliver on a laptop. Symmetric, or the
+// hidden one's button reports itself open while nothing changes.
 function toggleChat() {
   if (!chatOpen.value) diagnosticsOpen.value = false
   chat.togglePanel()
+}
+
+function toggleDiagnostics() {
+  if (!diagnosticsOpen.value) chat.closePanel()
+  diagnosticsOpen.value = !diagnosticsOpen.value
 }
 const canvas = ref<InstanceType<typeof GraphCanvas> | null>(null)
 
@@ -99,6 +105,7 @@ const parseNoticeDetail = computed(() =>
 )
 
 function reviewParseFailures() {
+  chat.closePanel()
   diagnosticsOpen.value = true
   store.acknowledgeParseFailures()
 }
@@ -193,7 +200,7 @@ function backToPicker() {
           class="btn btn--ghost btn--sm"
           :aria-expanded="diagnosticsOpen"
           :title="hasDiagnostics ? t('topbar.diagnostics.titleAttention') : t('topbar.diagnostics.title')"
-          @click="diagnosticsOpen = !diagnosticsOpen"
+          @click="toggleDiagnostics"
         >
           {{ t('topbar.diagnostics') }}
           <span

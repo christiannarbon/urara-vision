@@ -149,7 +149,7 @@ describe('failures', () => {
     // and in whatever language is on screen when it is read.
     stubFetch({ status: 429, body: { detail: 'too many turns in flight; the limit is 4.' } })
     const err = await chatApi.turn('c1', 'q', 'en').catch((e: unknown) => e)
-    expect(err).toMatchObject({ status: 429, key: 'error.chatBusy' })
+    expect(err).toMatchObject({ status: 429, key: 'chat.error.busy' })
   })
 
   it("carries the server's own message on a 502 and adds no key", async () => {
@@ -168,7 +168,7 @@ describe('failures', () => {
     stubFetch({ reject: true })
     const err = await chatApi.listConversations('s1').catch((e: unknown) => e)
     expect(err).toBeInstanceOf(ApiError)
-    expect(err).toMatchObject({ status: 0, key: 'error.chatUnreachable' })
+    expect(err).toMatchObject({ status: 0, key: 'chat.error.unavailable' })
   })
 
   it('resolves rather than throwing when a delete answers 204', async () => {

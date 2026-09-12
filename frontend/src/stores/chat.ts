@@ -52,7 +52,12 @@ export const useChat = defineStore('chat', () => {
     open.value = !open.value
   }
 
+  // Bumped by every reset. A turn that started under an older generation is
+  // about a snapshot the reader has left, so its result is dropped.
+  let generation = 0
+
   function reset() {
+    generation += 1
     conversationId.value = null
     messages.value = []
     pending.value = false
@@ -91,6 +96,9 @@ export const useChat = defineStore('chat', () => {
     const text = question.trim()
     if (!text || pending.value || !workspace.snapshot?.id) return
 
+    const started = generation
+    const stale = () => generation !== started
+
     // Appended before the request so the question appears instantly, and left
     // in place on failure so it can be retried without retyping. Remembered by
     // position, not identity: reading it back gives a reactive proxy.
@@ -113,8 +121,15 @@ export const useChat = defineStore('chat', () => {
 
     try {
       const id = await ensureConversation()
-      if (!id) return
+      if (stale()) return
+      // The snapshot went while the question was being typed; withdraw it
+      // rather than leave it on screen with nothing to retry.
+      if (!id) {
+        messages.value = messages.value.slice(0, settled)
+        return
+      }
       const result = await chatApi.turn(id, text, activeLocale.value.toUpperCase())
+      if (stale()) return
       messages.value = [
         ...messages.value.slice(0, settled),
         result.userMessage,
@@ -123,6 +138,7 @@ export const useChat = defineStore('chat', () => {
       truncated.value = result.truncated
       lastToolCalls.value = result.toolCalls.map((c) => ({ name: c.name }))
     } catch (e) {
+      if (stale()) return
       failedQuestion.value = text
       recordFailure(e)
     } finally {
@@ -141,11 +157,24 @@ export const useChat = defineStore('chat', () => {
   }
 
   // A thread is pinned to its snapshot server-side, so continuing one against a
-  // new model would answer about the wrong thing.
+  // new model would answer about the wrong thing. Compared against the last id
+  // actually seen, not the previous watcher value: leaving through the picker
+  // passes through null, and null is a gap rather than a new snapshot.
+  let lastSnapshotId: string | null = workspace.snapshot?.id ?? null
+
   watch(
     () => workspace.snapshot?.id ?? null,
-    (id, previous) => {
-      if (previous == null || id == null || id === previous) return
+    (id) => {
+      // Leaving the workspace clears the thread but announces nothing -- the
+      // reader did it themselves. The id is kept, so returning to a different
+      // snapshot still counts as a change.
+      if (id === null) {
+        if (lastSnapshotId !== null) reset()
+        return
+      }
+      const changed = lastSnapshotId !== null && lastSnapshotId !== id
+      lastSnapshotId = id
+      if (!changed) return
       reset()
       notice.value = 'chat.snapshotChanged'
     },

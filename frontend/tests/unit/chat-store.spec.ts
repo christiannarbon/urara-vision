@@ -1,6 +1,7 @@
 /** The chat store. */
 
 import { createPinia, setActivePinia } from 'pinia'
+import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ApiError } from '../../src/api/client'
@@ -208,8 +209,8 @@ describe('failures', () => {
   })
 
   const mapped: Array<[string, ApiError, string]> = [
-    ['429', new ApiError('busy', 429, 'error.chatBusy'), 'chat.error.busy'],
-    ['a network failure', new ApiError('offline', 0, 'error.chatUnreachable'), 'chat.error.unavailable'],
+    ['429', new ApiError('busy', 429, 'chat.error.busy'), 'chat.error.busy'],
+    ['a network failure', new ApiError('offline', 0, 'chat.error.unavailable'), 'chat.error.unavailable'],
     ['400', new ApiError('too long', 400), 'chat.error.tooLong'],
   ]
 
@@ -226,8 +227,8 @@ describe('failures', () => {
 
   it('never sets a key and a detail together', async () => {
     const cases = [
-      new ApiError('busy', 429, 'error.chatBusy'),
-      new ApiError('offline', 0, 'error.chatUnreachable'),
+      new ApiError('busy', 429, 'chat.error.busy'),
+      new ApiError('offline', 0, 'chat.error.unavailable'),
       new ApiError('too long', 400),
       new ApiError('the model store is unavailable', 502),
       new Error('something else'),
@@ -262,6 +263,78 @@ describe('failures', () => {
     await chat.ask('why?')
 
     expect(chat.errorKey).toBe('chat.error.generic')
+  })
+})
+
+describe('a turn that outlives its snapshot', () => {
+  it('drops its answer rather than writing it into the new thread', async () => {
+    const { workspace, chat } = withSnapshot('s1')
+    let release: (r: TurnResult) => void = () => {}
+    vi.mocked(chatApi.turn).mockReturnValue(
+      new Promise<TurnResult>((resolve) => {
+        release = resolve
+      }),
+    )
+
+    const inFlight = chat.ask('about s1?')
+    await nextTick()
+    workspace.snapshot = snapshotWithId('s2')
+    await nextTick()
+    expect(chat.messages).toEqual([])
+
+    release(turnResult('about s1?'))
+    await inFlight
+
+    expect(chat.messages).toEqual([])
+    expect(chat.conversationId).toBeNull()
+    expect(chat.truncated).toBe(false)
+    expect(chat.lastToolCalls).toEqual([])
+    expect(chat.pending).toBe(false)
+  })
+
+  it('raises no error when it fails after the snapshot changed', async () => {
+    const { workspace, chat } = withSnapshot('s1')
+    let fail: (e: unknown) => void = () => {}
+    vi.mocked(chatApi.turn).mockReturnValue(
+      new Promise<TurnResult>((_resolve, reject) => {
+        fail = reject
+      }),
+    )
+
+    const inFlight = chat.ask('about s1?')
+    await nextTick()
+    workspace.snapshot = snapshotWithId('s2')
+    await nextTick()
+
+    fail(new ApiError('boom', 500))
+    await inFlight
+
+    expect(chat.errorKey).toBeNull()
+    expect(chat.errorDetail).toBeNull()
+    expect(chat.failedQuestion).toBeNull()
+    expect(chat.pending).toBe(false)
+  })
+
+  it('withdraws the question when the snapshot goes mid-flight', async () => {
+    const { workspace, chat } = withSnapshot('s1')
+    let create: (c: Conversation) => void = () => {}
+    vi.mocked(chatApi.createConversation).mockReturnValue(
+      new Promise<Conversation>((resolve) => {
+        create = resolve
+      }),
+    )
+
+    const inFlight = chat.ask('why?')
+    await nextTick()
+    workspace.snapshot = null
+    await nextTick()
+
+    create(conversation())
+    await inFlight
+
+    expect(chat.messages).toEqual([])
+    expect(chat.errorKey).toBeNull()
+    expect(chat.pending).toBe(false)
   })
 })
 
@@ -322,6 +395,45 @@ describe('a snapshot change', () => {
 
     workspace.snapshot = snapshotWithId('s1')
     await Promise.resolve()
+
+    expect(chat.notice).toBeNull()
+  })
+
+  it('resets and notices when the picker is used to switch snapshots', async () => {
+    // The common path: "Back to your ingests" clears the snapshot on the way
+    // out, so the change arrives as s1 -> null -> s2.
+    const { workspace, chat } = withSnapshot('s1')
+    vi.mocked(chatApi.turn).mockResolvedValue(turnResult('why?'))
+    await chat.ask('why?')
+
+    workspace.snapshot = null
+    await nextTick()
+    workspace.snapshot = snapshotWithId('s2')
+    await nextTick()
+
+    expect(chat.messages).toEqual([])
+    expect(chat.conversationId).toBeNull()
+    expect(chat.notice).toBe('chat.snapshotChanged')
+  })
+
+  it('clears the thread without a notice when the snapshot goes away', async () => {
+    const { workspace, chat } = withSnapshot('s1')
+    vi.mocked(chatApi.turn).mockResolvedValue(turnResult('why?'))
+    await chat.ask('why?')
+
+    workspace.snapshot = null
+    await nextTick()
+
+    expect(chat.messages).toEqual([])
+    expect(chat.notice).toBeNull()
+  })
+
+  it('does not notice when the same snapshot is reopened through the picker', async () => {
+    const { workspace, chat } = withSnapshot('s1')
+    workspace.snapshot = null
+    await nextTick()
+    workspace.snapshot = snapshotWithId('s1')
+    await nextTick()
 
     expect(chat.notice).toBeNull()
   })
