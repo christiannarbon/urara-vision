@@ -1,18 +1,4 @@
-/**
- * Thin fetch wrapper over the chat service.
- *
- * A separate module from `client.ts` rather than another section of it, for
- * two reasons that both have to hold: a different base path, and **no token**.
- * The chat service takes no credential of its own -- it holds the backend's
- * internally -- so sending the one this app holds would put a credential
- * outside the boundary it belongs in for nothing in return.
- *
- * `ApiError` is imported rather than redefined, so a caller can catch one class
- * whichever client threw it. The rule about its catalogue key is the one stated
- * there: a key when this client decided what went wrong, so the banner renders
- * in whatever language is on screen when it is read, and no key when the
- * message is the server's own prose.
- */
+/** Thin fetch wrapper over the chat service. */
 
 import { ApiError } from './client'
 import type { MessageKey } from '../i18n'
@@ -28,9 +14,7 @@ export interface ChatMessage {
   createdAt: string
 }
 
-/** One thread. `messages` is populated when a single conversation is fetched
- *  and absent from a listing, which mirrors the service exactly -- including
- *  the consequence that an empty thread and an unfetched one look the same. */
+/** One thread. */
 export interface Conversation {
   id: string
   snapshotId: string
@@ -40,9 +24,7 @@ export interface Conversation {
   messages?: ChatMessage[]
 }
 
-/** What one turn produced. Both messages come back as they were stored:
- *  ordinals are the database's to assign, and rendering what was sent instead
- *  of what was written eventually renders a turn that was never persisted. */
+/** What one turn produced. */
 export interface TurnResult {
   conversationId: string
   userMessage: ChatMessage
@@ -53,15 +35,7 @@ export interface TurnResult {
   model: string
 }
 
-/**
- * One request, with no `Authorization` header and no timeout.
- *
- * No timeout on purpose. A turn is a model round trip plus several tool calls
- * and a minute is not unusual; nginx allows 180s for exactly that reason, and
- * an `AbortController` set shorter here would cancel answers that were about
- * to arrive -- the reader sees a failure for a turn that in fact succeeded and
- * was stored.
- */
+/** One request, with no `Authorization` header and no timeout. */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
   try {
@@ -109,9 +83,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 const json = { 'Content-Type': 'application/json' }
 
 export const chatApi = {
-  /** Start a thread about one snapshot. The reference goes through untouched:
-   *  `latest` is the service's to resolve, and resolving it here would put a
-   *  second opinion in the system about which snapshot a thread is pinned to. */
+  /** Start a thread about one snapshot. */
   createConversation(snapshotId: string): Promise<Conversation> {
     return request<Conversation>('/conversations', {
       method: 'POST',
@@ -138,11 +110,7 @@ export const chatApi = {
     return request<void>(`/conversations/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
 
-  /** Ask one question of an existing conversation.
-   *
-   *  **No snapshot ID is sent.** The thread pinned its snapshot when it was
-   *  created; a field the caller could send is a field that can disagree with
-   *  the thread, and the service refuses one outright rather than ignoring it. */
+  /** Ask one question of an existing conversation. */
   turn(id: string, question: string, language: string): Promise<TurnResult> {
     return request<TurnResult>(`/conversations/${encodeURIComponent(id)}/turn`, {
       method: 'POST',

@@ -1,11 +1,6 @@
 /** Types mirroring the Go API's JSON shapes. */
 
-/**
- * The role a table plays. Open by design, mirroring model.TableKind on the
- * backend: the built-in roles are listed for the sake of autocomplete, and a
- * role read straight from a document is just as valid. See graph/roles.ts for
- * how one gets drawn.
- */
+/** The role a table plays. */
 export type KnownTableKind =
   | 'fact'
   | 'factless'
@@ -42,11 +37,7 @@ export interface Stats {
 }
 
 /**
- * What the directory declared about itself in its projectmeta.toml, stored with
- * the ingest that read it.
- *
- * Optional on a snapshot: the manifest became a requirement after the first
- * release, and an ingest older than that has none.
+ * What the directory declared about itself in its projectmeta.toml, stored with the ingest that…
  */
 export interface ProjectMeta {
   project: {

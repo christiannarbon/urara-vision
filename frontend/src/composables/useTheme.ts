@@ -1,10 +1,5 @@
 /**
- * Theme state: which painting (or the house palette) supplies the colours,
- * corner style and typefaces.
- *
- * There is one axis. The app is light-mode only by design, so a theme is a
- * single palette rather than a light/dark pair -- see styles/art-themes.css.
- * The choice persists per browser.
+ * Theme state: which painting (or the house palette) supplies the colours, corner style and typefaces.
  */
 
 import { ref, computed, watch } from 'vue'
@@ -53,17 +48,10 @@ try {
 
 // --- webfonts -------------------------------------------------------------
 
-/**
- * Loads a theme's faces on demand. Fifteen families across ten themes is far
- * too much to ship upfront, so each theme fetches only its own, and links are
- * left in place once added: switching back to a theme you have already seen
- * costs nothing.
- */
+/** Loads a theme's faces on demand. */
 function ensureFonts(theme: ArtTheme) {
   if (typeof document === 'undefined') return
-  // The head is the source of truth rather than a module-level set: under hot
-  // reload, and anywhere this module ends up instantiated twice, a set would
-  // start empty and stack a second copy of every link.
+  // The head is the source of truth rather than a module-level set: under hot reload, and anywhere…
   if (document.querySelector(`link[data-art-fonts="${theme.id}"]`)) return
 
   if (!document.querySelector('link[data-font-preconnect]')) {
