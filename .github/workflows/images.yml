@@ -25,6 +25,8 @@ on:
     paths:
       - backend/Dockerfile
       - backend/.dockerignore
+      - backend/go.mod
+      - backend/go.sum
       - chat/Dockerfile
       - chat/.dockerignore
       - chat/pyproject.toml
@@ -32,6 +34,7 @@ on:
       - frontend/Dockerfile
       - frontend/nginx.conf
       - frontend/nginx-security-headers.conf
+      - frontend/package-lock.json
       - .github/workflows/images.yml
   workflow_dispatch:
 
