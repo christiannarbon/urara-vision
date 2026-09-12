@@ -1,21 +1,26 @@
 # Architecture
 
 ```
-Browser ──pick folder──▶ Vue 3 app
-                          │ reads .md client-side
-                          ▼
-                    POST /api/v1/ingest        (JSON or multipart)
-                          │
-                    ┌─────▼──────┐
-                    │ Go backend │  parse ─▶ resolve ─▶ project
-                    └──┬──────┬──┘
-                       │      │
-              ┌────────▼─┐  ┌─▼──────────────┐
+Browser ──pick folder──▶ Vue 3 app ─────ask─────▶ Python chat ──▶ Gemini
+                          │ reads .md client-side      │
+                          ▼                            │ tool calls
+                    POST /api/v1/ingest                │ over /api/v1
+                          │      ┌─────────────────────┘
+                    ┌─────▼──────▼─┐
+                    │  Go backend  │  parse ─▶ resolve ─▶ project
+                    └──┬────────┬──┘
+                       │        │
+              ┌────────▼─┐  ┌───▼────────────┐
               │ Postgres │  │ Neo4j          │
               │ system   │  │ graph          │
               │ of record│  │ projection     │
               └──────────┘  └────────────────┘
 ```
+
+The chat service answers questions about a model by calling the same public API
+the frontend does — it holds no database credential and has no route to either
+store. That is what keeps the resolution rules in one place and keeps a
+question, however it is phrased, unable to reach a database session.
 
 ## The pipeline
 
@@ -94,6 +99,8 @@ backend/
   internal/store/    postgres (record) + neo4j (graph)
   internal/api/      routes, ingest
   tests/             unit, integration and fixtures, outside the packages
+chat/
+  src/urara_chat/    FastAPI service: LangGraph agent, tools over the HTTP API
 frontend/
   src/api/           typed client and response shapes
   src/components/    GraphCanvas, TableDetail, FilterSidebar, Search, Diagnostics
