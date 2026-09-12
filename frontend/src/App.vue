@@ -4,6 +4,7 @@ import { computed, onMounted, onBeforeUnmount, ref, watchEffect } from 'vue'
 import { storeToRefs } from 'pinia'
 
 import ApiTokenGate from './components/ApiTokenGate.vue'
+import ChatPanel from './components/ChatPanel.vue'
 import DiagnosticsPanel from './components/DiagnosticsPanel.vue'
 import FilterSidebar from './components/FilterSidebar.vue'
 import GraphCanvas from './components/GraphCanvas.vue'
@@ -13,6 +14,7 @@ import TableDetail from './components/TableDetail.vue'
 import ThemePicker from './components/ThemePicker.vue'
 import WelcomeScreen from './components/WelcomeScreen.vue'
 import { useI18n } from './i18n'
+import { useChat } from './stores/chat'
 import { useWorkspace } from './stores/workspace'
 
 const { t, tn } = useI18n()
@@ -68,6 +70,16 @@ async function onTokenSubmit(token: string) {
 
 const searchOpen = ref(false)
 const diagnosticsOpen = ref(false)
+
+const chat = useChat()
+const { open: chatOpen } = storeToRefs(chat)
+
+// One right-hand pane, so opening chat closes diagnostics rather than adding a
+// third column: a third would leave the canvas a sliver on a laptop.
+function toggleChat() {
+  if (!chatOpen.value) diagnosticsOpen.value = false
+  chat.togglePanel()
+}
 const canvas = ref<InstanceType<typeof GraphCanvas> | null>(null)
 
 /** The Diagnostics button carries a marker rather than a count: the number of
@@ -114,7 +126,8 @@ function onKeydown(e: KeyboardEvent) {
     return
   }
   if (e.key === 'Escape' && !searchOpen.value) {
-    if (diagnosticsOpen.value) diagnosticsOpen.value = false
+    if (chatOpen.value) chat.closePanel()
+    else if (diagnosticsOpen.value) diagnosticsOpen.value = false
     else if (selectedId.value) void store.select(null)
   }
 }
@@ -191,6 +204,15 @@ function backToPicker() {
             >!</span
           >
         </button>
+        <button
+          class="btn btn--ghost btn--sm"
+          :aria-expanded="chatOpen"
+          :title="chatOpen ? t('chat.close') : t('chat.open')"
+          @click="toggleChat"
+        >
+          <span class="glyph" aria-hidden="true">◗</span>
+          {{ chatOpen ? t('chat.close') : t('chat.open') }}
+        </button>
         <button class="btn btn--ghost btn--sm" @click="backToPicker">
           {{ t('topbar.newIngest') }}
         </button>
@@ -233,7 +255,7 @@ function backToPicker() {
       />
     </main>
 
-    <main v-else class="workspace" :class="{ 'workspace--wide': diagnosticsOpen }">
+    <main v-else class="workspace" :class="{ 'workspace--wide': diagnosticsOpen || chatOpen }">
       <FilterSidebar
         class="pane pane--left"
         :snapshot="snapshot"
@@ -271,8 +293,19 @@ function backToPicker() {
         />
       </div>
 
+      <ChatPanel v-if="chatOpen" class="pane pane--right" />
+
+      <DiagnosticsPanel
+        v-else-if="diagnosticsOpen"
+        class="pane pane--right"
+        :open="diagnosticsOpen"
+        :diagnostics="diagnostics"
+        @close="diagnosticsOpen = false"
+        @select="navigate"
+      />
+
       <TableDetail
-        v-if="!diagnosticsOpen"
+        v-else
         class="pane pane--right"
         :detail="detail"
         :loading="detailLoading"
@@ -280,15 +313,6 @@ function backToPicker() {
         @navigate="navigate"
         @focus="focusOn"
         @close="store.select(null)"
-      />
-
-      <DiagnosticsPanel
-        v-else
-        class="pane pane--right"
-        :open="diagnosticsOpen"
-        :diagnostics="diagnostics"
-        @close="diagnosticsOpen = false"
-        @select="navigate"
       />
     </main>
 
@@ -381,6 +405,16 @@ kbd {
 }
 
 /* A marker, not a tally: it says "look in here", not "you have 47 problems". */
+/* The only visual the topbar had for an open panel was aria-expanded; giving
+   it a style marks Diagnostics as well as Chat. */
+.topbar .btn[aria-expanded='true'] {
+  background: var(--bg-sunken);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.glyph { font-size: 11px; color: var(--text-faint); }
+.btn[aria-expanded='true'] .glyph { color: var(--accent); }
+
 .mark-flag {
   display: inline-grid;
   place-items: center;
