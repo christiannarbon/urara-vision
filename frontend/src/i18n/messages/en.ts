@@ -96,6 +96,9 @@ export const messages = {
   'error.unreachable': 'Cannot reach the backend. Check that the API is running and reachable.',
   'error.tokenRejected': 'This API needs a token, and the one supplied was not accepted.',
   'error.requestFailed': 'Request failed with status {status}.',
+  'error.chatUnreachable':
+    'Cannot reach the chat service. Check that it is running and reachable.',
+  'error.chatBusy': 'Too many questions at once. Try again in a moment.',
 
   // The role vocabulary. Mirrors graph/roles.ts, which mirrors the backend.
   // A role the documents brought with them keeps its own word and is not here.
