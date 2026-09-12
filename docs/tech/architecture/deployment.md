@@ -35,9 +35,13 @@ The chat service reads its own set:
 | `APP_ADDR` | `:8090` | Listen address |
 | `BACKEND_BASE_URL` | `http://backend:8080` | Chat is an API client like any other |
 | `BACKEND_API_TOKEN` | _(unset)_ | The same `relviz-api` token the backend checks |
+| `BACKEND_TIMEOUT_SECONDS` | `30` | Per request to the backend |
 | `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
 | `LLM_PROVIDER` | `gemini-studio` | `vertex` in the cluster |
 | `LLM_MODEL` | `gemini-2.5-flash` | |
+| `LLM_TEMPERATURE` | `0.2` | |
+| `LLM_MAX_OUTPUT_TOKENS` | `2048` | |
+| `LLM_TIMEOUT_SECONDS` | `60` | Per model call, not per turn |
 | `VERTEX_PROJECT` | — | Required under `vertex`; the pod refuses to start without it |
 | `VERTEX_LOCATION` | `us-central1` | |
 | `GOOGLE_APPLICATION_CREDENTIALS` | _(unset)_ | Only where ADC arrives as a file; unset under Workload Identity |
@@ -45,6 +49,9 @@ The chat service reads its own set:
 | `MAX_HISTORY_MESSAGES` | `20` | The whole history is resent every turn |
 | `MAX_CONCURRENT_TURNS` | `4` | In-flight turns across every conversation |
 | `MAX_QUESTION_CHARS` | `4000` | |
+| `MAX_REQUEST_BYTES` | `1048576` | Refused on `Content-Length`, before the body is read |
+| `TURN_ADMISSION_WAIT_SECONDS` | `0.5` | How long a turn waits for a free slot before it is refused |
+| `ANSWER_TIMEOUT_SECONDS` | `120` | The whole turn. Bounded by the pod's `terminationGracePeriodSeconds` |
 | `CONTEXT_CACHE_TTL_SECONDS` | `300` | A snapshot is immutable, so its context card keeps |
 
 Under Vertex the credential is ADC, never a key: `gcloud auth
@@ -127,8 +134,8 @@ existing volume. `k8s-clean` is the way through that.
 The dev overlay also drops the HPAs and PodDisruptionBudgets, which fight a
 single replica.
 
-Chat's memory limit is 768Mi against the backend's 512Mi: a Python interpreter
-with LangChain imported would OOM at the backend's ceiling.
+Chat's memory limit is 512Mi, from measurement: four concurrent turns peaked at
+105Mi, and the rest is headroom for a larger corpus.
 
 [`k8s/README.md`](../../../k8s/README.md) has the rest: creating the prod
 secrets, resizing a live volume, and the image-specific gotchas the live deploy
