@@ -22,7 +22,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import asdict
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
@@ -30,7 +29,7 @@ from fastapi.responses import JSONResponse, Response
 from langchain_core.language_models import BaseChatModel
 from pydantic import ValidationError
 
-from urara_chat.api.answering import answer_question
+from urara_chat.api.answering import answer_question, to_response
 from urara_chat.api.schemas import AnswerRequest, AnswerResponse, ToolInvokeRequest
 from urara_chat.backend.client import BackendClient
 from urara_chat.backend.errors import BackendError, BackendNotFound
@@ -50,6 +49,7 @@ PROBE_TIMEOUT_SECONDS = 15.0
 # Fixed, and short enough to cost nothing. The point is whether credentials work
 # and the provider answers, not what it says.
 PROBE_PROMPT = "Reply with exactly: pong"
+
 
 def get_client(request: Request) -> BackendClient:
     """The one client, built in the lifespan.
@@ -206,9 +206,7 @@ async def debug_answer(request: Request, body: AnswerRequest) -> AnswerResponse:
         body.question,
         body.language,
     )
-    # asdict() gives the dataclass's own field names; the schema carries the
-    # camelCase wire names and populate_by_name lets it be built from either.
-    return AnswerResponse(**asdict(result))
+    return to_response(result)
 
 
 @router.get("/debug/llm")

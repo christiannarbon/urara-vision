@@ -14,11 +14,13 @@ debugging call that changes what it is debugging is worse than useless.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import asdict
 
 from fastapi import HTTPException
 
 from urara_chat.agent.pipeline import AgentAnswer, answer
 from urara_chat.api.errors import ProviderError
+from urara_chat.api.schemas import AnswerResponse
 from urara_chat.backend.client import BackendClient
 from urara_chat.backend.errors import BackendError
 from urara_chat.backend.models import Message
@@ -97,3 +99,17 @@ async def answer_question(
     # 404 for an unknown snapshot, through the shared handler.
     snapshot_id = await client.resolve_snapshot(snapshot_ref)
     return await run_pipeline(cleaned, snapshot_id, [], language, settings)
+
+
+def to_response(result: AgentAnswer) -> AnswerResponse:
+    """One turn's answer on the wire.
+
+    Here rather than in each route: 05.7 moved the answering itself into this
+    module so the two paths could not drift, and left the last step copied into
+    both. A field added to AgentAnswer that needs handling on the way out should
+    have one site to find.
+
+    asdict() gives the dataclass's own field names; the schema carries the
+    camelCase wire names and populate_by_name lets it be built from either.
+    """
+    return AnswerResponse(**asdict(result))

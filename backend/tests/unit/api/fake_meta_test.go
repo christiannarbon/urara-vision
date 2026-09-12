@@ -65,6 +65,7 @@ type fakeMeta struct {
 	createdFor    string
 	createdTitle  string
 	listedFor     string
+	listedLimit   int
 	convID        string
 	patchedTitle  string
 	appendedTo    string
@@ -155,8 +156,8 @@ func (f *fakeMeta) CreateConversation(_ context.Context, snapshotID, title strin
 	return &model.Conversation{ID: "conv-1", SnapshotID: snapshotID, Title: title}, nil
 }
 
-func (f *fakeMeta) ListConversations(_ context.Context, snapshotID string) ([]model.Conversation, error) {
-	f.listedFor = snapshotID
+func (f *fakeMeta) ListConversations(_ context.Context, snapshotID string, limit int) ([]model.Conversation, error) {
+	f.listedFor, f.listedLimit = snapshotID, limit
 	return f.conversations, f.errConversation
 }
 

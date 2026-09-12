@@ -17,13 +17,26 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import HTTPException
-
 log = logging.getLogger(__name__)
 
 # What a refused caller is told to wait. Roughly one turn: by then a slot has
 # usually freed, and a number the frontend can honour beats a bare refusal.
 RETRY_AFTER_SECONDS = 5
+
+
+class TurnsBusy(Exception):  # noqa: N818
+    """Every slot is taken, and the caller should come back later.
+
+    Raised rather than answered here: this module decides *whether* a turn may
+    run, and `api.errors` decides what a refusal looks like on the wire. Keeping
+    the status code with every other status code is what lets this be tested,
+    and reused, without FastAPI.
+    """
+
+    def __init__(self, limit: int, retry_after: int = RETRY_AFTER_SECONDS) -> None:
+        self.limit = limit
+        self.retry_after = retry_after
+        super().__init__(f"all {limit} turn slots are busy; retry in {retry_after}s")
 
 
 class ConversationLocks:
@@ -124,14 +137,7 @@ class TurnLimiter:
             # `from None`: the caller is being told the service is busy, and a
             # TimeoutError in the chain reads as the provider having timed out,
             # which is a different problem with a different fix.
-            raise HTTPException(
-                status_code=429,
-                detail=(
-                    f"too many turns in flight; the limit is {self._limit}. "
-                    f"Retry in {RETRY_AFTER_SECONDS} seconds."
-                ),
-                headers={"Retry-After": str(RETRY_AFTER_SECONDS)},
-            ) from None
+            raise TurnsBusy(self._limit) from None
         try:
             yield
         finally:

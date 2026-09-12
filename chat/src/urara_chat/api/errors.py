@@ -26,6 +26,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from urara_chat.api.locks import RETRY_AFTER_SECONDS, TurnsBusy
 from urara_chat.api.middleware import REQUEST_ID_HEADER, request_id_of
 from urara_chat.backend.errors import BackendError, BackendNotFound, BackendRejected
 
@@ -101,6 +102,24 @@ async def backend_rejected(request: Request, exc: Exception) -> Response:
     return _body(request, 500, error=INTERNAL)
 
 
+async def turns_busy(request: Request, exc: Exception) -> Response:
+    """429 -- every slot is taken.
+
+    Refused rather than queued: a queued request holds a connection while the
+    reader watches nothing happen, decides it has hung and reloads, which adds
+    another one. Retry-After is what makes the refusal actionable.
+    """
+    retry_after = exc.retry_after if isinstance(exc, TurnsBusy) else RETRY_AFTER_SECONDS
+    limit = exc.limit if isinstance(exc, TurnsBusy) else 0
+    response = _body(
+        request,
+        429,
+        detail=(f"too many turns in flight; the limit is {limit}. Retry in {retry_after} seconds."),
+    )
+    response.headers["Retry-After"] = str(retry_after)
+    return response
+
+
 async def provider_failed(request: Request, exc: Exception) -> Response:
     """502 -- the model did not answer, or did not answer in time.
 
@@ -148,7 +167,7 @@ def _fields(exc: ValidationError | RequestValidationError) -> list[dict[str, str
 
 
 async def validation_failed(request: Request, exc: Exception) -> Response:
-    """400 -- the request does not fit the schema.
+    """400 -- the caller's request does not fit the schema.
 
     400 rather than FastAPI's default 422: the backend answers a malformed
     request with 400, and one service in a pair using a different status for
@@ -180,8 +199,22 @@ async def unhandled(request: Request, exc: Exception) -> Response:
 
     A traceback names file paths, versions and local variables, and is read by
     whoever asked the question rather than by whoever can fix it.
+
+    A pydantic ValidationError arrives here too, and it is worth naming when it
+    does: it means a *backend* response did not match this service's models --
+    the models have drifted from the API, or the API has changed under them.
+    That is a 500 because it is this service's failure to read a response it is
+    responsible for parsing, and the fields go to the log because they are the
+    whole diagnosis.
     """
-    log.error("unhandled exception", extra={"request_id": request_id_of(request)}, exc_info=exc)
+    if isinstance(exc, ValidationError):
+        log.error(
+            "a backend response did not match this service's models",
+            extra={"request_id": request_id_of(request), "fields": _fields(exc)},
+            exc_info=exc,
+        )
+    else:
+        log.error("unhandled exception", extra={"request_id": request_id_of(request)}, exc_info=exc)
     return _body(request, 500, error=INTERNAL)
 
 
@@ -196,11 +229,17 @@ def install_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(BackendError, backend_failed)
     app.add_exception_handler(BackendNotFound, backend_not_found)
     app.add_exception_handler(BackendRejected, backend_rejected)
+    app.add_exception_handler(TurnsBusy, turns_busy)
     app.add_exception_handler(ProviderError, provider_failed)
     # asyncio.TimeoutError is this class in 3.11 and later, so the deadline on a
     # turn and a provider that never answers arrive at the same place.
     app.add_exception_handler(TimeoutError, provider_failed)
+    # RequestValidationError only. A bare pydantic ValidationError is *not* a
+    # caller error: it is what the backend client raises when the Go API answers
+    # with something these models do not accept, and answering 400 tells a
+    # caller their perfect request was malformed and names a field they never
+    # sent. It falls to `unhandled`, which reports it as the internal failure it
+    # is and logs the fields.
     app.add_exception_handler(RequestValidationError, validation_failed)
-    app.add_exception_handler(ValidationError, validation_failed)
     app.add_exception_handler(StarletteHTTPException, http_exception)
     app.add_exception_handler(Exception, unhandled)

@@ -60,7 +60,7 @@ type MetaStore interface {
 	ListSourceTables(ctx context.Context, sid string) ([]model.SourceTable, error)
 
 	CreateConversation(ctx context.Context, snapshotID, title string) (*model.Conversation, error)
-	ListConversations(ctx context.Context, snapshotID string) ([]model.Conversation, error)
+	ListConversations(ctx context.Context, snapshotID string, limit int) ([]model.Conversation, error)
 	GetConversation(ctx context.Context, id string) (*model.Conversation, error)
 	UpdateConversationTitle(ctx context.Context, id, title string) (*model.Conversation, error)
 	DeleteConversation(ctx context.Context, id string) error

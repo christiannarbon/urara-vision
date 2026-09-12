@@ -844,6 +844,19 @@ class TestLifespan:
             )
             assert oversized.status_code == 413
             assert "200" in oversized.json()["detail"]
+            # The same request ID in the body as in the header. This answers
+            # from a middleware, before the exception handlers exist, which is
+            # how it came to be the only error a caller could not quote an ID
+            # for.
+            assert oversized.json()["requestId"] == oversized.headers["x-request-id"]
+
+            echoed = c.post(
+                "/debug/answer",
+                json={"snapshotId": "snap-1", "question": "x" * 500},
+                headers={"X-Request-ID": "trace-413"},
+            )
+            assert echoed.status_code == 413
+            assert echoed.json()["requestId"] == "trace-413"
 
             # A body under the ceiling still reaches the handler, where the
             # friendly limit lives.

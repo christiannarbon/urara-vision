@@ -16,8 +16,9 @@ import pytest
 import respx
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from starlette.requests import Request
+from starlette.responses import JSONResponse, Response
 
 from urara_chat.api.errors import (
     BACKEND_UNAVAILABLE,
@@ -227,6 +228,51 @@ class TestErrorMapping:
         assert response.json()["error"] == "internal error"
         assert SECRET not in response.text
 
+    def test_a_broken_backend_response_is_500_not_the_callers_fault(self) -> None:
+        """A bare ValidationError is what the backend client raises when the Go
+        API answers with something these models reject. Reporting it as a 400
+        told a caller their perfect request was malformed, and named a field
+        they never sent."""
+
+        class Conversation(BaseModel):
+            id: str
+
+        try:
+            Conversation.model_validate({"title": "no id here"})
+        except ValidationError as exc:
+            broken = exc
+
+        response = self.response_for(broken)
+
+        assert response.status_code == 500
+        assert response.json() == {"error": "internal error", "requestId": "trace-err"}
+        # The caller is told nothing about a field they did not send.
+        assert "fields" not in response.json()
+        assert "id" not in response.json()["error"]
+
+    def test_the_broken_response_fields_reach_the_log(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Swallowed from the response, not from the diagnosis: the field list
+        is how a model drift against the backend gets found."""
+
+        class Conversation(BaseModel):
+            id: str
+
+        try:
+            Conversation.model_validate({"title": "no id here"})
+        except ValidationError as exc:
+            broken = exc
+
+        with caplog.at_level(logging.ERROR, logger="urara_chat.api.errors"):
+            self.response_for(broken)
+
+        record = next(
+            r for r in caplog.records if "did not match this service's models" in str(r.msg)
+        )
+        assert record.fields == [{"field": "id", "reason": "Field required"}]  # type: ignore[attr-defined]
+        assert record.request_id == "trace-err"  # type: ignore[attr-defined]
+
     def test_a_provider_failure_is_502_and_says_nothing(self) -> None:
         """The reason this mapping exists: a provider error quotes the request
         back, so its text can carry prompt fragments and credentials."""
@@ -271,6 +317,55 @@ class TestErrorMapping:
             RuntimeError(SECRET),
         ):
             assert self.response_for(exc).json()["requestId"] == "trace-err"
+
+
+class TestProbesAreQuiet:
+    """At the periods the cluster sets, the probes are nine lines a minute per
+    pod -- enough to bury the per-turn cost line Phase 08 bills from."""
+
+    def lines(self, caplog: pytest.LogCaptureFixture, level: int) -> list[str]:
+        return [r.path for r in caplog.records if r.msg == "request" and r.levelno == level]  # type: ignore[attr-defined]
+
+    def test_a_probe_does_not_log_at_info(self, caplog: pytest.LogCaptureFixture) -> None:
+        app = build_app()
+
+        @app.get("/healthz")
+        async def healthz() -> dict[str, str]:
+            return {"status": "ok"}
+
+        with caplog.at_level(logging.DEBUG, logger="urara_chat.api.middleware"):
+            TestClient(app).get("/healthz")
+
+        assert self.lines(caplog, logging.INFO) == []
+        assert self.lines(caplog, logging.DEBUG) == ["/healthz"]
+
+    def test_an_ordinary_request_still_logs_at_info(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level(logging.DEBUG, logger="urara_chat.api.middleware"):
+            TestClient(build_app()).get("/ok")
+
+        assert self.lines(caplog, logging.INFO) == ["/ok"]
+
+    def test_a_failing_probe_is_loud(self, caplog: pytest.LogCaptureFixture) -> None:
+        """The one probe line anybody wants: /readyz starting to answer 503."""
+        app = build_app()
+
+        @app.get("/readyz")
+        async def readyz() -> Response:
+            return JSONResponse({"status": "unready"}, status_code=503)
+
+        with caplog.at_level(logging.DEBUG, logger="urara_chat.api.middleware"):
+            TestClient(app).get("/readyz")
+
+        assert self.lines(caplog, logging.INFO) == ["/readyz"]
+
+    def test_a_probe_still_carries_the_request_id(self) -> None:
+        app = build_app()
+
+        @app.get("/healthz")
+        async def healthz() -> dict[str, str]:
+            return {"status": "ok"}
+
+        assert TestClient(app).get("/healthz").headers["x-request-id"]
 
 
 class TestTheLogLine:

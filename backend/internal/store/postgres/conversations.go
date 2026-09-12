@@ -82,13 +82,19 @@ func (s *Store) CreateConversation(ctx context.Context, snapshotID, title string
 	return &c, nil
 }
 
-// ListConversations returns the threads about one snapshot, newest first. It
-// leaves Messages empty: a list is a menu, and loading every transcript to
-// render it would grow without bound.
-func (s *Store) ListConversations(ctx context.Context, snapshotID string) ([]model.Conversation, error) {
+// ListConversations returns the most recent threads about one snapshot, newest
+// first. It leaves Messages empty: a list is a menu, and loading every
+// transcript to render it would grow without bound.
+//
+// The row count is bounded for the same reason the transcripts are. A snapshot
+// in use for a month accumulates threads without limit, and every one of them
+// was being returned in a single response to a sidebar that shows twenty.
+func (s *Store) ListConversations(ctx context.Context, snapshotID string, limit int) ([]model.Conversation, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT `+conversationColumns+`
-		   FROM conversations WHERE snapshot_id = $1 ORDER BY created_at DESC`, snapshotID)
+		   FROM conversations WHERE snapshot_id = $1
+		  ORDER BY created_at DESC
+		  LIMIT $2`, snapshotID, limit)
 	if err != nil {
 		return nil, err
 	}
