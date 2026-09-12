@@ -38,6 +38,14 @@ MAX_REQUEST_ID_LENGTH = 64
 # a forged entry in the log stream that a reader cannot tell from a real one.
 _ALLOWED_CHARS = frozenset(string.ascii_letters + string.digits + "-_.:/")
 
+# Paths a probe hits on a timer. Logged at debug rather than info: at the
+# periods the cluster sets -- liveness every 20s, readiness every 10s -- these
+# are nine lines a minute per pod and about thirteen thousand a day at two
+# replicas, none of which anybody reads, and all of which bury the per-turn cost
+# line Phase 08 bills from. The Go backend logs no per-request line at all, so
+# this also stops the two services being noisy in different ways by accident.
+QUIET_PATHS = frozenset({"/healthz", "/readyz"})
+
 _request_id: ContextVar[str] = ContextVar("request_id", default="")
 
 
@@ -118,7 +126,8 @@ class RequestIDMiddleware:
             await self.app(scope, receive, send_with_id)
         finally:
             _request_id.reset(token)
-            log.info(
+            log.log(
+                _level_for(str(scope.get("path", "")), status),
                 "request",
                 extra={
                     "method": scope.get("method", ""),
@@ -128,3 +137,15 @@ class RequestIDMiddleware:
                     "request_id": request_id,
                 },
             )
+
+
+def _level_for(path: str, status: int) -> int:
+    """How loudly to report one request.
+
+    A probe that has started failing is the one probe line anybody wants, so the
+    quiet list is about the path *and* the outcome: a 503 from /readyz says the
+    backend has gone, and demoting that would hide it exactly when it matters.
+    """
+    if status >= 400 or path not in QUIET_PATHS:
+        return logging.INFO
+    return logging.DEBUG
