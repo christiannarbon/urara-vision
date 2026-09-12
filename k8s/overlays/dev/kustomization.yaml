@@ -10,12 +10,27 @@ resources:
 replicas:
   - name: backend
     count: 1
+  - name: chat
+    count: 1
   - name: frontend
     count: 1
 
 patches:
   - path: dev-resources.yaml
   - path: dev-frontend-auth.yaml
+  - path: dev-chat-adc.yaml
+  # Set before applying: empty stops the pod at startup, not at the first
+  # question.
+  - target:
+      kind: ConfigMap
+      name: relviz-chat-config
+    patch: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: relviz-chat-config
+      data:
+        VERTEX_PROJECT: ""
   # HPAs fight the single-replica settings above, so they are dropped here.
   - target:
       kind: HorizontalPodAutoscaler
@@ -54,6 +69,15 @@ patches:
       kind: PodDisruptionBudget
       metadata:
         name: frontend
+  - target:
+      kind: PodDisruptionBudget
+      name: chat
+    patch: |
+      $patch: delete
+      apiVersion: policy/v1
+      kind: PodDisruptionBudget
+      metadata:
+        name: chat
 
 # Development credentials, committed on purpose so `kubectl apply -k` works
 # with no setup. The prod overlay expects an externally managed secret.
@@ -72,6 +96,7 @@ secretGenerator:
   - name: relviz-api
     literals:
       - token=relviz-dev-token-not-for-production
+  # No model credential: Vertex uses ADC. See dev-chat-adc.yaml.
 
 generatorOptions:
   # A stable name keeps the Deployment's secretKeyRef valid; without this
@@ -81,6 +106,9 @@ generatorOptions:
 images:
   - name: urara-vision/backend
     newName: urara-vision/backend
+    newTag: dev
+  - name: urara-vision/chat
+    newName: urara-vision/chat
     newTag: dev
   - name: urara-vision/frontend
     newName: urara-vision/frontend
