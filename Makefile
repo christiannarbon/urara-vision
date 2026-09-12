@@ -116,10 +116,20 @@ test-chat: ## Chat service unit tests (no backend needed)
 .PHONY: test-chat-integration
 test-chat-integration: ## Chat service tests against the compose stack
 	@echo "==> stack"
-	$(COMPOSE) up -d postgres neo4j backend
-	@echo "==> waiting for the backend"
+	@# chat is up here too: the conversation tests drive its HTTP surface, not
+	@# just the backend's. LLM_PROVIDER/VERTEX_PROJECT only have to satisfy
+	@# start-up validation -- every test this target runs is marked `integration`
+	@# and none of them calls a model, so no credential is needed and nothing is
+	@# billed. The `llm` tests are run by hand from a shell that has ADC.
+	LLM_PROVIDER=vertex \
+	  VERTEX_PROJECT="$${VERTEX_PROJECT:-integration-tests-call-no-model}" \
+	  $(COMPOSE) up -d postgres neo4j backend chat
+	@echo "==> waiting for the backend and the chat service"
 	@docker run --rm --network $(COMPOSE_NET) --entrypoint sh $(UV_IMAGE) -c \
 	  'until python -c "import urllib.request;urllib.request.urlopen(\"http://backend:8080/healthz\")" \
+	     >/dev/null 2>&1; do sleep 1; done'
+	@docker run --rm --network $(COMPOSE_NET) --entrypoint sh $(UV_IMAGE) -c \
+	  'until python -c "import urllib.request;urllib.request.urlopen(\"http://chat:8090/healthz\")" \
 	     >/dev/null 2>&1; do sleep 1; done'
 	@echo "==> tests"
 	@docker run --rm --network $(COMPOSE_NET) \
@@ -129,6 +139,7 @@ test-chat-integration: ## Chat service tests against the compose stack
 	  -e UV_PROJECT_ENVIRONMENT=/venv \
 	  -e UV_LINK_MODE=copy \
 	  -e CHAT_TEST_BACKEND_URL="http://backend:8080" \
+	  -e CHAT_TEST_CHAT_URL="http://chat:8090" \
 	  -e CHAT_TEST_API_TOKEN="relviz-dev-token-not-for-production" \
 	  -w /src $(UV_IMAGE) \
 	  uv run --frozen pytest tests/integration -q -m integration
