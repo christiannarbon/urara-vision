@@ -1,0 +1,26 @@
+# kind has no metadata server, so ADC arrives as a file. A dev-only patch: in
+# prod the file would shadow Workload Identity.
+#
+#   kubectl -n urara-vision create secret generic relviz-adc \
+#     --from-file="$HOME/.config/gcloud/application_default_credentials.json" \
+#     --dry-run=client -o yaml | kubectl apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chat
+spec:
+  template:
+    spec:
+      containers:
+        - name: chat
+          env:
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: /var/run/gcp/application_default_credentials.json
+          volumeMounts:
+            - name: adc
+              mountPath: /var/run/gcp
+              readOnly: true
+      volumes:
+        - name: adc
+          secret:
+            secretName: relviz-adc
