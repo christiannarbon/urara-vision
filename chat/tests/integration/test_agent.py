@@ -68,24 +68,27 @@ DIAGNOSTIC_MARKERS = (
     "undocumented lineage",
 )
 
-# What the prompt's "WHEN IT IS NOT DOCUMENTED" section reliably produces. Kept
-# broad on purpose: the assertion that carries the weight is `citations == []`,
-# and this only guards against an empty citation list that came with a confident
-# answer anyway.
-REFUSAL_MARKERS = (
-    "not documented",
-    "no documentation",
-    "not in the model",
-    "not part of",
-    "not present",
-    "does not appear",
-    "does not exist",
-    "no table",
-    "not found",
-    "could not find",
-    "cannot find",
-    "no such",
-    "undocumented",
+# What the prompt's "WHEN IT IS NOT DOCUMENTED" section reliably produces.
+#
+# Matched by *shape* rather than by phrase: a negation followed, in the same
+# sentence, by a word about finding or documenting. A list of literal phrases
+# was here first and it failed on refusals that were entirely correct -- "I
+# can't find a table named X" misses "cannot find", and "it might not be
+# documented in this model" misses "not documented" because of the "be" in the
+# middle. Every one of those was the agent behaving perfectly and the test
+# disagreeing about wording, which is how a test earns deletion and takes its
+# real assertion with it.
+#
+# The assertion that carries the weight is `citations == []`. This one only
+# guards against an empty citation list that arrived with a confident answer
+# anyway, so it should be loose about words and strict about meaning.
+REFUSAL_PATTERN = re.compile(
+    r"\b(?:can(?:'|\u2019)?t|cannot|could\s?n(?:'|\u2019)?t|could not|unable to|"
+    r"is\s?n(?:'|\u2019)?t|is not|does\s?n(?:'|\u2019)?t|does not|do\s?n(?:'|\u2019)?t|"
+    r"no|not|none)\b[^.!?]{0,40}?\b"
+    r"(?:find|found|locate|exist|document|documented|documentation|present|"
+    r"include|included|appears?|available)",
+    re.IGNORECASE,
 )
 
 # A refusal has nothing to compare, so any markdown table in one is a fabricated
@@ -103,19 +106,20 @@ Ask = Callable[..., Coroutine[Any, Any, AgentAnswer]]
 def agent_settings(llm_settings: Settings, backend_url: str, api_token: str) -> Settings:
     """One Settings that can both reach the backend and pay a provider.
 
-    `llm_settings` is depended on for its skip, so this suite is gated on the
-    key like every other billed test. Its 512-token output cap is not reused:
-    that number was picked for a one-word smoke test, and Gemini 2.5 spends
-    output tokens on reasoning before it emits anything, so a real two-paragraph
-    answer comes back truncated at MAX_TOKENS for a reason that looks nothing
-    like a token limit.
+    `llm_settings` is depended on for its skip and for the project it resolved,
+    so this suite is gated like every other billed test. Its 512-token output
+    cap is not reused: that number was picked for a one-word smoke test, and
+    Gemini 2.5 spends output tokens on reasoning before it emits anything, so a
+    real two-paragraph answer comes back truncated at MAX_TOKENS for a reason
+    that looks nothing like a token limit.
     """
     return Settings(
         backend_base_url=backend_url,
         backend_api_token=api_token,
         backend_timeout_seconds=60.0,
-        llm_provider="gemini-studio",
-        google_api_key=llm_settings.google_api_key,
+        llm_provider="vertex",
+        vertex_project=llm_settings.vertex_project,
+        vertex_location=llm_settings.vertex_location,
         llm_max_output_tokens=2048,
         llm_timeout_seconds=90.0,
     )
@@ -125,29 +129,32 @@ def agent_settings(llm_settings: Settings, backend_url: str, api_token: str) -> 
 async def ask(agent_settings: Settings, snapshot_id: str) -> AsyncIterator[Ask]:
     """Ask the agent one question and get the whole answer back.
 
-    A pipeline per snapshot, because the tools close over one: a graph built for
-    the Jaffle Shop snapshot cannot answer about another, which is the binding
-    `test_stays_in_snapshot` is here to prove holds.
+    One pipeline, built the way the lifespan builds it: the tools are a
+    *factory* keyed on the snapshot, not a fixed list. Each tool closes over the
+    snapshot it reads, so a graph compiled for the Jaffle Shop set cannot answer
+    about another -- which is the binding `test_stays_in_snapshot` proves holds,
+    and which the pipeline maintains itself by compiling one graph per snapshot.
+
+    Passing a list here instead of a factory is how this suite came to raise
+    "'list' object is not callable" on every test without anyone noticing: it
+    was gated on an API key nobody had set, so it skipped rather than failed.
     """
     client = BackendClient(agent_settings)
     model = build_chat_model(agent_settings)
     cache = ContextCardCache(ttl_seconds=agent_settings.context_cache_ttl_seconds)
-    pipelines: dict[str, Pipeline] = {}
+    pipeline = Pipeline(
+        model,
+        lambda sid: to_langchain_tools(build_tools(client, sid)),
+        cache,
+        client,
+        model_name=agent_settings.llm_model,
+        max_tool_iterations=agent_settings.max_tool_iterations,
+    )
 
     async def run(question: str, sid: str | None = None, language: str = "EN") -> AgentAnswer:
-        target = sid or snapshot_id
-        if target not in pipelines:
-            pipelines[target] = Pipeline(
-                model,
-                to_langchain_tools(build_tools(client, target)),
-                cache,
-                client,
-                model_name=agent_settings.llm_model,
-                max_tool_iterations=agent_settings.max_tool_iterations,
-            )
         # No history: every test here is one turn, and a shared transcript would
         # let one test's answer change another's.
-        return await pipelines[target].answer(question, target, history=[], language=language)
+        return await pipeline.answer(question, sid or snapshot_id, history=[], language=language)
 
     yield run
     await client.aclose()
@@ -162,13 +169,29 @@ def mentions(text: str, markers: tuple[str, ...]) -> bool:
     return any(marker in lowered for marker in markers)
 
 
+def refuses(text: str) -> bool:
+    """Whether an answer declines rather than describes."""
+    return REFUSAL_PATTERN.search(text) is not None
+
+
 # --- the four grounded cases ------------------------------------------------
 
 
 async def test_grain_lookup(ask: Ask) -> None:
-    """The inventory names the grain, but naming a grain is a claim about a
-    table, and a claim about a table comes from `get_tables`."""
-    answer = await ask("What is the grain of fact_orders?")
+    """A claim about a table's contents is retrieved and cited.
+
+    The question asks for columns as well as grain, and the columns are the
+    part that matters. The context card is an inventory: it carries every
+    table's id, kind, grain and column *count*, so "what is the grain of
+    fact_orders?" is answered correctly from the card alone, with no tool call
+    and nothing to cite -- which proves only that the card was read. Column
+    names are not in it, so answering this needs a real lookup.
+
+    That shortcut is the agent working as designed, not a defect. What would be
+    a defect is a claim the card cannot support arriving uncited, which is what
+    this test is here to catch.
+    """
+    answer = await ask("List the columns of fact_orders and state its grain.")
 
     assert FACT_ORDERS in answer.citations
     assert "get_tables" in called(answer)
@@ -219,7 +242,7 @@ async def test_refuses_unknown_table(ask: Ask) -> None:
 
     assert answer.citations == [], "cited something for a table that does not exist"
     assert not MARKDOWN_TABLE_ROW.search(answer.text), f"fabricated a column table:\n{answer.text}"
-    assert mentions(answer.text, REFUSAL_MARKERS), answer.text
+    assert refuses(answer.text), answer.text
     assert answer.iterations <= REFUSAL_ITERATION_BUDGET, (
         f"spent {answer.iterations} iterations hunting for a table that is not there"
     )
@@ -262,4 +285,4 @@ async def test_stays_in_snapshot(ask: Ask, other_snapshot_id: str) -> None:
     answer = await ask(f"Describe the {FOREIGN_TABLE} table and list its columns.")
 
     assert answer.citations == [], "answered about a table from another snapshot"
-    assert mentions(answer.text, REFUSAL_MARKERS), answer.text
+    assert refuses(answer.text), answer.text
