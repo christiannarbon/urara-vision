@@ -1,21 +1,6 @@
-/**
- * The source catalogue. Every string the interface says starts here.
- *
- * Keys are flat and dotted rather than nested, which buys two things a nested
- * object cannot: `t('topbar.search')` is checked against the real key set at
- * compile time, and a translation is a plain `Record<MessageKey, string>` that
- * fails to compile the moment it is missing an entry. Nesting would make both
- * of those a runtime concern.
- *
- * The dot prefix names the surface the string appears on -- `topbar.`, not
- * `App.` -- so a string moving between components does not move between keys.
- *
- * Placeholders are `{name}`, filled by the params passed to `t`.
- *
- * Counted strings come in `.one` / `.other` pairs and are read with `tn`,
- * which asks the active locale which variant a number takes. English needs
- * both; Japanese does not mark plural at all and answers `other` every time.
- */
+/** The source catalogue. Keys are flat and dotted, prefixed by the surface the
+ *  string appears on. Placeholders are `{name}`. Counted strings come in
+ *  `.one`/`.other` pairs and are read with `tn`. */
 export const messages = {
   'locale.en': 'English',
   'locale.ja': '日本語',
@@ -274,9 +259,7 @@ export const messages = {
   'diagnostics.findings.note':
     'Everything below parsed cleanly; the resolver noticed something worth checking.',
 
-  // What each diagnostic code means. The backend can add a code without a
-  // frontend release, and one with no entry here falls back to its own slug --
-  // so this list is the codes we can explain, not the codes that exist.
+  // What each diagnostic code means.
   'diagnostic.unresolved_reference.title': 'Unresolved references',
   'diagnostic.unresolved_reference.blurb':
     'A relationship points at a table with no document. Either the document is missing or the name is wrong.',
@@ -315,9 +298,7 @@ export const messages = {
 
   // API token gate
   'gate.title': 'This instance needs a token',
-  // Split around the <code>API_TOKEN</code> the sentence names, rather than
-  // interpolated as markup. The break falls before the token in both
-  // languages, so neither reads as a translation of the other's word order.
+  // Split around the <code>API_TOKEN</code> the sentence names, rather than interpolated as markup.
   'gate.intro.before':
     'The API is protected by a shared token. Ask whoever runs this deployment for it — it is the',
   'gate.intro.after': 'the backend was started with.',
@@ -331,19 +312,10 @@ export const messages = {
 
 export type MessageKey = keyof typeof messages
 
-/**
- * The shape every translation has to fill. A `Record` rather than
- * `typeof messages`: the English entries are literal types, and a translation
- * is emphatically not the same literal.
- */
+/** The shape every translation has to fill. */
 export type Messages = Record<MessageKey, string>
 
-/**
- * Which variant of a counted string a number takes.
- *
- * English is the two-form case the pair spellings assume, so this is the
- * identity the catalogue was written against.
- */
+/** Which variant of a counted string a number takes. */
 export function plural(n: number): 'one' | 'other' {
   return n === 1 ? 'one' : 'other'
 }

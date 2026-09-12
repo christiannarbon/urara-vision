@@ -1,14 +1,5 @@
 /**
- * The data layer end to end: the real store over the real API client, with only
- * the network replaced.
- *
- * The unit specs mock the client, so they prove the store's decisions but not
- * that the two agree on request shapes and response shapes. Here the client is
- * real, so a URL the backend would reject or a field name the store misreads
- * shows up.
- *
- * The stub answers the same routes the Go handlers do, which is what keeps the
- * two sides honest about the contract.
+ * The data layer end to end: the real store over the real API client, with only the network replaced.
  */
 
 import { createPinia, setActivePinia } from 'pinia'
@@ -61,10 +52,7 @@ const diagnostics = [
   { severity: 'error', code: 'unresolved_reference', message: 'No document matched "dim_missing".', tableId: 'domain_one/fact_primary' },
 ]
 
-/**
- * Answers the routes the Go router exposes. Anything else is a 404, so a store
- * that builds an unexpected URL fails rather than quietly getting a stub.
- */
+/** Answers the routes the Go router exposes. */
 function route(url: string): { status: number; body?: unknown } {
   const u = new URL(url, 'http://backend')
   const p = u.pathname

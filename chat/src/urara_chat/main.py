@@ -1,13 +1,4 @@
-"""The FastAPI application.
-
-One backend client and one chat model are built at startup. Per-request
-construction would leak connections and throw away pooling, and the client holds
-the only network identity this service has.
-
-There is no authentication here, by design: the service is not exposed outside
-the cluster, and Phase 07 handles reachability at the network layer rather than
-with a second token to rotate.
-"""
+"""The FastAPI application."""
 
 from __future__ import annotations
 
@@ -34,11 +25,6 @@ from urara_chat.tools.registry import build_tools
 
 
 def _reasons(exc: ValidationError) -> list[str]:
-    """The messages from a validation error, without pydantic's framing.
-
-    A settings error is almost always one missing environment variable, and the
-    name of it is the whole content of the message worth printing.
-    """
     return [str(err.get("msg", "")).removeprefix("Value error, ") for err in exc.errors()]
 
 
@@ -47,10 +33,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         settings = get_settings()
     except ValidationError as exc:
-        # Logged as one line, then re-raised as a ConfigurationError carrying
-        # only the reasons. `from None` drops the pydantic error from the
-        # traceback deliberately: it embeds the input it was given, and a long
-        # API key leaves its tail in that text.
+        # Logged as one line, then re-raised as a ConfigurationError carrying only the reasons.
         reasons = "; ".join(_reasons(exc))
         logging.basicConfig(stream=sys.stdout, level=logging.ERROR, format="%(message)s")
         logging.getLogger("urara_chat").error(
@@ -65,29 +48,21 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.settings = settings
     app.state.client = BackendClient(settings)
-    # Built once, here. A model per request adds latency to every turn and, on
-    # Vertex, a credential refresh with it.
+    # Built once, here. A model per request adds latency to every turn and, on Vertex, a
+    # credential refresh with it.
     try:
         app.state.chat_model = build_chat_model(settings)
     except ValidationError as exc:
-        # Same sanitising as the settings above, and for the same reason: the
-        # SDK validates its own constructor, and its ValidationError embeds the
-        # kwargs it was given -- which include the API key.
+        # Same sanitising as the settings above, and for the same reason: the SDK validates its
+        # own constructor, and its ValidationError embeds the kwargs it was given -- which include
+        # the API key.
         reasons = "; ".join(_reasons(exc))
         log.error("language model configuration is invalid, refusing to start: %s", reasons)
         raise ConfigurationError(reasons) from None
     log.info("language model configured: %s", describe_model(settings))
 
-    # The agent, assembled here and nowhere else. Until 04.R nothing called
-    # configure_pipeline, so every request to /debug/answer raised "the agent
-    # pipeline has not been configured". Three settings -- the history bound,
-    # the tool budget and the card TTL -- were read by nothing at all. The unit
-    # suite could not see any of it, because every test in the phase builds its
-    # own Pipeline.
-    #
-    # The tools are a factory rather than a list: each one closes over the
-    # snapshot it reads, and the snapshot is per request. There is nothing to
-    # bind here.
+    # The agent, assembled here and nowhere else. The tools are a factory rather than a list: each
+    # closes over the snapshot it reads, which is per request.
     app.state.card_cache = ContextCardCache(settings.context_cache_ttl_seconds)
     configure_pipeline(
         Pipeline(
@@ -102,10 +77,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     log.info("agent pipeline configured")
 
-    # Said out loud, once, where kubectl logs will show it. ConversationLocks
-    # documents this properly, but its docstring is only read by somebody
-    # already in that file -- and the base manifest runs two replicas, so the
-    # person who needs this is the one scaling an overlay.
+    # Said out loud, once, where kubectl logs will show it.
     log.info(
         "conversation turns are serialised per process, not across replicas; "
         "run one replica or expect interleaved transcripts",
@@ -130,24 +102,13 @@ app = FastAPI(
 async def limit_request_size(
     request: Request, call_next: Callable[[Request], Awaitable[Response]]
 ) -> Response:
-    """Refuse an oversized body on Content-Length, before it is read.
-
-    MAX_QUESTION_CHARS cannot do this: it is checked in the handler, by which
-    point uvicorn has received the whole body and pydantic has parsed it. A
-    100 MB question would be fully allocated before being told it was too long.
-
-    The two limits do different jobs. This one stops something absurd; the
-    handler's stays the one that answers with a friendly message naming the
-    limit, which is what a caller who pasted a document actually needs.
-    """
+    """Refuse an oversized body on Content-Length, before it is read."""
     declared = request.headers.get("content-length")
     if declared is not None and declared.isdigit():
         limit = request.app.state.settings.max_request_bytes
         if int(declared) > limit:
-            # The request ID goes in the body as well as the header, as it does
-            # for every error the exception handlers render. This one answers
-            # from a middleware, before those handlers exist, which is how it
-            # came to be the only error a caller could not quote an ID for.
+            # The request ID goes in the body as well as the header, as it does for every error
+            # the exception handlers render.
             request_id = request_id_of(request)
             return JSONResponse(
                 status_code=413,
@@ -160,16 +121,16 @@ async def limit_request_size(
     return await call_next(request)
 
 
-# Added last, so it wraps everything else: Starlette applies middleware
-# outermost-last, and the ID has to be assigned before any other middleware can
-# answer -- otherwise the 413 above leaves without one.
+# Added last, so it wraps everything else: Starlette applies middleware outermost-last, and the ID
+# has to be assigned before any other middleware can answer -- otherwise the 413 above leaves
+# without one.
 app.add_middleware(RequestIDMiddleware)
 
-# One place decides what an exception becomes, so no route needs its own
-# try/except for a backend, provider or validation failure.
+# One place decides what an exception becomes, so no route needs its own try/except for a backend,
+# provider or validation failure.
 install_error_handlers(app)
 
 app.include_router(chat_router)
-# The debug routes stay mounted alongside them: they are how Phase 08 explains a
-# bad answer, and /debug/answer is promoted rather than replaced in 05.7.
+# The debug routes stay mounted alongside them: they are how Phase 08 explains a bad answer, and
+# /debug/answer is promoted rather than replaced in 05.7.
 app.include_router(router)

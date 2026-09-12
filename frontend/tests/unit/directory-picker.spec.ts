@@ -1,11 +1,4 @@
-/**
- * Reading a documentation directory, through both pickers.
- *
- * The two of them share nothing but their output shape, so the manifest rule
- * is asserted against each in turn: a directory without a projectmeta.toml at
- * its root is refused here, before an upload the backend would reject anyway,
- * and a manifest sitting one level down does not count as one.
- */
+/** Reading a documentation directory, through both pickers. */
 
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -22,12 +15,7 @@ supported = ["EN"]
 type = "inline"
 `
 
-/**
- * A File as <input webkitdirectory> hands it over: named by its full path.
- *
- * jsdom's File has no `text()`, which every browser that reaches this code
- * does, so the stand-in supplies one.
- */
+/** A File as <input webkitdirectory> hands it over: named by its full path. */
 function pickedFile(relativePath: string, content = '# doc\n'): File {
   const f = new File([content], relativePath.split('/').pop() ?? relativePath)
   Object.defineProperty(f, 'webkitRelativePath', { value: relativePath })

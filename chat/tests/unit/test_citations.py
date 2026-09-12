@@ -1,15 +1,4 @@
-"""Citation extraction.
-
-The most important function in the feature, so this is the longest test file in
-the service. Two assertions carry the design:
-
-- an ID **retrieved but never mentioned** is not cited, so the list cannot be
-  padded with everything the turn happened to look at;
-- an ID **mentioned but never retrieved** is not cited, which is the
-  hallucination case and the reason a citation is worth anything at all.
-
-Pure input, pure output. No model, no client, nothing to mock.
-"""
+"""Citation extraction."""
 
 import pytest
 
@@ -20,7 +9,6 @@ DIM_CUSTOMERS = "customer_identity/dim_customers"
 
 
 def tool_result(*ids: str) -> dict[str, object]:
-    """A result in the shape the tools actually return."""
     return {
         "items": [{"id": i, "name": i.split("/")[1]} for i in ids],
         "truncated": False,
@@ -41,8 +29,7 @@ class TestTheTwoRulesThatMatter:
         assert cited == [FACT_ORDERS]
 
     def test_retrieved_but_never_mentioned_is_not_cited(self) -> None:
-        """Otherwise the list is padded with everything the turn looked at, and
-        a citation stops meaning the answer rested on it."""
+        """Otherwise the list is padded with everything the turn looked at, and"""
         cited = extract_citations(
             [tool_result(FACT_ORDERS, DIM_CUSTOMERS)],
             "fact_orders holds one row per order.",
@@ -50,9 +37,7 @@ class TestTheTwoRulesThatMatter:
         assert cited == [FACT_ORDERS]
 
     def test_mentioned_but_never_retrieved_is_not_cited(self) -> None:
-        """The hallucination case, and the most important assertion here. A
-        model naming a table it never looked up must not produce a chip that
-        makes the claim look sourced."""
+        """The hallucination case, and the most important assertion here."""
         cited = extract_citations(
             [tool_result(FACT_ORDERS)],
             f"See {FACT_ORDERS} and also invented/dim_nonsense for the rest.",
@@ -66,8 +51,7 @@ class TestTheTwoRulesThatMatter:
 
 class TestOrdering:
     def test_order_follows_first_mention_not_tool_order(self) -> None:
-        """The reader scans the answer top to bottom and the chips should
-        follow, whatever order the tools happened to answer in."""
+        """The reader scans the answer top to bottom and the chips should"""
         results = [tool_result(FACT_ORDERS, DIM_CUSTOMERS)]
         answer = "dim_customers is joined by fact_orders."
 
@@ -100,8 +84,7 @@ class TestOrdering:
 
 class TestWhereIDsAreFound:
     def test_a_join_path_contributes_its_tables_array(self) -> None:
-        """JoinPath.tables is a list of bare strings, so its elements never pass
-        under an `id` key."""
+        """JoinPath.tables is a list of bare strings, so its elements never pass"""
         result = {
             "items": [
                 {
@@ -131,8 +114,7 @@ class TestWhereIDsAreFound:
         assert extract_citations([result], "fact_orders") == [FACT_ORDERS]
 
     def test_prose_fields_are_not_harvested(self) -> None:
-        """A description mentioning an ID is a coincidence, not a retrieval.
-        Citing it would claim the answer rested on something never looked up."""
+        """A description mentioning an ID is a coincidence, not a retrieval."""
         result = {
             "items": [
                 {
@@ -147,8 +129,7 @@ class TestWhereIDsAreFound:
         assert DIM_CUSTOMERS not in cited
 
     def test_source_model_ids_are_not_tables(self) -> None:
-        """`jaffle_shop.stg_orders` has no slash: it is not a table and cannot
-        be opened from a chip."""
+        """`jaffle_shop.stg_orders` has no slash: it is not a table and cannot"""
         result = {"items": [{"id": "jaffle_shop.stg_orders", "dataset": "jaffle_shop"}]}
         assert extract_citations([result], "built from jaffle_shop.stg_orders") == []
 
@@ -167,8 +148,7 @@ class TestWordBoundaries:
         assert extract_citations([result], "dim_dates is a different table") == []
 
     def test_a_shorter_name_does_not_match_inside_a_longer_one(self) -> None:
-        """Underscore counts as part of a word: `date` must not match inside
-        `dim_date`."""
+        """Underscore counts as part of a word: `date` must not match inside"""
         assert extract_citations([tool_result("d/date")], "dim_date holds days") == []
 
     def test_a_name_after_a_slash_still_matches(self) -> None:
@@ -197,9 +177,7 @@ class TestCaseInsensitivity:
 
 class TestAmbiguity:
     def test_two_tables_sharing_a_bare_name_are_both_cited(self) -> None:
-        """The demo sets contain exactly this. Guessing one would be wrong half
-        the time, and two chips tell the reader something true about their
-        model: it has a conformed dimension with two instances."""
+        """The demo sets contain exactly this."""
         shared = "shared_kernel/dim_date"
         local = "customer_identity/dim_date"
 
@@ -213,8 +191,8 @@ class TestAmbiguity:
 
         cited = extract_citations([tool_result(shared, local)], f"join on {shared}")
 
-        # The bare name appears inside the full ID, so both still match --
-        # which is the documented behaviour: the reader learns there are two.
+        # The bare name appears inside the full ID, so both still match -- which is the documented
+        # behaviour: the reader learns there are two.
         assert set(cited) == {shared, local}
 
 
@@ -250,8 +228,8 @@ class TestDegenerateInput:
         for _ in range(200):
             deep = {"nested": deep}
 
-        # Past the depth cap the ID is simply not found, which is the safe
-        # outcome: a citation is dropped rather than a turn hanging.
+        # Past the depth cap the ID is simply not found, which is the safe outcome: a citation is
+        # dropped rather than a turn hanging.
         assert extract_citations([deep], "fact_orders") == []
 
     def test_non_string_values_are_ignored(self) -> None:
@@ -264,8 +242,7 @@ class TestDegenerateInput:
             assert extract_citations([result], value) == [], value
 
     def test_a_tool_error_string_contributes_nothing(self) -> None:
-        """A wrapped tool answers with guidance when a lookup fails, and that
-        string names the ID that missed -- which was not retrieved."""
+        """A wrapped tool answers with guidance when a lookup fails, and that"""
         guidance = "No table with id 'nope/missing' in this model. Call search_model to find it."
         assert extract_citations([guidance], "nope/missing was not found") == []
 

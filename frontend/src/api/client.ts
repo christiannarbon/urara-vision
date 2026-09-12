@@ -22,8 +22,9 @@ const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api/v1'
 // theme uses; see the note in the README about why that name survived.
 const TOKEN_KEY = 'relviz.apiToken'
 
-/** The token is module state rather than a store field: every request needs it,
- *  including the ones the store makes before it is itself constructed. */
+/**
+ * The token is module state rather than a store field: every request needs it, including the ones…
+ */
 let apiToken = readStoredToken()
 
 function readStoredToken(): string {
@@ -36,8 +37,7 @@ function readStoredToken(): string {
   }
 }
 
-/** True when a token has been supplied. It says nothing about whether the
- *  token is correct -- only a 401 from the backend can tell you that. */
+/** True when a token has been supplied. */
 export function hasApiToken(): boolean {
   return apiToken !== ''
 }
@@ -53,21 +53,16 @@ export function setApiToken(value: string): void {
   }
 }
 
-/** Drops a token the backend has rejected, so the next load prompts again
- *  rather than retrying a value that is known to be wrong. */
+/**
+ * Drops a token the backend has rejected, so the next load prompts again rather than retrying a…
+ */
 export function clearApiToken(): void {
   setApiToken('')
 }
 
-/** ApiError carries the HTTP status so callers can distinguish a 404 from a
- *  server fault without parsing strings.
- *
- *  It also carries a catalogue key where this client is the one that decided
- *  what went wrong, so the banner can be rendered in whatever language is on
- *  screen at the time rather than the one that was active when it was thrown.
- *  There is no key when the message came from the server, which writes its own
- *  prose. `message` stays English either way: it is what lands in a console
- *  and a stack trace, and those have one audience. */
+/**
+ * ApiError carries the HTTP status so callers can distinguish a 404 from a server fault without…
+ */
 export class ApiError extends Error {
   constructor(
     message: string,

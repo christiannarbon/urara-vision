@@ -1,10 +1,4 @@
-/**
- * The entry screen, mounted, in both languages.
- *
- * The previous-ingest list is the one place a counted string reaches the
- * screen through a component, so it is where the .one/.other pair and the
- * locale's own agreement rule are worth asserting together.
- */
+/** The entry screen, mounted, in both languages. */
 
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'

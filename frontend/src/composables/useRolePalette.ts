@@ -1,12 +1,4 @@
-/**
- * The theme's two role hues, read reactively.
- *
- * Role colours are derived from --fact and --dim rather than defined per role
- * (see graph/roles.ts for why), and those two tokens change with the theme.
- * Cytoscape and plain DOM both need the resolved values: the canvas cannot
- * resolve a custom property at all, and a panel could use var(--fact) but not
- * the shifted hue built from it.
- */
+/** The theme's two role hues, read reactively. */
 
 import { computed, onMounted, ref, watch } from 'vue'
 

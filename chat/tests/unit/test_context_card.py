@@ -1,14 +1,4 @@
-"""The context card and its cache.
-
-The card is paid for on every turn, so what matters is that it stays small and
-says true things: a domain with no tables is a real finding rather than an
-absence to hide, and a truncated table list must say so or the model will answer
-as though the model has no tables.
-
-The cache exists because a snapshot is immutable. What is worth testing is that
-it never caches under `latest`, and that two turns starting together cost one
-fetch.
-"""
+"""The context card and its cache."""
 
 import asyncio
 import json
@@ -28,7 +18,6 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def jaffle() -> SnapshotContext:
-    """The real /context response captured in 02.3."""
     return SnapshotContext.model_validate(json.loads((FIXTURES / "context.json").read_text()))
 
 
@@ -98,15 +87,13 @@ class TestTheRenderedShape:
                 assert "conformed" not in line
 
     def test_no_column_lists(self) -> None:
-        """That is what get_tables is for; naming every column here would cost
-        more than the whole card."""
+        """That is what get_tables is for; naming every column here would cost"""
         assert "order_id" not in render_context_card(jaffle())
 
 
 class TestDomains:
     def test_a_domain_with_no_tables_is_marked_not_dropped(self) -> None:
-        """The demo sets contain one, and it is a real finding about the
-        documentation rather than an absence worth hiding."""
+        """The demo sets contain one, and it is a real finding about the"""
         card = render_context_card(jaffle())
         assert "delivery_logistics — (no tables documented)" in card
 
@@ -135,8 +122,7 @@ class TestDomains:
 
 class TestLanguages:
     def test_a_single_language_project_omits_the_line(self) -> None:
-        """A line saying there is one language tells the model nothing it can
-        act on."""
+        """A line saying there is one language tells the model nothing it can"""
         assert "LANGUAGES" not in render_context_card(jaffle())
 
     def test_a_bilingual_project_names_the_others(self) -> None:
@@ -178,8 +164,7 @@ class TestGrain:
 
 class TestTruncation:
     def test_the_table_block_is_replaced_and_says_why(self) -> None:
-        """Silence would leave the model believing the model has no tables, and
-        it would answer confidently on that basis."""
+        """Silence would leave the model believing the model has no tables, and"""
         ctx = context(truncated=True, tables=[])
         card = render_context_card(ctx)
 
@@ -264,8 +249,7 @@ class TestTheCache:
         assert client.calls == 2
 
     async def test_latest_is_refused(self) -> None:
-        """Caching under the alias would serve a stale model after a re-ingest,
-        and the reader would never know the answer was about the wrong one."""
+        """Caching under the alias would serve a stale model after a re-ingest,"""
         cache = ContextCardCache(ttl_seconds=300.0)
 
         with pytest.raises(ValueError, match="concrete snapshot ID"):
@@ -297,8 +281,7 @@ class TestTheCache:
     async def test_concurrent_gets_on_different_snapshots_do_not_block_each_other(
         self,
     ) -> None:
-        """One lock per snapshot rather than one for the cache: two turns on
-        different snapshots have no reason to wait for each other's fetch."""
+        """One lock per snapshot rather than one for the cache: two turns on"""
         client = CountingClient(delay=0.1)
         cache = ContextCardCache(ttl_seconds=300.0)
 
@@ -314,10 +297,7 @@ class TestTheCache:
 
 
 class TestTheCacheIsBoundedIncludingItsLocks:
-    """The locks used to live in a dict beside the cards, pruned only when a
-    card was evicted -- so a failed fetch or an expired card left its lock
-    behind for the life of the process. 500 failing fetches left 500 locks and
-    no cards."""
+    """The locks used to live in a dict beside the cards, pruned only when a"""
 
     async def test_failing_fetches_do_not_accumulate(self) -> None:
         class Failing:

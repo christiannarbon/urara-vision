@@ -1,15 +1,4 @@
-"""The public face of the agent: one function Phase 05 calls.
-
-It does **no persistence**. The caller supplies the history and stores the
-result, which keeps this testable without a backend and leaves the transcript's
-home to whoever owns it.
-
-The dependencies -- model, tool factory, context cache, backend client -- are
-installed once by the lifespan rather than passed on every call, so a graph is
-compiled once per snapshot and the process keeps one client. `configure_pipeline`
-is how they get here; calling `answer` before that is a programming error and
-says so.
-"""
+"""The public face of the agent: one function Phase 05 calls."""
 
 from __future__ import annotations
 
@@ -32,9 +21,7 @@ from urara_chat.backend.models import Message
 
 log = logging.getLogger(__name__)
 
-# One graph per snapshot, bounded like the cards beside them. The same
-# ceiling: a pod that is holding a card for a snapshot is the pod that will
-# be asked about it again.
+# One graph per snapshot, bounded like the cards beside them.
 MAX_CACHED_GRAPHS = MAX_CACHED_CARDS
 
 
@@ -44,41 +31,31 @@ class AgentAnswer:
 
     text: str
     citations: list[str]
-    # Name and args for every call made, so a wrong answer can be traced to what
-    # it actually looked at rather than to what it says it looked at.
+    # Name and args for every call made, so a wrong answer can be traced to what it actually
+    # looked at rather than to what it says it looked at.
     tool_calls: list[dict[str, Any]]
     iterations: int
     truncated: bool
     model: str
     latency_ms: int
-    # Token counts where the provider reports them, and empty where it does not.
-    # Never guessed: a fabricated number in a cost report is worse than a gap.
+    # Token counts where the provider reports them, and empty where it does not. Never guessed: a
+    # fabricated number in a cost report is worse than a gap.
     usage: dict[str, int] = field(default_factory=dict)
 
 
 def truncate_history(history: Sequence[Message], limit: int) -> list[Message]:
-    """Keep the most recent turns.
-
-    Dropped from the front: an unbounded transcript is an unbounded bill, and
-    the prompt grows on every turn. Recent turns are what a follow-up question
-    refers to.
-    """
+    """Keep the most recent turns."""
     kept = list(history[-limit:]) if limit > 0 else []
 
-    # An assistant message with no question above it reads as the model talking
-    # to itself, so a pair split by the boundary loses its orphaned half.
+    # An assistant message with no question above it reads as the model talking to itself, so a
+    # pair split by the boundary loses its orphaned half.
     while kept and kept[0].role != "user":
         kept.pop(0)
     return kept
 
 
 def to_langchain_messages(history: Sequence[Message]) -> list[BaseMessage]:
-    """Stored turns as model input.
-
-    Stored `system` messages are dropped. The system prompt is rebuilt each turn
-    from the current card and language, and one saved three turns ago would
-    fight it -- with the stale copy winning, because it comes first.
-    """
+    """Stored turns as model input."""
     converted: list[BaseMessage] = []
     for message in history:
         if message.role == "user":
@@ -89,20 +66,7 @@ def to_langchain_messages(history: Sequence[Message]) -> list[BaseMessage]:
 
 
 class Pipeline:
-    """The agent, wired. One compiled graph per snapshot.
-
-    Not one graph for the process, which is what this was until 04.R. A tool
-    closes over the snapshot it reads (`tools/registry.py`), so a graph built
-    from one snapshot's tools can only ever answer about that snapshot -- while
-    the HTTP layer takes a snapshot per request, and at start-up there is no
-    snapshot to bind. A process-wide graph would have answered every question
-    from whichever snapshot happened to be bound first.
-
-    So the tools arrive as a factory and the graph is built on first use for
-    each snapshot. 04.4's "compiled once" still holds, per snapshot rather than
-    per process: a turn never compiles a graph a previous turn on the same
-    snapshot already built.
-    """
+    """The agent, wired."""
 
     def __init__(
         self,
@@ -127,12 +91,7 @@ class Pipeline:
         self._graphs: OrderedDict[str, Any] = OrderedDict()
 
     def _graph_for(self, snapshot_id: str) -> Any:
-        """This snapshot's compiled graph, building it once.
-
-        Bounded like the context card cache beside it, and for the same reason:
-        a long-running pod asked about many snapshots would otherwise hold a
-        compiled graph for every one it had ever seen.
-        """
+        """This snapshot's compiled graph, building it once."""
         graph = self._graphs.get(snapshot_id)
         if graph is not None:
             self._graphs.move_to_end(snapshot_id)
@@ -157,14 +116,9 @@ class Pipeline:
         history: Sequence[Message],
         language: str = "EN",
     ) -> AgentAnswer:
-        """Answer one question about one snapshot.
-
-        No persistence: the caller supplies the history and stores the result, so
-        this stays testable without a backend and the transcript's home stays the
-        caller's decision.
-        """
-        # An assertion rather than a comment: reading the wrong snapshot produces
-        # a confidently wrong answer, which is the failure worth stopping here.
+        """Answer one question about one snapshot."""
+        # An assertion rather than a comment: reading the wrong snapshot produces a confidently
+        # wrong answer, which is the failure worth stopping here.
         if snapshot_id == "latest":
             raise ValueError(
                 "answer() requires a concrete snapshot ID, not 'latest'; resolve it first"
@@ -190,13 +144,13 @@ class Pipeline:
             usage=_usage(produced),
         )
 
-        # One line per turn. Phase 08 costs the feature from these, so it carries
-        # what was spent as well as what was done.
+        # One line per turn. Phase 08 costs the feature from these, so it carries what was spent
+        # as well as what was done.
         log.info(
             "turn answered",
             extra={
-                # Ties the turn's cost to the HTTP request that paid for it;
-                # without it the two logs cannot be joined.
+                # Ties the turn's cost to the HTTP request that paid for it; without it the two
+                # logs cannot be joined.
                 "request_id": current_request_id(),
                 "snapshot_id": snapshot_id,
                 "language": language,
@@ -221,11 +175,7 @@ def _tool_calls(messages: Sequence[BaseMessage]) -> list[dict[str, Any]]:
 
 
 def _usage(messages: Sequence[BaseMessage]) -> dict[str, int]:
-    """Token counts summed over every model call in the turn.
-
-    Empty when the provider reported nothing. A turn costs the sum of its calls,
-    not the last one, and a tool loop makes several.
-    """
+    """Token counts summed over every model call in the turn."""
     totals: dict[str, int] = {}
     for message in messages:
         if not isinstance(message, AIMessage):
@@ -243,7 +193,7 @@ _pipeline: Pipeline | None = None
 
 
 def configure_pipeline(pipeline: Pipeline) -> None:
-    """Install the process's pipeline. Called by the lifespan."""
+    """Install the process's pipeline."""
     global _pipeline
     _pipeline = pipeline
 
@@ -260,10 +210,4 @@ async def answer(
     history: Sequence[Message],
     language: str = "EN",
 ) -> AgentAnswer:
-    """Answer one question about one snapshot.
-
-    The module-level entry point, delegating to the pipeline the lifespan
-    installed. Kept as a free function because that is what the HTTP layer
-    calls, and it has no business knowing how the agent is assembled.
-    """
     return await get_pipeline().answer(question, snapshot_id, history, language)

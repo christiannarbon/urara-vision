@@ -1,11 +1,4 @@
-"""The agent's control flow.
-
-Every test scripts the model, so nothing here needs a key or a network. What is
-worth asserting is the shape of the loop: that it runs the tools the model asks
-for, that it stops, and that stopping produces a partial answer rather than an
-exception — the reader has already waited, and an answer naming its own gaps
-beats an error.
-"""
+"""The agent's control flow."""
 
 import json
 from pathlib import Path
@@ -146,8 +139,7 @@ class TestTheSystemPrompt:
 
 class TestTheBoundedLoop:
     async def test_a_model_that_always_asks_for_tools_stops(self) -> None:
-        """And still answers. A partial answer that names its own gaps is more
-        useful than an exception, and the reader has already waited."""
+        """And still answers."""
         final, model, _ = await run([call_tool()], max_tool_iterations=3)
 
         assert final["truncated"] is True
@@ -166,8 +158,7 @@ class TestTheBoundedLoop:
         assert len(notices) == 1
 
     async def test_the_final_pass_cannot_loop_again(self) -> None:
-        """The post-budget pass asks for tools too, in this script. It must
-        answer with what it holds rather than going round again."""
+        """The post-budget pass asks for tools too, in this script."""
         final, model, _ = await run([call_tool()], max_tool_iterations=2)
 
         # load + (agent, tools) x2 + budget + one final agent pass.
@@ -184,15 +175,7 @@ class TestTheBoundedLoop:
 
 
 class TestTheBudgetNoticeReachesTheModel:
-    """Where the notice lands, not just that it was appended.
-
-    It was a SystemMessage until 04.R, and the Google adapter hoists every
-    system message into the system instruction wherever it sits -- so an
-    instruction to stop retrieving and answer arrived at the *front* of the
-    context, ahead of the retrieval it was talking about. Nothing caught it,
-    because FakeChatModel does not care what it is handed. These assert on
-    `model.calls`, which is the record of what was actually sent.
-    """
+    """Where the notice lands, not just that it was appended."""
 
     async def test_the_notice_is_the_last_thing_the_model_reads(self) -> None:
         _, model, _ = await run([call_tool()], max_tool_iterations=2)
@@ -201,8 +184,7 @@ class TestTheBudgetNoticeReachesTheModel:
         assert str(last_sent[-1].content) == TOOL_BUDGET_SPENT
 
     async def test_the_notice_is_not_a_system_message(self) -> None:
-        """A system-shaped notice is merged into the system instruction and
-        stops being the last word."""
+        """A system-shaped notice is merged into the system instruction and"""
         _, model, _ = await run([call_tool()], max_tool_iterations=2)
 
         notice = next(m for m in model.calls[-1] if str(m.content) == TOOL_BUDGET_SPENT)
@@ -216,9 +198,7 @@ class TestTheBudgetNoticeReachesTheModel:
         assert "SNAPSHOT INVENTORY" in str(systems[0].content)
 
     async def test_no_tool_call_is_left_unanswered(self) -> None:
-        """A turn whose last model message holds a call with no result is one
-        most providers refuse to continue from, and continuing is the whole
-        point of the post-budget pass."""
+        """A turn whose last model message holds a call with no result is one"""
         _, model, _ = await run([call_tool()], max_tool_iterations=3)
 
         sent = model.calls[-1]
@@ -240,9 +220,7 @@ class TestTheBudgetNoticeReachesTheModel:
 
 class TestTheAnswerIsNeverEmpty:
     async def test_a_script_of_bare_tool_calls_still_answers(self) -> None:
-        """A model asking for a tool emits empty content. Taking the last
-        message's text gave the reader `""` with truncated set -- which is not
-        the partial answer the loop is supposed to degrade to."""
+        """A model asking for a tool emits empty content."""
         final, _, _ = await run([call_tool()], max_tool_iterations=3)
 
         assert final["truncated"] is True
@@ -295,9 +273,7 @@ class TestToolResultsAndCitations:
         assert isinstance(final["tool_results"][0], dict)
 
     async def test_a_guidance_string_is_kept_as_text(self) -> None:
-        """A wrapped tool answers with advice when a lookup fails. It parses as
-        nothing, contributes no citation, and that is correct: nothing was
-        retrieved."""
+        """A wrapped tool answers with advice when a lookup fails."""
         guidance = "No table with id 'nope/missing' in this model. Call search_model."
         tools = [make_tool(result=guidance)]
         final, _, _ = await run(

@@ -1,21 +1,4 @@
-"""The service's HTTP surface: probes, and the debugging routes.
-
-`/debug/tool` runs the retrieval layer with no model in the way, which is the
-only way to tell a bad answer caused by bad retrieval from one caused by bad
-reasoning -- a model papers over a thin tool result with fluent prose, and the
-prose is convincing. `/debug/answer` runs the whole pipeline for one turn and
-persists nothing, and returns every diagnostic field rather than only the text:
-without the tool calls and the iteration count a wrong answer is unexplainable,
-which is the whole reason the route exists. Both stay permanently -- Phase 05
-promotes `/debug/answer` to `/api/chat/answer` rather than replacing it, and
-Phase 08's eval runner drives it thousands of times.
-
-The probe split is deliberate and mirrors the backend's. `/healthz` answers
-while the process is alive and never touches the backend: a liveness probe that
-fails during a backend outage restarts every chat pod, which fixes nothing and
-loses whatever they were doing. `/readyz` does check, so a pod that cannot
-answer leaves the load balancer without being killed.
-"""
+"""The service's HTTP surface: probes, and the debugging routes."""
 
 from __future__ import annotations
 
@@ -41,22 +24,18 @@ from urara_chat.tools.registry import ToolSpec, build_tools
 router = APIRouter()
 log = logging.getLogger(__name__)
 
-# The probe's own timeout, deliberately shorter than a turn's and independent of
-# it: /debug/llm is what you reach for when the provider is misbehaving, and a
-# probe that hangs as long as the thing it is diagnosing is no use.
+# The probe's own timeout, deliberately shorter than a turn's and independent of it: /debug/llm is
+# what you reach for when the provider is misbehaving, and a probe that hangs as long as the thing
+# it is diagnosing is no use.
 PROBE_TIMEOUT_SECONDS = 15.0
 
-# Fixed, and short enough to cost nothing. The point is whether credentials work
-# and the provider answers, not what it says.
+# Fixed, and short enough to cost nothing. The point is whether credentials work and the provider
+# answers, not what it says.
 PROBE_PROMPT = "Reply with exactly: pong"
 
 
 def get_client(request: Request) -> BackendClient:
-    """The one client, built in the lifespan.
-
-    A dependency rather than a module global so a test can override it, and so
-    nothing is tempted to construct a second one per request.
-    """
+    """The one client, built in the lifespan."""
     client: BackendClient = request.app.state.client
     return client
 
@@ -74,34 +53,20 @@ def get_chat_model(request: Request) -> BaseChatModel:
 
 @router.get("/healthz")
 async def healthz() -> dict[str, str]:
-    """Liveness. Deliberately answers without reaching the backend.
-
-    Kubelet has to be able to tell "this pod is broken" from "its dependency
-    is". Only the first is fixed by a restart.
-    """
     return {"status": "ok"}
 
 
 @router.get("/readyz")
 async def readyz(request: Request) -> Response:
-    """Readiness. This one does check the backend.
-
-    The service can answer nothing useful without it, so a pod that cannot
-    reach it should leave the load balancer -- but stay running, because the
-    outage is not its fault and a restart will not mend it.
-    """
+    """Readiness."""
     client = get_client(request)
-    # describe_model reads configuration only. Readiness runs every ten seconds
-    # per pod, and a provider round trip on each would be a standing bill for
-    # information this endpoint is not being asked for -- /debug/llm is what
-    # tests whether the model actually answers.
+    # describe_model reads configuration only.
     llm = describe_model(get_settings_for(request))
 
     if await client.health():
         return JSONResponse({"status": "ok", "backend": "ok", "llm": llm})
-    # A JSONResponse rather than an HTTPException: raising would nest the body
-    # under "detail", and the shape a probe and an operator read should be the
-    # one the route documents.
+    # A JSONResponse rather than an HTTPException: raising would nest the body under "detail", and
+    # the shape a probe and an operator read should be the one the route documents.
     return JSONResponse(
         status_code=503,
         content={
@@ -115,11 +80,7 @@ async def readyz(request: Request) -> Response:
 
 @router.get("/debug/tools")
 async def list_tools(request: Request) -> list[dict[str, Any]]:
-    """Every tool, with the JSON schema a model would be shown.
-
-    The snapshot here is a placeholder: the schemas do not depend on it, and no
-    tool is called.
-    """
+    """Every tool, with the JSON schema a model would be shown."""
     client = get_client(request)
     return [
         {
@@ -133,15 +94,11 @@ async def list_tools(request: Request) -> list[dict[str, Any]]:
 
 @router.post("/debug/tool")
 async def invoke_tool(request: Request, body: ToolInvokeRequest) -> Any:
-    """Run one tool and return exactly what it returned.
-
-    Nothing is reshaped on the way out: the value here is seeing what the model
-    would see.
-    """
+    """Run one tool and return exactly what it returned."""
     client = get_client(request)
 
-    # Resolved first, so "latest" works here as it does everywhere else and so
-    # an unknown snapshot is a 404 rather than a puzzling empty result.
+    # Resolved first, so "latest" works here as it does everywhere else and so an unknown snapshot
+    # is a 404 rather than a puzzling empty result.
     try:
         snapshot_id = await client.resolve_snapshot(body.snapshot_id)
     except BackendNotFound as exc:
@@ -152,8 +109,8 @@ async def invoke_tool(request: Request, body: ToolInvokeRequest) -> Any:
     specs = {spec.name: spec for spec in build_tools(client, snapshot_id)}
     spec = specs.get(body.tool)
     if spec is None:
-        # The valid names are in the message: whoever is debugging has usually
-        # mistyped one, and a bare "unknown tool" makes them go and look.
+        # The valid names are in the message: whoever is debugging has usually mistyped one, and a
+        # bare "unknown tool" makes them go and look.
         raise HTTPException(
             status_code=400,
             detail=f"unknown tool {body.tool!r}; expected one of {sorted(specs)}",
@@ -169,11 +126,7 @@ async def invoke_tool(request: Request, body: ToolInvokeRequest) -> Any:
 
 
 async def _run(spec: ToolSpec, args: dict[str, Any]) -> Any:
-    """Await a tool, translating a backend failure into a status.
-
-    A 502 rather than a 500 for a backend error: the fault is upstream, and the
-    distinction is what tells you which service to go and look at.
-    """
+    """Await a tool, translating a backend failure into a status."""
     try:
         return await spec.fn(**args)
     except BackendNotFound as exc:
@@ -184,21 +137,7 @@ async def _run(spec: ToolSpec, args: dict[str, Any]) -> Any:
 
 @router.post("/debug/answer", response_model=AnswerResponse)
 async def debug_answer(request: Request, body: AnswerRequest) -> AnswerResponse:
-    """One turn through the whole pipeline. Nothing is persisted.
-
-    The same implementation `/api/chat/answer` serves -- see `api.answering`.
-    Two copies would drift, and the one that drifted would be this one, so the
-    route used to explain a wrong answer would stop describing the route that
-    produced it.
-
-    It stays mounted alongside its promoted twin rather than being replaced:
-    Phase 08 explains a bad answer from here, and a path that has been in
-    somebody's notes for two phases should not stop resolving.
-
-    Unlike /api/chat/answer this takes no slot from the turn limiter. It is a
-    debugging path driven by hand, and one that could be refused because readers
-    are busy is one that is unavailable exactly when it is wanted.
-    """
+    """One turn through the whole pipeline."""
     result = await answer_question(
         get_client(request),
         get_settings_for(request),
@@ -211,11 +150,7 @@ async def debug_answer(request: Request, body: AnswerRequest) -> AnswerResponse:
 
 @router.get("/debug/llm")
 async def debug_llm(request: Request) -> dict[str, Any]:
-    """One fixed prompt to the provider: the cheapest check that credentials work.
-
-    This is the first thing to reach for when the service misbehaves in a
-    cluster, before reading a log line, so it answers quickly or not at all.
-    """
+    """One fixed prompt to the provider: the cheapest check that credentials work."""
     settings = get_settings_for(request)
     model = get_chat_model(request)
 
@@ -223,14 +158,7 @@ async def debug_llm(request: Request) -> dict[str, Any]:
     try:
         reply = await asyncio.wait_for(model.ainvoke(PROBE_PROMPT), timeout=PROBE_TIMEOUT_SECONDS)
     except Exception as exc:
-        # Broad on purpose: every provider raises its own exception types, and
-        # this endpoint exists to report that the provider did not answer rather
-        # than to distinguish why.
-        #
-        # The detail is logged and *not* returned. Provider errors quote the
-        # request back, so they can carry prompt fragments and occasionally
-        # credentials -- the same reason Server.fail in the Go backend logs the
-        # error and answers with a generic one.
+        # Broad on purpose: every provider raises its own types.
         log.error(
             "llm probe failed",
             extra={"provider": settings.llm_provider, "model": settings.llm_model},

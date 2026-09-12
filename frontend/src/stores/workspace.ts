@@ -30,8 +30,9 @@ export const useWorkspace = defineStore('workspace', () => {
   const domains = ref<Domain[]>([])
   const tables = ref<TableSummary[]>([])
   const diagnostics = ref<Diagnostic[]>([])
-  /** Set once the reader has dismissed the "documents could not be parsed"
-   *  notice for the current snapshot. */
+  /**
+   * Set once the reader has dismissed the "documents could not be parsed" notice for the current…
+   */
   const parseFailuresAcknowledged = ref(false)
 
   // --- graph -------------------------------------------------------------
@@ -58,11 +59,7 @@ export const useWorkspace = defineStore('workspace', () => {
   const busy = ref(false)
 
   /**
-   * The banners hold what to say rather than the words for it, and resolve
-   * through the catalogue on read. Both can sit on screen indefinitely -- an
-   * error until it is dismissed, a status for as long as an ingest takes --
-   * so a string frozen at the moment it was set would survive a language
-   * change that everything around it had followed.
+   * The banners hold what to say rather than the words for it, and resolve through the catalogue on read.
    */
   const status = ref<{ key: 'status.parsing'; n: number } | { key: 'status.loading' } | null>(null)
   const statusMessage = computed(() => {
@@ -71,8 +68,9 @@ export const useWorkspace = defineStore('workspace', () => {
     return s.key === 'status.parsing' ? tn('status.parsing', s.n) : t('status.loading')
   })
 
-  /** A catalogue key where the frontend decided what went wrong, or the
-   *  server's own prose where it did not. Never both. */
+  /**
+   * A catalogue key where the frontend decided what went wrong, or the server's own prose where it…
+   */
   const errorKey = ref<MessageKey | null>(null)
   const errorParams = ref<Record<string, string | number> | undefined>(undefined)
   const errorDetail = ref<string | null>(null)
@@ -85,9 +83,7 @@ export const useWorkspace = defineStore('workspace', () => {
     errorParams.value = undefined
     errorDetail.value = null
   }
-  /** Set once the backend has answered 401. The app shows the token prompt
-   *  rather than an error banner: without a token there is nothing to read, so
-   *  a dismissible message would leave the reader stuck on an empty screen. */
+  /** Set once the backend has answered 401. */
   const authRequired = ref(false)
 
   const hasSnapshot = computed(() => snapshot.value !== null)
@@ -100,8 +96,9 @@ export const useWorkspace = defineStore('workspace', () => {
   /** Whether the Diagnostics panel has anything at all worth opening for. */
   const hasDiagnostics = computed(() => diagnostics.value.length > 0)
 
-  /** A dropped document is the one problem urgent enough to interrupt with:
-   *  the model is silently incomplete until it is fixed. */
+  /**
+   * A dropped document is the one problem urgent enough to interrupt with: the model is silently…
+   */
   const needsParseNotice = computed(
     () => parseFailures.value.length > 0 && !parseFailuresAcknowledged.value,
   )
@@ -199,8 +196,7 @@ export const useWorkspace = defineStore('workspace', () => {
     }
   }
 
-  /** Stores a token and retries the first call the app makes. Returns false if
-   *  the backend rejected it, which leaves authRequired set and the prompt up. */
+  /** Stores a token and retries the first call the app makes. */
   async function submitApiToken(token: string): Promise<boolean> {
     setApiToken(token)
     authRequired.value = false

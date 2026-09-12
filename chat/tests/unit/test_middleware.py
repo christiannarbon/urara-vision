@@ -1,12 +1,4 @@
-"""Request IDs and error mapping: what every response carries, and what it does
-not.
-
-Two things are load-bearing here. One ID has to span this service and the Go
-backend, or a bad answer cannot be traced across the three processes that
-produced it. And no upstream error text may reach a client: a provider error
-quotes the request back, so it can carry prompt fragments and occasionally the
-credential the call was made with.
-"""
+"""Request IDs and error mapping: what every response carries, and what it does"""
 
 import logging
 from typing import Any
@@ -38,8 +30,8 @@ from urara_chat.config import Settings
 
 BASE = "http://backend:8080"
 
-# The text a caller must never see, used as the message on every exception the
-# handlers below are asked to render.
+# The text a caller must never see, used as the message on every exception the handlers below are
+# asked to render.
 SECRET = "prompt fragment and AIza-shaped-credential"
 
 
@@ -63,8 +55,8 @@ def build_app(raises: Exception | None = None) -> FastAPI:
 
     @app.get("/ok")
     async def ok() -> dict[str, str]:
-        # Read from inside the handler: this is what every log line and every
-        # outbound call depends on.
+        # Read from inside the handler: this is what every log line and every outbound call
+        # depends on.
         return {"requestId": current_request_id()}
 
     @app.get("/boom")
@@ -91,8 +83,8 @@ class TestTheHeader:
 
         assert response.status_code == 200
         assert response.headers["x-request-id"]
-        # The same value the handler saw: a header that disagrees with the log
-        # lines is worse than no header.
+        # The same value the handler saw: a header that disagrees with the log lines is worse than
+        # no header.
         assert response.json()["requestId"] == response.headers["x-request-id"]
 
     def test_an_inbound_id_is_echoed_unchanged(self) -> None:
@@ -118,8 +110,7 @@ class TestSanitising:
     """An inbound ID is attacker-controlled and ends up in log lines."""
 
     def test_a_newline_is_stripped(self) -> None:
-        """The one that matters: a newline lets a caller forge a log entry that
-        a reader cannot tell from a real one."""
+        """The one that matters: a newline lets a caller forge a log entry that"""
         cleaned = sanitise_request_id('abc\n{"level":"error","msg":"forged"}')
 
         assert "\n" not in cleaned
@@ -134,8 +125,7 @@ class TestSanitising:
         assert len(sanitise_request_id("b" * 300)) == MAX_REQUEST_ID_LENGTH
 
     def test_an_id_that_survives_nothing_is_replaced(self) -> None:
-        """Empty is not an option: the request still needs an ID, and a caller
-        does not get to take it away."""
+        """Empty is not an option: the request still needs an ID, and a caller"""
         assert sanitise_request_id("\n\n\n")
         assert sanitise_request_id("")
         assert sanitise_request_id(None)
@@ -151,9 +141,7 @@ class TestSanitising:
 class TestTheIdReachesTheBackend:
     @respx.mock
     def test_the_outbound_call_carries_the_header(self) -> None:
-        """One ID across both services, which is the whole point of the header.
-        Without this the Go side mints its own and the two logs cannot be
-        joined."""
+        """One ID across both services, which is the whole point of the header."""
         route = respx.get(f"{BASE}/api/v1/snapshots/snap-1/domains").mock(
             return_value=httpx.Response(200, json={"domains": []})
         )
@@ -168,8 +156,7 @@ class TestTheIdReachesTheBackend:
 
     @respx.mock
     def test_the_readiness_check_carries_it_too(self) -> None:
-        """/readyz is the call you most want to trace: when it says the backend
-        is unreachable, the backend's own log is where the reason is."""
+        """/readyz is the call you most want to trace: when it says the backend"""
         route = respx.get(f"{BASE}/readyz").mock(return_value=httpx.Response(200))
         app = build_app()
         app.state.client = BackendClient(settings())
@@ -187,8 +174,7 @@ class TestTheIdReachesTheBackend:
 
     @respx.mock
     async def test_no_header_is_sent_outside_a_request(self) -> None:
-        """A tool driven from a script or a test is not in a request, and an
-        empty header would be worse than none."""
+        """A tool driven from a script or a test is not in a request, and an"""
         route = respx.get(f"{BASE}/api/v1/snapshots/snap-1/domains").mock(
             return_value=httpx.Response(200, json={"domains": []})
         )
@@ -219,9 +205,7 @@ class TestErrorMapping:
         assert SECRET not in response.text
 
     def test_a_refused_request_is_500_not_502(self) -> None:
-        """A 4xx from the backend is this service having built a bad request.
-        502 would blame the service that correctly refused it, and hide the bug
-        in the one that made it."""
+        """A 4xx from the backend is this service having built a bad request."""
         response = self.response_for(BackendRejected(400, SECRET))
 
         assert response.status_code == 500
@@ -229,10 +213,7 @@ class TestErrorMapping:
         assert SECRET not in response.text
 
     def test_a_broken_backend_response_is_500_not_the_callers_fault(self) -> None:
-        """A bare ValidationError is what the backend client raises when the Go
-        API answers with something these models reject. Reporting it as a 400
-        told a caller their perfect request was malformed, and named a field
-        they never sent."""
+        """A bare ValidationError is what the backend client raises when the Go"""
 
         class Conversation(BaseModel):
             id: str
@@ -253,8 +234,7 @@ class TestErrorMapping:
     def test_the_broken_response_fields_reach_the_log(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """Swallowed from the response, not from the diagnosis: the field list
-        is how a model drift against the backend gets found."""
+        """Swallowed from the response, not from the diagnosis: the field list"""
 
         class Conversation(BaseModel):
             id: str
@@ -274,8 +254,7 @@ class TestErrorMapping:
         assert record.request_id == "trace-err"  # type: ignore[attr-defined]
 
     def test_a_provider_failure_is_502_and_says_nothing(self) -> None:
-        """The reason this mapping exists: a provider error quotes the request
-        back, so its text can carry prompt fragments and credentials."""
+        """The reason this mapping exists: a provider error quotes the request"""
         response = self.response_for(ProviderError(SECRET))
 
         assert response.status_code == 502
@@ -295,8 +274,8 @@ class TestErrorMapping:
         assert response.json() == {"error": "internal error", "requestId": "trace-err"}
         assert SECRET not in response.text
         assert "Traceback" not in response.text
-        # The 500 is written above this middleware, so the header has to come
-        # from the handler itself.
+        # The 500 is written above this middleware, so the header has to come from the handler
+        # itself.
         assert response.headers["x-request-id"] == "trace-err"
 
     def test_a_validation_error_is_400_naming_the_field(self) -> None:
@@ -320,8 +299,7 @@ class TestErrorMapping:
 
 
 class TestProbesAreQuiet:
-    """At the periods the cluster sets, the probes are nine lines a minute per
-    pod -- enough to bury the per-turn cost line Phase 08 bills from."""
+    """At the periods the cluster sets, the probes are nine lines a minute per"""
 
     def lines(self, caplog: pytest.LogCaptureFixture, level: int) -> list[str]:
         return [r.path for r in caplog.records if r.msg == "request" and r.levelno == level]  # type: ignore[attr-defined]

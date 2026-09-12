@@ -1,11 +1,4 @@
-"""Wrapping the retrieval tools for LangChain.
-
-The conversion itself is thin. What matters is the error mapping: a model that
-guessed an ID wrong should be told which one and given the tool that fixes it,
-because a wrong guess mid-reasoning is normal operation. An unexpected error
-must still propagate -- turning a bug into a sentence the model apologises about
-means the answer still arrives, just quietly wrong.
-"""
+"""Wrapping the retrieval tools for LangChain."""
 
 import asyncio
 import json
@@ -22,8 +15,7 @@ from urara_chat.tools.registry import TOOL_NAMES, ToolSpec, build_tools
 
 
 class FakeClient:
-    """Enough of the client for build_tools; every method is unused unless a
-    test drives it."""
+    """Enough of the client for build_tools; every method is unused unless a"""
 
     async def list_domains(self, sid: str) -> list[Any]:
         return []
@@ -89,8 +81,7 @@ class TestTheConversion:
         assert all(isinstance(t, StructuredTool) for t in tools)
 
     def test_descriptions_survive_unchanged(self) -> None:
-        """The description is the only thing the model reads before choosing, so
-        a wrapper that reworded it would change which tool gets called."""
+        """The description is the only thing the model reads before choosing, so"""
         specs = build_tools(FakeClient(), "snap-1")  # type: ignore[arg-type]
         wrapped = {t.name: t for t in to_langchain_tools(specs)}
 
@@ -134,15 +125,13 @@ class TestTheConversion:
         assert awaited, "the coroutine was never awaited"
 
     def test_a_wrapped_tool_cannot_be_called_synchronously(self) -> None:
-        """Built with coroutine= and no func=, so a sync caller fails loudly
-        rather than silently doing nothing."""
+        """Built with coroutine= and no func=, so a sync caller fails loudly"""
         with pytest.raises(NotImplementedError):
             one_tool().invoke({"table_id": "d/t"})
 
 
 class TestRecoverableFailuresBecomeAdvice:
-    """Returned, not raised. A wrong guess mid-reasoning is normal operation;
-    a 500 to the reader because of one is not."""
+    """Returned, not raised."""
 
     async def test_not_found_names_the_id_and_the_tool_that_fixes_it(self) -> None:
         tool = one_tool(raises=BackendNotFound(404, "not found"))
@@ -177,8 +166,7 @@ class TestRecoverableFailuresBecomeAdvice:
         assert "the index is rebuilding" in message
 
     async def test_an_unreachable_backend_is_recoverable_too(self) -> None:
-        """BackendUnavailable subclasses BackendError, and neither is fixed by
-        ending the turn."""
+        """BackendUnavailable subclasses BackendError, and neither is fixed by"""
         tool = one_tool(raises=BackendUnavailable(502, "backend unreachable: refused"))
 
         message = await tool.ainvoke({"table_id": "d/t"})
@@ -195,8 +183,7 @@ class TestRecoverableFailuresBecomeAdvice:
         assert "narrower" in message
 
     async def test_asyncio_timeout_is_the_same_exception(self) -> None:
-        """From 3.11 asyncio.TimeoutError is an alias of the builtin, so one
-        except clause covers both."""
+        """From 3.11 asyncio.TimeoutError is an alias of the builtin, so one"""
         assert asyncio.TimeoutError is TimeoutError
 
         tool = one_tool(raises=TimeoutError())
@@ -204,8 +191,7 @@ class TestRecoverableFailuresBecomeAdvice:
 
 
 class TestUnexpectedErrorsPropagate:
-    """An unexpected error is a bug. Turning it into a sentence the model
-    apologises about means the answer still arrives, just quietly wrong."""
+    """An unexpected error is a bug."""
 
     async def test_a_value_error_is_not_swallowed(self) -> None:
         tool = one_tool(raises=ValueError("a real bug"))
@@ -235,8 +221,7 @@ class TestLogging:
     async def test_a_returned_error_is_marked_in_the_log(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """A tool that answered with advice looks like a success from the
-        outside, so the log is the only place the difference survives."""
+        """A tool that answered with advice looks like a success from the"""
         tool = one_tool(raises=BackendNotFound(404, "nope"))
 
         with caplog.at_level(logging.DEBUG, logger="urara_chat.tools.langchain"):

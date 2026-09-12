@@ -1,28 +1,8 @@
-/**
- * Per-domain colours for the graph's cluster hulls.
- *
- * A domain's colour comes from its position in the snapshot's domain list
- * rather than from a hash of its name, so the colours stay distinct and a
- * domain keeps the same one as filters come and go. Every colour is defined at
- * two lightnesses, picked by how light the canvas underneath happens to be --
- * see canvasTheme.
- *
- * There are two families. Most themes take the wheel: twelve hues spread right
- * around it. Haru Urara does not -- her clusters are sakura petals, and a petal
- * that comes out teal or olive is not a petal, so that theme draws from a pink
- * band instead. See SAKURA.
- */
+/** Per-domain colours for the graph's cluster hulls. */
 
 export type Theme = 'light' | 'dark'
 
-/**
- * Which treatment a hull needs, judged from the canvas it will be drawn on.
- *
- * The app is light-mode only, but that says nothing about how light the canvas
- * is: Matisse paints it a deep salmon, and hulls tuned for white paper
- * disappear into it. Reading the surface directly keeps the hulls legible on
- * whatever the theme happens to supply.
- */
+/** Which treatment a hull needs, judged from the canvas it will be drawn on. */
 export function canvasTheme(background: string): Theme {
   return relativeLuminance(background) < 0.42 ? 'dark' : 'light'
 }
@@ -39,11 +19,7 @@ function relativeLuminance(hex: string): number {
   return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
 }
 
-/**
- * Which set of colours the domains are drawn from.
- *
- * 'sakura' is the pink band; 'wheel' is the full circle every other theme uses.
- */
+/** Which set of colours the domains are drawn from. */
 export type Family = 'wheel' | 'sakura'
 
 /** The theme that wears petals, and so the one that gets the pink band. */
@@ -64,17 +40,7 @@ interface Tone {
 /** Spaced around the wheel, skipping the near-yellow band that reads as a warning. */
 const HUES = [188, 265, 24, 142, 328, 205, 45, 286, 352, 168, 236, 96]
 
-/**
- * The sakura band: petal pink through rose and cherry to plum and wisteria.
- *
- * Every entry stays at the pink end of the wheel, so twelve of them cannot be
- * told apart by hue the way the wheel's twelve can. Each therefore carries its
- * own saturation and lightness as well, alternating vivid with dusty and pale
- * with deep -- that is what keeps two neighbouring petals readable as two
- * different domains without any of them leaving the palette.
- *
- * Lightness is the light-canvas value; the dark branch lifts it.
- */
+/** The sakura band: petal pink through rose and cherry to plum and wisteria. */
 const SAKURA: Tone[] = [
   { h: 340, s: 68, l: 47 }, // vivid rose -- the theme's own pink
   { h: 318, s: 46, l: 52 }, // orchid
@@ -98,12 +64,7 @@ function pct(v: number): number {
   return Math.max(0, Math.min(100, Math.round(v)))
 }
 
-/**
- * Fill, outline, caption and swatch for one sakura tone.
- *
- * `quiet` is the source treatment: the same colour held a step back, so an
- * upstream dataset does not compete with the domains around it.
- */
+/** Fill, outline, caption and swatch for one sakura tone. */
 function petalShade(t: Tone, theme: Theme, quiet = false): ClusterColor {
   // On a dark canvas a tone has to come up to meet it. Everything shifts
   // lighter together, so the four parts keep their relationship to each other.
@@ -155,13 +116,7 @@ export function domainColor(index: number, theme: Theme, family: Family = 'wheel
       }
 }
 
-/**
- * Upstream source models are not a domain; they get a neutral.
- *
- * Grey under the wheel. Under sakura a mauve so pale it is nearly grey: a cold
- * grey petal among the pink ones reads as a rendering fault rather than as a
- * deliberately quiet cluster.
- */
+/** Upstream source models are not a domain; they get a neutral. */
 export function sourceColor(theme: Theme, family: Family = 'wheel'): ClusterColor {
   if (family === 'sakura') return petalShade(SAKURA_SOURCE, theme, true)
   return theme === 'dark'

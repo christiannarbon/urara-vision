@@ -1,11 +1,4 @@
-/**
- * Reading a document's own languages.
- *
- * The rules are the backend's, implemented twice on purpose, so the cases the
- * format was specified with are pinned on this side too -- in both directions,
- * since a project that documents in Japanese reads them the other way round.
- * `backend/tests/unit/i18ntext` asserts the same table.
- */
+/** Reading a document's own languages. */
 
 import { afterEach, describe, expect, it } from 'vitest'
 
