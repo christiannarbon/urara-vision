@@ -19,21 +19,21 @@ from fastapi.testclient import TestClient
 
 import urara_chat.api.answering as answering
 from urara_chat.agent.pipeline import AgentAnswer
-from urara_chat.api.chat_routes import (
-    MAX_TITLE_RUNES,
-    title_from_question,
-)
-from urara_chat.api.chat_routes import (
-    router as chat_router,
-)
+from urara_chat.api.chat_routes import router as chat_router
 from urara_chat.api.errors import install_error_handlers
 from urara_chat.api.middleware import RequestIDMiddleware
+from urara_chat.api.titles import MAX_TITLE_RUNES, title_from_question
 from urara_chat.backend.errors import BackendError
 from urara_chat.backend.models import Conversation, Message
 from urara_chat.config import Settings
 
 FAKE_KEY = "test-key-shaped-value-0123456789abcdef"
 ELLIPSIS = "…"
+
+# Questions that survive clean_question -- they are not empty before stripping
+# -- and derive nothing at all.
+QUOTES_ONLY_ASCII = chr(34) * 3
+QUOTES_ONLY_CJK = chr(0x300C) + chr(0x300D)
 
 # Sixty runes of Japanese and then some: none of it ASCII, and every character
 # three bytes in UTF-8, so a byte-wise cut cannot help but land mid-character.
@@ -209,6 +209,30 @@ class TestSettingIt:
         turn(monkeypatch, fake, "What is fact_orders?")
 
         assert fake.titles == ["What is fact_orders?"]
+
+
+class TestAnEmptyTitleIsNotWritten:
+    """`clean_question` lets a question of nothing but quotes through -- it is
+    not empty before stripping -- and the derivation then returns "". Writing
+    that leaves the thread untitled anyway, so the check for an existing title
+    never becomes true and every later turn tries again."""
+
+    @pytest.mark.parametrize("question", [QUOTES_ONLY_ASCII, QUOTES_ONLY_CJK])
+    def test_nothing_is_written(self, question: str, monkeypatch: pytest.MonkeyPatch) -> None:
+        assert title_from_question(question) == "", "the test question derives a title"
+        fake = FakeClient()
+        response = turn(monkeypatch, fake, question)
+
+        assert response.status_code == 200
+        assert fake.titles == []
+        assert "patch" not in fake.calls
+
+    def test_the_turn_still_answers(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake = FakeClient()
+        response = turn(monkeypatch, fake, QUOTES_ONLY_ASCII)
+
+        assert response.json()["assistantMessage"]["content"]
+        assert fake.calls == ["get", "append:user", "append:assistant"]
 
 
 class TestAFailedTitleDoesNotFailTheTurn:
