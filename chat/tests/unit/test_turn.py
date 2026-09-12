@@ -13,6 +13,7 @@ Three things are load-bearing and each has a test that fails loudly if someone
   question appearing exactly once.
 """
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
@@ -215,6 +216,50 @@ class TestTheQuestionIsStoredFirst:
 
         assert response.status_code == 502
         assert response.json()["error"] != PROVIDER_FAILED
+
+
+class TestALostAnswerIsRecoverable:
+    """The turn must still fail -- telling the caller it worked would leave the
+    next fetch disagreeing with what they were told. But the answer is already
+    paid for, and losing it silently means the reader retries and pays again."""
+
+    def failing_append(self, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, FakeClient]:
+        class LosesTheAnswer(FakeClient):
+            async def append_message(
+                self,
+                cid: str,
+                role: str,
+                content: str,
+                citations: list[str] | None = None,
+                meta: dict[str, Any] | None = None,
+            ) -> Message:
+                stored = await super().append_message(cid, role, content, citations, meta)
+                if role == "assistant":
+                    raise BackendError(500, "messages table is on fire")
+                return stored
+
+        fake = LosesTheAnswer()
+        return turn(monkeypatch, fake, question="what is the grain?"), fake
+
+    def test_the_turn_fails(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        response, _ = self.failing_append(monkeypatch)
+        assert response.status_code == 502
+
+    def test_the_question_is_still_stored(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _, fake = self.failing_append(monkeypatch)
+        assert fake.appended[0]["role"] == "user"
+        assert fake.appended[0]["content"] == "what is the grain?"
+
+    def test_the_answer_reaches_the_log(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.ERROR, logger="urara_chat.api.chat_routes"):
+            self.failing_append(monkeypatch)
+
+        record = next(r for r in caplog.records if "could not be stored" in str(r.msg))
+        assert record.answer == "fact_orders is one row per order."  # type: ignore[attr-defined]
+        assert record.conversation_id == "conv-1"  # type: ignore[attr-defined]
+        assert record.usage == {"input_tokens": 900, "output_tokens": 120}  # type: ignore[attr-defined]
 
 
 class TestHistory:
