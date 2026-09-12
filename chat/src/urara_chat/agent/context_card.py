@@ -1,11 +1,4 @@
-"""The snapshot inventory that goes into the system prompt.
-
-This is what lets the agent answer most questions in one tool call instead of
-searching blindly: it can see the whole inventory before deciding where to look.
-
-Rendered as text rather than JSON. The punctuation is pure cost and it is paid
-on every turn, and a model reads a plain listing at least as well.
-"""
+"""The snapshot inventory that goes into the system prompt."""
 
 from __future__ import annotations
 
@@ -18,27 +11,21 @@ from dataclasses import dataclass
 from urara_chat.backend.client import BackendClient
 from urara_chat.backend.models import SnapshotContext
 
-# A domain description is a paragraph of orientation. One sentence of it is
-# enough to choose by, and the whole thing is one list_domains call away.
+# A domain description is a paragraph of orientation. One sentence of it is enough to choose by,
+# and the whole thing is one list_domains call away.
 _MAX_DOMAIN_SUMMARY = 160
 
-# An empty grain renders as this rather than as nothing, which would leave the
-# column blank and the row misaligned against its neighbours.
+# An empty grain renders as this rather than as nothing, which would leave the column blank and
+# the row misaligned against its neighbours.
 _NO_GRAIN = "—"
 
-# Snapshots a single pod is likely to be asked about at once. Bounded so a
-# long-running pod that has seen many of them does not grow without limit.
+# Snapshots a single pod is likely to be asked about at once. Bounded so a long-running pod that
+# has seen many of them does not grow without limit.
 MAX_CACHED_CARDS = 32
 
 
 def render_context_card(ctx: SnapshotContext) -> str:
-    """The whole snapshot as a compact inventory for the system prompt.
-
-    Text rather than JSON: the punctuation is pure cost, and this is paid for
-    on every turn. It is an inventory, not a description -- the prompt says
-    so, because a model given names and grains will otherwise narrate what it
-    imagines the tables contain.
-    """
+    """The whole snapshot as a compact inventory for the system prompt."""
     lines: list[str] = [*_header(ctx), "", *_domains(ctx), "", *_tables(ctx)]
     return "\n".join(lines).strip() + "\n"
 
@@ -54,8 +41,8 @@ def _header(ctx: SnapshotContext) -> list[str]:
     i18n = ctx.snapshot.project.internationalization
     others = [lang for lang in i18n.supported if lang != i18n.primary]
     if others:
-        # Omitted entirely for a single-language project: a line saying there is
-        # one language tells the model nothing it can act on.
+        # Omitted entirely for a single-language project: a line saying there is one language
+        # tells the model nothing it can act on.
         lines.append(f"LANGUAGES: primary {i18n.primary}, also {', '.join(others)}")
 
     lines.append(f"COUNTS: {_counts(ctx)}")
@@ -73,8 +60,7 @@ def _counts(ctx: SnapshotContext) -> str:
 
     total = sum(ctx.diagnostics.values())
     if total:
-        # Named in severity order rather than the map's, so the number that
-        # matters is first.
+        # Named in severity order rather than the map's, so the number that matters is first.
         breakdown = ", ".join(
             f"{ctx.diagnostics.get(level, 0)} {level}"
             for level in ("error", "warning", "info")
@@ -87,9 +73,7 @@ def _counts(ctx: SnapshotContext) -> str:
 def _domains(ctx: SnapshotContext) -> list[str]:
     lines = ["DOMAINS"]
     for domain in ctx.domains:
-        # A domain with no tables is marked rather than dropped. The demo sets
-        # contain one, and it is a real finding about the documentation rather
-        # than an absence worth hiding.
+        # A domain with no tables is marked rather than dropped.
         detail = (
             "(no tables documented)" if not domain.table_count else _summarise(domain.description)
         )
@@ -109,8 +93,8 @@ def _summarise(text: str) -> str:
 
 def _tables(ctx: SnapshotContext) -> list[str]:
     if ctx.truncated:
-        # Saying nothing would leave the model believing the model has no
-        # tables, and it would answer confidently on that basis.
+        # Saying nothing would leave the model believing the model has no tables, and it would
+        # answer confidently on that basis.
         return [
             f"TABLES: {ctx.snapshot.stats.tables} tables, too many to list here. "
             "Use search_model to find them by name or description, then get_tables "
@@ -128,29 +112,16 @@ def _tables(ctx: SnapshotContext) -> list[str]:
 
 @dataclass
 class _Entry:
-    """One snapshot's slot in the cache.
-
-    The lock lives here rather than in a dict beside the cards, so one LRU bound
-    governs both. Until 04.R the locks were a separate dict pruned only when a
-    card was evicted, which meant a failed fetch or an expired card left its
-    lock behind forever -- 500 failing fetches left 500 locks and no cards.
-    """
+    """One snapshot's slot in the cache."""
 
     lock: asyncio.Lock
-    # Empty until a fetch succeeds, and emptied again when the TTL passes. The
-    # slot itself survives expiry so the lock stays with it and the LRU ceiling
-    # keeps governing.
+    # Empty until a fetch succeeds, and emptied again when the TTL passes.
     card: str | None = None
     expires_at: float = 0.0
 
 
 class ContextCardCache:
-    """Rendered cards, by snapshot ID.
-
-    A snapshot is immutable once ingested, so refetching it every turn is
-    pure latency. Keyed by concrete snapshot ID -- never by "latest", which
-    is not a snapshot but a question about which one is newest.
-    """
+    """Rendered cards, by snapshot ID."""
 
     def __init__(
         self,
@@ -168,9 +139,8 @@ class ContextCardCache:
     async def get(self, client: BackendClient, snapshot_id: str) -> str:
         """The card for a snapshot, fetching and rendering on a miss."""
         if snapshot_id == "latest":
-            # By the time this is called the ID is resolved. Caching under the
-            # alias would serve a stale model after a re-ingest, and the reader
-            # would never know the answer was about the wrong snapshot.
+            # By the time this is called the ID is resolved. Caching under the alias would
+            # serve a stale model after a re-ingest, silently.
             raise ValueError(
                 "ContextCardCache requires a concrete snapshot ID, not 'latest'; resolve it first"
             )
@@ -180,12 +150,11 @@ class ContextCardCache:
         if cached is not None:
             return cached
 
-        # One lock per snapshot rather than one for the cache: two turns on
-        # different snapshots have no reason to wait for each other's fetch, and
-        # the fetch is the slow part.
+        # One lock per snapshot rather than one for the cache: two turns on different snapshots
+        # have no reason to wait for each other's fetch, and the fetch is the slow part.
         async with entry.lock:
-            # Checked again inside the lock: two turns starting together on a
-            # cold cache should cost one fetch, not two.
+            # Checked again inside the lock: two turns starting together on a cold cache should
+            # cost one fetch, not two.
             cached = self._live(entry)
             if cached is not None:
                 return cached
@@ -196,12 +165,7 @@ class ContextCardCache:
             return card
 
     def _slot(self, snapshot_id: str) -> _Entry:
-        """This snapshot's entry, creating and making room for it if new.
-
-        Creating one for a snapshot whose fetch then fails is deliberate: the
-        slot is what bounds the lock, and an empty slot costs a few bytes and
-        is evicted like any other.
-        """
+        """This snapshot's entry, creating and making room for it if new."""
         entry = self._cards.get(snapshot_id)
         if entry is None:
             entry = _Entry(lock=asyncio.Lock())
@@ -215,8 +179,8 @@ class ContextCardCache:
         if entry.card is None:
             return None
         if self._clock() >= entry.expires_at:
-            # The card goes, the slot stays. Dropping the slot would drop the
-            # lock with it, and a concurrent waiter is holding that lock.
+            # The card goes, the slot stays. Dropping the slot would drop the lock with it, and a
+            # concurrent waiter is holding that lock.
             entry.card = None
             return None
         return entry.card
