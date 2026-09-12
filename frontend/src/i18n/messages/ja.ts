@@ -98,6 +98,9 @@ export const messages: Messages = {
     'バックエンドに接続できません。API が起動していて到達可能か確認してください。',
   'error.tokenRejected': 'この API にはトークンが必要ですが、指定されたトークンは受け付けられませんでした。',
   'error.requestFailed': 'リクエストが失敗しました（ステータス {status}）。',
+  'error.chatUnreachable':
+    'チャットサービスに接続できません。起動していて到達可能か確認してください。',
+  'error.chatBusy': '同時に処理できる質問数を超えました。少し待ってからもう一度お試しください。',
 
   // The role vocabulary
   'role.fact': 'ファクト',
