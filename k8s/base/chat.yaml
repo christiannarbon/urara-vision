@@ -25,6 +25,9 @@ metadata:
   labels:
     app.kubernetes.io/name: chat
     app.kubernetes.io/component: chat
+# The service calls no Kubernetes API. Workload Identity is unaffected: its
+# token comes from the metadata server, not this volume.
+automountServiceAccountToken: false
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -50,6 +53,8 @@ spec:
         app.kubernetes.io/component: chat
     spec:
       serviceAccountName: chat
+      # Must exceed ANSWER_TIMEOUT_SECONDS, or a rollout kills a turn mid-answer.
+      terminationGracePeriodSeconds: 150
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -115,10 +120,9 @@ spec:
               cpu: 100m
               memory: 256Mi
             limits:
-              # Higher than the backend's 512Mi: an interpreter with LangChain
-              # imported has a much larger resident set than the Go binary, and
-              # the backend's ceiling would OOM it.
-              memory: 768Mi
+              # 105Mi measured peak at MAX_CONCURRENT_TURNS=4; the rest is
+              # headroom for a larger corpus.
+              memory: 512Mi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -132,10 +136,14 @@ metadata:
 data:
   APP_ADDR: ":8090"
   BACKEND_BASE_URL: "http://backend:8080"
+  BACKEND_TIMEOUT_SECONDS: "30"
   LOG_LEVEL: "info"
   # Vertex authenticates with ADC, so no key belongs here or in any secret.
   LLM_PROVIDER: "vertex"
   LLM_MODEL: "gemini-2.5-flash"
+  LLM_TEMPERATURE: "0.2"
+  LLM_MAX_OUTPUT_TOKENS: "2048"
+  LLM_TIMEOUT_SECONDS: "60"
   # Set per overlay; the pod refuses to start without it.
   VERTEX_PROJECT: ""
   VERTEX_LOCATION: "us-central1"
@@ -143,6 +151,10 @@ data:
   MAX_HISTORY_MESSAGES: "20"
   MAX_CONCURRENT_TURNS: "4"
   MAX_QUESTION_CHARS: "4000"
+  MAX_REQUEST_BYTES: "1048576"
+  TURN_ADMISSION_WAIT_SECONDS: "0.5"
+  # Bounded by terminationGracePeriodSeconds above.
+  ANSWER_TIMEOUT_SECONDS: "120"
   CONTEXT_CACHE_TTL_SECONDS: "300"
 ---
 apiVersion: policy/v1
