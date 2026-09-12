@@ -21,11 +21,15 @@ and mapped by the handlers installed in `api.errors`.
 from __future__ import annotations
 
 import logging
-from dataclasses import asdict
 
 from fastapi import APIRouter, Query, Request
 
-from urara_chat.api.answering import answer_question, clean_question, run_pipeline
+from urara_chat.api.answering import (
+    answer_question,
+    clean_question,
+    run_pipeline,
+    to_response,
+)
 from urara_chat.api.locks import ConversationLocks, TurnLimiter
 from urara_chat.api.middleware import current_request_id
 from urara_chat.api.routes import get_client, get_settings_for
@@ -39,27 +43,14 @@ from urara_chat.api.schemas import (
     TurnRequest,
     TurnResponse,
 )
+from urara_chat.api.titles import title_from_question
 from urara_chat.backend.client import BackendClient
+from urara_chat.backend.errors import BackendError
 from urara_chat.backend.models import Conversation, Message
 from urara_chat.config import Settings
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 log = logging.getLogger(__name__)
-
-# How long a derived title may be. Counted in runes: a Japanese question cut at
-# 60 *bytes* lands mid-character and renders as mojibake in the one place the
-# reader looks to tell two conversations apart.
-MAX_TITLE_RUNES = 60
-
-# How far back to look for a word boundary before giving up and cutting hard.
-# Wide enough to save most English questions from ending mid-word, narrow enough
-# that a title never loses a quarter of itself to the search.
-TITLE_BOUNDARY_WINDOW = 15
-
-# Quotes a pasted question tends to arrive wrapped in, in the scripts this
-# service is asked about. Stripped from both ends so a title does not open with
-# a mark that never closes.
-_QUOTES = "\"'\u201c\u201d\u2018\u2019\u300c\u300d\u300e\u300f"
 
 
 def get_locks(request: Request) -> ConversationLocks:
@@ -109,6 +100,11 @@ async def list_conversations(
         min_length=1,
         description="Snapshot to list threads for. 'latest' is accepted.",
     ),
+    limit: int | None = Query(
+        default=None,
+        ge=1,
+        description="How many threads to return. The backend defaults and caps it.",
+    ),
 ) -> dict[str, list[Conversation]]:
     """Threads about one snapshot, newest first and without their transcripts.
 
@@ -116,7 +112,7 @@ async def list_conversations(
     empty `?snapshot=` would otherwise be forwarded, refused there, and reach
     the caller as a 502 blaming the backend for their own missing parameter.
     """
-    return {"conversations": await get_client(request).list_conversations(snapshot)}
+    return {"conversations": await get_client(request).list_conversations(snapshot, limit)}
 
 
 @router.get("/conversations/{cid}", response_model=ConversationResponse)
@@ -156,9 +152,7 @@ async def answer_once(request: Request, body: AnswerRequest) -> AnswerResponse:
             body.question,
             body.language,
         )
-    # asdict() gives the dataclass's own field names; the schema carries the
-    # camelCase wire names and populate_by_name lets it be built from either.
-    return AnswerResponse(**asdict(result))
+    return to_response(result)
 
 
 @router.post("/conversations/{cid}/turn", response_model=TurnResponse)
@@ -216,22 +210,39 @@ async def _run_turn(
 
     result = await run_pipeline(question, conversation.snapshot_id, history, language, settings)
 
-    assistant_message = await client.append_message(
-        cid,
-        "assistant",
-        result.text,
-        citations=result.citations,
-        # What the turn cost and what it did. Phase 08 bills from these, and a
-        # stored turn that cannot say what it spent cannot be costed later.
-        meta={
-            "model": result.model,
-            "usage": result.usage,
-            "toolCalls": result.tool_calls,
-            "iterations": result.iterations,
-            "latencyMs": result.latency_ms,
-            "truncated": result.truncated,
-        },
-    )
+    try:
+        assistant_message = await client.append_message(
+            cid,
+            "assistant",
+            result.text,
+            citations=result.citations,
+            # What the turn cost and what it did. Phase 08 bills from these, and
+            # a stored turn that cannot say what it spent cannot be costed later.
+            meta={
+                "model": result.model,
+                "usage": result.usage,
+                "toolCalls": result.tool_calls,
+                "iterations": result.iterations,
+                "latencyMs": result.latency_ms,
+                "truncated": result.truncated,
+            },
+        )
+    except BackendError:
+        # The turn still fails -- telling the caller it worked would leave the
+        # next fetch of this conversation disagreeing with what they were told.
+        # But the answer is already paid for, in latency and in tokens, and
+        # losing it silently means the reader retries and pays again. It goes to
+        # the log so somebody can at least be given the answer.
+        log.error(
+            "the answer could not be stored",
+            extra={
+                "request_id": current_request_id(),
+                "conversation_id": cid,
+                "answer": result.text,
+                "usage": result.usage,
+            },
+        )
+        raise
 
     # After the assistant message is stored, so a title never exists for a turn
     # that produced nothing.
@@ -253,36 +264,6 @@ def _message(stored: Message) -> MessageResponse:
     return MessageResponse.model_validate(stored, from_attributes=True)
 
 
-def title_from_question(question: str) -> str:
-    """A conversation title derived from its first question.
-
-    The model is deliberately not asked to write one. That is a second provider
-    call, paid for on every new thread, for a string nobody reads closely -- and
-    the question itself is already the most accurate summary of the question.
-
-    Truncation is by rune throughout. `str` indexes codepoints in Python, so
-    slicing and `rfind` here are both safe for text that is not ASCII; the byte
-    length of the result is nobody's business but the database's.
-
-    A word boundary is used only when one falls within the last few runes. A
-    language that does not put spaces between words has no boundary to find, and
-    hunting further back for one would throw away half a Japanese title to end
-    it at the only space in the sentence.
-    """
-    # Collapsed first: a question pasted across three lines would otherwise
-    # carry its newlines into a list row and break the layout.
-    collapsed = " ".join(question.split()).strip(_QUOTES).strip()
-
-    if len(collapsed) <= MAX_TITLE_RUNES:
-        return collapsed
-
-    head = collapsed[:MAX_TITLE_RUNES]
-    boundary = head.rfind(" ")
-    if boundary >= MAX_TITLE_RUNES - TITLE_BOUNDARY_WINDOW:
-        head = head[:boundary]
-    return head.rstrip() + "\u2026"
-
-
 async def _set_title_once(client: BackendClient, conversation: Conversation, question: str) -> None:
     """Title a thread from its first question, if it has none.
 
@@ -297,8 +278,17 @@ async def _set_title_once(client: BackendClient, conversation: Conversation, que
     """
     if conversation.title.strip():
         return
+
+    title = title_from_question(question)
+    if not title:
+        # Nothing to title it with -- a question of nothing but quotes derives
+        # an empty string. Writing that would leave the thread untitled anyway,
+        # and the check above would send us back here on every turn for the life
+        # of the conversation.
+        return
+
     try:
-        await client.set_conversation_title(conversation.id, title_from_question(question))
+        await client.set_conversation_title(conversation.id, title)
     except Exception as exc:
         log.warning(
             "could not set the conversation title",
