@@ -48,12 +48,16 @@ spec:
             - name: http
               containerPort: 80
           env:
-            # nginx templates its upstream from these, so the same image works
+            # nginx templates its upstreams from these, so the same image works
             # under compose and in-cluster.
             - name: BACKEND_HOST
               value: "backend"
             - name: BACKEND_PORT
               value: "8080"
+            - name: CHAT_HOST
+              value: "chat"
+            - name: CHAT_PORT
+              value: "8090"
             # The credential nginx presents when it proxies /api. Empty here
             # so the app prompts for a token like any other deployment; the
             # dev overlay fills it in from the API secret, which is what keeps
