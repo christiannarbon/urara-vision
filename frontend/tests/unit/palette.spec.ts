@@ -18,8 +18,8 @@ describe('canvasTheme', () => {
   })
 
   it('judges by luminance, not by the theme being light-mode', () => {
-    // The point of the function: a deep salmon canvas is a light-mode theme but
-    // needs the dark treatment, or hulls tuned for white paper vanish into it.
+    // The point of the function: a deep salmon canvas is a light-mode theme but needs the dark
+    // treatment, or hulls tuned for white paper vanish into it.
     expect(canvasTheme('#7a2e28')).toBe('dark')
     expect(canvasTheme('#f7e6e2')).toBe('light')
   })
@@ -30,8 +30,8 @@ describe('canvasTheme', () => {
   })
 
   it('treats an unparseable colour as light rather than throwing', () => {
-    // An unknown value means the theme changed shape; a wrong-but-legible
-    // default beats a blank canvas.
+    // An unknown value means the theme changed shape; a wrong-but-legible default beats a blank
+    // canvas.
     for (const bad of ['', 'rebeccapurple', 'rgb(0,0,0)', '#fff', '#12345g']) {
       expect(canvasTheme(bad)).toBe('light')
     }
@@ -86,8 +86,8 @@ describe('domainColor', () => {
   })
 
   it('wraps past the end of the palette instead of running out', () => {
-    // There are 12 hues; slot 12 reuses the first rather than returning
-    // undefined and painting a cluster black.
+    // There are 12 hues; slot 12 reuses the first rather than returning undefined and painting a
+    // cluster black.
     expect(domainColor(12, 'light')).toEqual(domainColor(0, 'light'))
     expect(domainColor(25, 'dark')).toEqual(domainColor(1, 'dark'))
   })
@@ -105,8 +105,7 @@ describe('domainColor', () => {
 
 describe('sourceColor', () => {
   it('is a neutral grey, not a domain hue', () => {
-    // Upstream models are not a subject area, and giving them a hue would read
-    // as one more domain.
+    // Upstream models are not a subject area, and giving them a hue would read as one more domain.
     const grey = sourceColor('light')
     for (let i = 0; i < 12; i++) {
       expect(domainColor(i, 'light').swatch).not.toBe(grey.swatch)
@@ -141,8 +140,8 @@ describe('the sakura family', () => {
   }
 
   it('keeps every domain inside the pink band', () => {
-    // The whole point: a cluster in this theme is drawn as a sakura petal, and
-    // a teal or olive petal is not a petal.
+    // The whole point: a cluster in this theme is drawn as a sakura petal, and a teal or olive
+    // petal is not a petal.
     for (const theme of ['light', 'dark'] as const) {
       for (let i = 0; i < 12; i++) {
         const c = domainColor(i, theme, 'sakura')
@@ -160,8 +159,8 @@ describe('the sakura family', () => {
   })
 
   it('still tells twelve domains apart', () => {
-    // Hue alone cannot do it inside one band, so the tones vary in saturation
-    // and lightness too; this is the assertion that holds them to it.
+    // Hue alone cannot do it inside one band, so the tones vary in saturation and lightness too;
+    // this is the assertion that holds them to it.
     const swatches = new Set<string>()
     for (let i = 0; i < 12; i++) swatches.add(domainColor(i, 'light', 'sakura').swatch)
     expect(swatches.size).toBe(12)
@@ -197,8 +196,7 @@ describe('the sakura family', () => {
   it('gives sources a pink-side neutral that is still not a domain', () => {
     const neutral = sourceColor('light', 'sakura')
     expect(outsidePink(hue(neutral.swatch))).toBe(false)
-    // Nearly grey, so it reads as the quiet cluster it is rather than a
-    // thirteenth domain.
+    // Nearly grey, so it reads as the quiet cluster it is rather than a thirteenth domain.
     const sat = Number(/,\s*([\d.]+)%,/.exec(neutral.swatch)![1])
     expect(sat).toBeLessThan(20)
     for (let i = 0; i < 12; i++) {

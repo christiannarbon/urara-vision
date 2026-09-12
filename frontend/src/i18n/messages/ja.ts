@@ -1,6 +1,4 @@
-/** Japanese. Typed as `Messages`, so a missing key is a compile error. The
- *  `.one` entries are never read -- Japanese does not mark plural -- but the
- *  key set is shared. */
+/** Japanese. Typed as `Messages`, so a missing key is a compile error. */
 
 import type { Messages } from './en'
 
