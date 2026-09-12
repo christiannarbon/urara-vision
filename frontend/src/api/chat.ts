@@ -46,7 +46,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(
       'Cannot reach the chat service. Check that it is running and reachable.',
       0,
-      'error.chatUnreachable',
+      'chat.error.unavailable',
     )
   }
 
@@ -68,7 +68,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       throw new ApiError(
         detail || 'Too many questions are being answered at once.',
         429,
-        'error.chatBusy',
+        'chat.error.busy',
       )
     }
 
