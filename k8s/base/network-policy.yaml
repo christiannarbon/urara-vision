@@ -1,5 +1,15 @@
-# The datastores accept traffic only from the backend; the backend only from
-# the frontend. Ingress reaches the frontend directly.
+# The datastores accept traffic only from the backend. The backend accepts it
+# from the frontend and from chat; chat accepts it only from the frontend.
+# Ingress reaches the frontend directly.
+#
+# Chat deliberately has no path to either datastore: it reads and writes
+# everything through the backend's API, which is what keeps the graph
+# projection's invariants in one place and keeps a prompt injection unable to
+# reach a database session.
+#
+# These are ingress-only policies -- nothing here restricts egress, which is why
+# chat's outbound call to the Gemini endpoint needs no rule. If a default-deny
+# egress policy is ever added, chat will need 443 to the provider plus DNS.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -39,11 +49,34 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: backend-allow-frontend
+  name: backend-allow-frontend-chat
 spec:
   podSelector:
     matchLabels:
       app.kubernetes.io/name: backend
+  policyTypes: ["Ingress"]
+  ingress:
+    # Two entries, not two labels in one selector: list items are ORed, while
+    # selectors within an item are ANDed and would match neither pod.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: frontend
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: chat
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: chat-allow-frontend
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: chat
   policyTypes: ["Ingress"]
   ingress:
     - from:
@@ -52,4 +85,4 @@ spec:
               app.kubernetes.io/name: frontend
       ports:
         - protocol: TCP
-          port: 8080
+          port: 8090
