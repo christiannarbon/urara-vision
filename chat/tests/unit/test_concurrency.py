@@ -1,15 +1,4 @@
-"""Turns under concurrency: what serialises, what runs in parallel, what is
-refused.
-
-The assertion that carries the task is the first one. Two turns racing on one
-conversation each read the history, then each append, and the transcript comes
-out question, question, answer, answer -- a thread that reads as nonsense, made
-of four rows the store considers perfectly valid.
-
-Everything here drives the app through a real ASGI transport rather than
-TestClient, because TestClient is synchronous and cannot have two requests in
-flight at once, which is the only interesting state.
-"""
+"""Turns under concurrency: what serialises, what runs in parallel, what is"""
 
 import asyncio
 from typing import Any
@@ -30,8 +19,8 @@ from urara_chat.config import Settings
 FAKE_KEY = "test-key-shaped-value-0123456789abcdef"
 SNAPSHOT = "real-snapshot-id"
 
-# Long enough that a second request definitely arrives while the first is still
-# in the pipeline, short enough not to slow the suite down.
+# Long enough that a second request definitely arrives while the first is still in the pipeline,
+# short enough not to slow the suite down.
 TURN_SECONDS = 0.05
 
 
@@ -41,8 +30,7 @@ def settings(**over: Any) -> Settings:
 
 
 class FakeBackend:
-    """A transcript store with the one property that matters: append assigns
-    the ordinal, exactly as the database does."""
+    """A transcript store with the one property that matters: append assigns"""
 
     def __init__(self) -> None:
         self.threads: dict[str, list[Message]] = {}
@@ -51,8 +39,7 @@ class FakeBackend:
         return Conversation(
             id=cid,
             snapshot_id=SNAPSHOT,
-            # A copy: the route must not be able to mutate the store by holding
-            # what it read.
+            # A copy: the route must not be able to mutate the store by holding what it read.
             messages=list(self.threads.get(cid, [])),
         )
 
@@ -119,8 +106,8 @@ def build_app(
     app.include_router(chat_router)
     app.state.client = backend
     app.state.settings = config or settings()
-    # Held by the test as well as the app, so what the route did to it can be
-    # asserted on directly.
+    # Held by the test as well as the app, so what the route did to it can be asserted on
+    # directly.
     locks = ConversationLocks()
     app.state.conversation_locks = locks
     return app, locks
@@ -152,9 +139,7 @@ class TestOneConversationSerialises:
         )
 
     async def test_the_transcript_alternates(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """The whole point. Without the lock this comes back as
-        user, user, assistant, assistant -- four valid rows that read as
-        nonsense."""
+        """The whole point."""
         backend, pipeline = FakeBackend(), SlowPipeline()
         app, _ = build_app(backend, pipeline, monkeypatch)
 
@@ -171,8 +156,7 @@ class TestOneConversationSerialises:
     async def test_the_second_turn_sees_the_first_in_its_history(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Serialising is not only about ordering: the turn that waited should
-        be answering with the exchange it waited for."""
+        """Serialising is not only about ordering: the turn that waited should"""
         backend, pipeline = FakeBackend(), SlowPipeline()
         app, _ = build_app(backend, pipeline, monkeypatch)
 
@@ -185,8 +169,7 @@ class TestOneConversationSerialises:
 
 class TestDifferentConversationsRunInParallel:
     async def test_two_threads_overlap(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Serialising per conversation, not globally: one reader's slow turn
-        must not hold up another's."""
+        """Serialising per conversation, not globally: one reader's slow turn"""
         backend, pipeline = FakeBackend(), SlowPipeline()
         app, _ = build_app(backend, pipeline, monkeypatch)
 
@@ -218,8 +201,7 @@ class TestTheCap:
         assert pipeline.calls == 1
 
     async def test_a_refused_turn_stores_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """A 429 must not leave half a turn behind. The question is stored
-        inside the hold, so a turn that never got a slot never wrote one."""
+        """A 429 must not leave half a turn behind."""
         backend, pipeline = FakeBackend(), SlowPipeline(seconds=1.0)
         app, _ = build_app(backend, pipeline, monkeypatch, settings(max_concurrent_turns=1))
 
@@ -236,8 +218,7 @@ class TestTheCap:
     async def test_the_configured_wait_reaches_the_limiter(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A shorter wait refuses sooner. Were the setting not read, this would
-        sit for the 0.5s default before answering."""
+        """A shorter wait refuses sooner."""
         backend, pipeline = FakeBackend(), SlowPipeline(seconds=1.0)
         app, _ = build_app(
             backend,
@@ -260,9 +241,7 @@ class TestTheCap:
     async def test_a_tiny_wait_still_admits_a_free_slot(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The footgun the settings validator exists for. A wait small enough to
-        look like zero must still let an uncontended turn through -- at exactly
-        zero, wait_for would refuse this one too."""
+        """The footgun the settings validator exists for."""
         backend, pipeline = FakeBackend(), SlowPipeline()
         app, _ = build_app(
             backend,
@@ -279,25 +258,14 @@ class TestTheCap:
     async def test_the_slot_is_taken_before_the_conversation_lock(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The ordering the task insists on, asserted by what it leaves behind.
-
-        With the cap full, a turn on a second conversation is refused without
-        ever registering a lock for it. Taking the lock first would leave one
-        there -- and, worse, would let a turn hold a conversation while queueing
-        for a slot, blocking the next turn on that thread behind one that is not
-        running.
-        """
+        """The ordering the task insists on, asserted by what it leaves behind."""
         backend, pipeline = FakeBackend(), SlowPipeline(seconds=1.0)
         app, locks = build_app(backend, pipeline, monkeypatch, settings(max_concurrent_turns=1))
 
         async with http(app) as client:
             running = asyncio.create_task(ask(client, "conv-1", "one"))
             await asyncio.sleep(0.05)
-            # Left in flight: it waits for a slot, and is refused when none
-            # comes. The lock it would wrongly be holding is only visible
-            # *while* it waits, which is why this is sampled mid-flight rather
-            # than after the response -- the hold is released on the way out,
-            # and a check afterwards passes either way.
+            # Left in flight: it waits for a slot, and is refused when none comes.
             queued = asyncio.create_task(ask(client, "conv-2", "two"))
             await asyncio.sleep(0.1)
             tracked_while_waiting = locks.tracked
@@ -315,8 +283,7 @@ class TestLocksAreEvicted:
     async def test_nothing_is_kept_once_a_turn_is_done(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """A pod that keeps one lock per conversation it has ever seen leaks on
-        a timescale of months -- slow enough to reach production unnoticed."""
+        """A pod that keeps one lock per conversation it has ever seen leaks on"""
         backend, pipeline = FakeBackend(), SlowPipeline()
         app, locks = build_app(backend, pipeline, monkeypatch)
 
@@ -329,9 +296,7 @@ class TestLocksAreEvicted:
     async def test_a_lock_survives_while_a_second_turn_waits(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Eviction is by reference count, not by release: dropping the lock the
-        moment the first turn let go would hand the waiting turn a different
-        lock and serialise nothing."""
+        """Eviction is by reference count, not by release: dropping the lock the"""
         backend, pipeline = FakeBackend(), SlowPipeline()
         app, locks = build_app(backend, pipeline, monkeypatch)
 
@@ -351,8 +316,7 @@ class TestValidationHappensFirst:
     async def test_an_over_long_question_takes_no_lock(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Rejected before anything is held, so a bad request cannot occupy a
-        slot or block a thread."""
+        """Rejected before anything is held, so a bad request cannot occupy a"""
         backend, pipeline = FakeBackend(), SlowPipeline()
         app, locks = build_app(backend, pipeline, monkeypatch, settings(max_question_chars=10))
 

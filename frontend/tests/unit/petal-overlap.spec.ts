@@ -1,14 +1,4 @@
-/**
- * Keeping the cluster petals off each other.
- *
- * The property that matters is the one in the name: after the offsets are
- * applied, no two petals overlap. That is asserted directly rather than
- * inferred from the numbers, so the tests hold whatever the search inside
- * changes to.
- *
- * The second property matters almost as much: a layout that was already clear
- * must come back untouched, or every re-render would drift the graph apart.
- */
+/** Keeping the cluster petals off each other. */
 
 import { describe, expect, it } from 'vitest'
 

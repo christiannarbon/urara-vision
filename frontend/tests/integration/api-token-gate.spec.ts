@@ -1,12 +1,4 @@
-/**
- * The token gate, mounted, in both languages.
- *
- * The gate is the first thing a reader of a protected instance sees, and it is
- * the whole page rather than a banner -- there is nothing behind it to fall
- * back on. It is therefore the surface worth asserting the localisation on:
- * that the strings come from the catalogue rather than the template, and that
- * changing the language changes them without a remount.
- */
+/** The token gate, mounted, in both languages. */
 
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'

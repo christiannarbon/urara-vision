@@ -1,20 +1,5 @@
-/**
- * Interface language.
- *
- * A catalogue lookup and a locale ref, deliberately hand-rolled. The app ships
- * three runtime dependencies and a content-security policy that forbids `eval`
- * -- a check the frontend workflow enforces against the built bundle -- and the
- * usual library compiles its messages with generated functions at runtime,
- * which that policy blocks. What is actually needed here is a typed lookup and
- * `{name}` substitution, and that is what this is.
- *
- * The choice persists per browser, alongside the theme, and follows the same
- * shape as `useTheme`: module-level state, one `watch` that applies and stores
- * it, and a composable that hands the pieces to a component.
- *
- * `t` reads `locale.value`, so any template or computed that calls it
- * re-renders when the language changes. Nothing needs to remount.
- */
+/** Interface language. Hand-rolled because the CSP forbids eval and the usual
+ *  library compiles its messages with generated functions at runtime. */
 
 import { computed, ref, watch } from 'vue'
 
@@ -41,15 +26,7 @@ function isLocale(v: unknown): v is Locale {
   return typeof v === 'string' && (LOCALES as readonly string[]).includes(v)
 }
 
-/**
- * The language to open in.
- *
- * A stored choice wins outright: someone who picked English on a Japanese
- * machine meant it. Otherwise the browser's preference list is read in order
- * and matched on the primary subtag, so `ja-JP` and a bare `ja` both land on
- * Japanese, and a list that leads with an unsupported language still finds a
- * supported one further down instead of falling straight to English.
- */
+/** The language to open in. */
 function detectLocale(): Locale {
   try {
     const stored = localStorage.getItem(LOCALE_KEY)
@@ -69,20 +46,10 @@ function detectLocale(): Locale {
 
 const locale = ref<Locale>(detectLocale())
 
-/**
- * The language on screen, for modules that read it outside a component --
- * `content.ts` picks a document's language with it. Read-only on purpose:
- * `setLocale` is the one way in.
- */
+/** The language on screen, for modules that read it outside a component -- `content.ts` picks a… */
 export const activeLocale = computed(() => locale.value)
 
-/**
- * Keeps the document's own language in step.
- *
- * This is not decoration. Screen readers pick a voice from it, and browsers
- * pick line-breaking and font fallback from it -- Japanese broken with English
- * rules breaks in the wrong places.
- */
+/** Keeps the document's own language in step. */
 function apply(v: Locale) {
   if (typeof document === 'undefined') return
   document.documentElement.setAttribute('lang', v)
@@ -105,12 +72,7 @@ const PLACEHOLDER = /\{(\w+)\}/g
 
 export type MessageParams = Record<string, string | number>
 
-/**
- * Fills `{name}` placeholders.
- *
- * A placeholder with no matching param is left standing rather than blanked.
- * A visible `{count}` is a bug report; a silent gap in a sentence is not.
- */
+/** Fills `{name}` placeholders. */
 export function interpolate(template: string, params?: MessageParams): string {
   if (!params) return template
   return template.replace(PLACEHOLDER, (whole, name: string) =>
@@ -118,13 +80,7 @@ export function interpolate(template: string, params?: MessageParams): string {
   )
 }
 
-/**
- * One string in the active language.
- *
- * The key type makes a missing entry a compile error, so the English fallback
- * is not for typos -- it is for the case where a translation is added to the
- * catalogue with an empty value while the wording is still being settled.
- */
+/** One string in the active language. */
 export function translate(key: MessageKey, params?: MessageParams): string {
   const active = CATALOGUES[locale.value] ?? CATALOGUES[DEFAULT_LOCALE]
   return interpolate(active.messages[key] || en.messages[key] || key, params)
@@ -134,13 +90,7 @@ export function translate(key: MessageKey, params?: MessageParams): string {
 type BaseOf<K> = K extends `${infer B}.other` ? B : never
 export type PluralKey = BaseOf<MessageKey>
 
-/**
- * A counted string, in the variant the active language gives that number.
- *
- * `n` is also passed through as the `{n}` placeholder, because a counted
- * string that does not show its count is vanishingly rare and repeating it at
- * every call site is not worth the symmetry.
- */
+/** A counted string, in the variant the active language gives that number. */
 export function translateCount(key: PluralKey, n: number, params?: MessageParams): string {
   const active = CATALOGUES[locale.value] ?? CATALOGUES[DEFAULT_LOCALE]
   return translate(`${key}.${active.plural(n)}` as MessageKey, { n, ...params })

@@ -1,13 +1,4 @@
-/**
- * The chat service's fetch wrapper.
- *
- * Two things matter here beyond the paths. The first is that no request
- * carries an `Authorization` header: the chat service takes no credential, and
- * a regression that started sending one would be invisible in the UI and
- * visible only in a proxy log. The second is that `turn` sends no snapshot ID
- * -- the thread pinned its snapshot when it was created, and the service
- * refuses an extra field outright rather than ignoring it.
- */
+/** The chat service's fetch wrapper. */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -17,8 +8,9 @@ import { chatApi } from '../../src/api/chat'
 /** The URL and init of every fetch call the client made. */
 let calls: Array<{ url: string; init?: RequestInit }> = []
 
-/** Installs a fetch stub returning one canned response, in the style of the
- *  backend client's spec so the two read the same. */
+/**
+ * Installs a fetch stub returning one canned response, in the style of the backend client's spec…
+ */
 function stubFetch(response: { status?: number; body?: unknown; reject?: boolean }) {
   const fn = vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
     calls.push({ url: String(url), init })
@@ -109,9 +101,7 @@ describe('what a turn sends', () => {
   })
 
   it('sends no snapshot ID', async () => {
-    // The thread pinned its snapshot at creation. A snapshot here could
-    // disagree with it, so the service forbids the field outright -- sending
-    // one would fail the turn, not be quietly ignored.
+    // The thread pinned its snapshot at creation.
     stubFetch({ body: { conversationId: 'c1' } })
     await chatApi.turn('c1', 'anything', 'en')
     const body = JSON.parse(String(calls[0].init?.body))

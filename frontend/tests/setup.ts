@@ -1,10 +1,4 @@
-/**
- * Test environment setup.
- *
- * jsdom does not implement layout or canvas, and the graph canvas reaches for
- * both. Rather than mock them per spec, the missing pieces are filled in once
- * here with the smallest stand-ins the components actually need.
- */
+/** Test environment setup. */
 
 import { beforeEach, vi } from 'vitest'
 
@@ -43,9 +37,7 @@ if (!globalThis.ResizeObserver) {
   } as never
 }
 
-// jsdom only provides Web Storage for a real origin, and the default test URL
-// is not one. The theme, the API token and the locale all persist there, so
-// the specs that exercise persistence need somewhere for it to land.
+// jsdom only provides Web Storage for a real origin, and the default test URL is not one.
 if (!globalThis.localStorage) {
   const store = new Map<string, string>()
   const storage: Storage = {
@@ -78,9 +70,8 @@ beforeEach(() => {
   // No spec should reach the network by accident; each one that needs fetch
   // installs its own stub.
   vi.restoreAllMocks()
-  // Storage is stubbed above where jsdom does not supply it, but a spec is
-  // still free to replace it with one that throws; clearing must not be the
-  // thing that fails the test.
+  // Storage is stubbed above where jsdom does not supply it, but a spec is still free to
+  // replace it…
   try {
     globalThis.localStorage?.clear()
   } catch {

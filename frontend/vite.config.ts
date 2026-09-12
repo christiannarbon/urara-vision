@@ -1,9 +1,7 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-// The compose backend's token, which the dev proxy presents the way nginx does
-// in a built image. Override it for a backend running with a different one, or
-// set it empty for one running with none.
+// The compose backend's token, which the dev proxy presents the way nginx does in a built image.
 const apiToken = process.env.VITE_PROXY_TOKEN ?? 'relviz-dev-token-not-for-production'
 
 export default defineConfig({

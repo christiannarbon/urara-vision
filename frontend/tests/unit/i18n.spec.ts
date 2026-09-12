@@ -4,10 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { messages as en, plural as enPlural } from '../../src/i18n/messages/en'
 import { messages as ja, plural as jaPlural } from '../../src/i18n/messages/ja'
 
-/**
- * The module decides its locale once, at import. Detection is therefore tested
- * against a fresh copy each time rather than by reaching into the live one.
- */
+/** The module decides its locale once, at import. */
 async function freshI18n() {
   vi.resetModules()
   return import('../../src/i18n')

@@ -1,11 +1,4 @@
-/**
- * Diagnostic classification.
- *
- * The split between "a document was dropped" and "the resolver noticed
- * something" decides whether the reader is interrupted, so it is worth pinning
- * down. The code list must also stay in step with the backend: a code the
- * frontend does not know about still has to render.
- */
+/** Diagnostic classification. */
 
 import { afterEach, describe, expect, it } from 'vitest'
 

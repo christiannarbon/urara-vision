@@ -18,9 +18,8 @@ describe('role names', () => {
   })
 
   it('keeps a role read from the documents in the documents\' own word', () => {
-    // There is nothing to translate it against: the word is the model's, and
-    // inventing a Japanese name for it would name something that does not
-    // appear anywhere in the source.
+    // There is nothing to translate it against: the word is the model's, and inventing a
+    // Japanese name…
     setLocale('ja')
     expect(roleSpec('anchor').label).toBe('Anchor')
   })

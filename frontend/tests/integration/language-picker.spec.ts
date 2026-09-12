@@ -1,11 +1,4 @@
-/**
- * The language picker, mounted.
- *
- * Everything about this control is behaviour a template cannot show: that it
- * lists every language the app has, names each in its own script, marks the
- * active one, and changes the language of the app around it when a reader
- * picks one.
- */
+/** The language picker, mounted. */
 
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'

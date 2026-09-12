@@ -1,23 +1,4 @@
-/**
- * Reads a documentation directory from the user's local disk.
- *
- * Two paths, because browsers disagree:
- *  - Chromium exposes the File System Access API, which gives a real OS
- *    directory picker and lets us walk the tree ourselves.
- *  - Everything else falls back to <input webkitdirectory>, which yields a flat
- *    FileList whose entries carry a webkitRelativePath.
- *
- * Both are normalised to the same shape: paths relative to the selected
- * directory, with the directory's own name stripped, so "model-docs/domain_one/
- * fact_primary.md" and "domain_one/fact_primary.md" produce identical table IDs no
- * matter which picker ran.
- *
- * The markdown is not all that is read. A documentation directory has to declare
- * what project it is in a projectmeta.toml at its root, and an ingest without one
- * is refused, so a missing manifest is caught here rather than as a rejected
- * upload: the reader is still looking at the picker, and the directory they just
- * chose is the thing to say it about.
- */
+/** Reads a documentation directory from the user's local disk. */
 
 import { ref } from 'vue'
 import type { IngestFile } from '../api/types'
@@ -35,11 +16,7 @@ const MAX_TOTAL_BYTES = 48 * 1024 * 1024
 const MAX_TOTAL_MB = MAX_TOTAL_BYTES / (1024 * 1024)
 
 /**
- * Progress and error text is resolved as it is assigned rather than held as a
- * key and translated on read, unlike the workspace store's banners. Everything
- * here belongs to one action the reader just started and is gone within a few
- * seconds of it finishing; there is no window in which a language change could
- * find one of these strings still on screen.
+ * Progress and error text is resolved as it is assigned rather than held as a key and translated…
  */
 
 export interface PickedDirectory {
@@ -76,8 +53,7 @@ export function useDirectoryPicker() {
   }
 
   /**
-   * Opens the native OS directory picker and reads every .md file beneath it,
-   * plus the manifest at its root.
+   * Opens the native OS directory picker and reads every .md file beneath it, plus the manifest at…
    */
   async function pickNative(): Promise<PickedDirectory | null> {
     error.value = null
@@ -118,9 +94,8 @@ export function useDirectoryPicker() {
 
           const path = prefix ? `${prefix}/${name}` : name
 
-          // The manifest counts against neither the file limit nor the
-          // progress count: it is metadata about the directory, not one of
-          // the documents being read out of it.
+          // The manifest counts against neither the file limit nor the progress count: it is
+          // metadata about…
           if (isManifest(path)) {
             const file: File = await entry.getFile()
             manifest = { path: MANIFEST, content: await file.text() }
@@ -160,11 +135,7 @@ export function useDirectoryPicker() {
     }
   }
 
-  /**
-   * Reads a FileList produced by <input webkitdirectory>. The browser prefixes
-   * every path with the chosen directory's own name, which is stripped so the
-   * result matches the native picker's output.
-   */
+  /** Reads a FileList produced by <input webkitdirectory>. */
   async function readFileList(list: FileList | null): Promise<PickedDirectory | null> {
     error.value = null
     if (!list || list.length === 0) return null

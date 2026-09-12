@@ -1,14 +1,4 @@
-"""The only part of the service that knows an HTTP call is involved.
-
-Everything reaches Postgres and Neo4j through here, and here reaches them only
-through the Go backend's API. That is the load-bearing constraint of the whole
-design: no database credentials live in this process.
-
-**A table ID is `domain/table` and contains a slash.** Every one travels as a
-query parameter and is encoded by httpx. Interpolating one into a path produces
-a request for a route that does not exist, and the 404 that comes back is
-indistinguishable from a table that is genuinely absent.
-"""
+"""The only part of the service that knows an HTTP call is involved."""
 
 from __future__ import annotations
 
@@ -46,14 +36,7 @@ _API = "/api/v1"
 
 
 def _classify(status: int) -> type[BackendError]:
-    """Which exception a failed status deserves.
-
-    Only a 5xx is the backend failing. A 4xx means it read the request and
-    refused it, which is a bug on this side of the wire, and a 404 is neither --
-    it is an answer about a snapshot, table or conversation that is not there.
-    Collapsing all three into one class is how a malformed request ends up
-    reported as an outage in the service that correctly rejected it.
-    """
+    """Which exception a failed status deserves."""
     if status == 404:
         return BackendNotFound
     if 400 <= status < 500:
@@ -66,9 +49,8 @@ class BackendClient:
 
     def __init__(self, settings: Settings) -> None:
         headers: dict[str, str] = {"Accept": "application/json"}
-        # An empty token is the backend's documented unauthenticated mode, and
-        # sending "Bearer " with nothing after it would be refused rather than
-        # treated as absent.
+        # An empty token is the backend's documented unauthenticated mode, and sending "Bearer "
+        # with nothing after it would be refused rather than treated as absent.
         if settings.backend_api_token:
             headers["Authorization"] = f"Bearer {settings.backend_api_token}"
 
@@ -81,14 +63,8 @@ class BackendClient:
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    # --- plumbing -----------------------------------------------------------
-
     async def _get(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        """Issue a GET and return decoded JSON, or raise.
-
-        Parameters go through httpx rather than into the path, which is what
-        keeps a table ID's slash from being read as a route separator.
-        """
+        """Issue a GET and return decoded JSON, or raise."""
         response = await self._send("GET", path, params=params)
         if response.status_code >= 400:
             raise self._error(response)
@@ -109,30 +85,16 @@ class BackendClient:
         return response.json()
 
     async def _delete(self, path: str) -> None:
-        """Issue a DELETE, raising on failure.
-
-        Nothing is decoded: a successful delete answers 204 with no body, and
-        asking for JSON that is not there would turn a success into an error.
-        """
+        """Issue a DELETE, raising on failure."""
         response = await self._send("DELETE", path)
         if response.status_code >= 400:
             raise self._error(response)
 
     async def _send(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
-        """Issue a request, turning a transport failure into a BackendError.
-
-        Without this a refused connection or a timeout leaves httpx's own
-        exception to escape the client, and the handler answers 500 -- blaming
-        this service for an outage in the one it depends on. Every other backend
-        failure already arrives as a BackendError; an unreachable backend is the
-        most likely of them and should not be the exception.
-        """
-        # The request ID is forwarded on every call, which is what makes one ID
-        # span both services: the Go side reads this header rather than minting
-        # its own, so a turn's log lines here and there carry the same value.
-        # Read from the ContextVar rather than taken as an argument -- no tool
-        # that calls this knows it is inside an HTTP request, and none should
-        # have to grow a parameter to say so.
+        """Issue a request, turning a transport failure into a BackendError."""
+        # The request ID is forwarded on every call, which is what makes one ID span both
+        # services: the Go side reads this header rather than minting its own, so a turn's log
+        # lines here and there carry the same value.
         request_id = current_request_id()
         headers = {REQUEST_ID_HEADER: request_id} if request_id else None
         try:
@@ -142,18 +104,13 @@ class BackendClient:
 
     @staticmethod
     def _error(response: httpx.Response) -> BackendError:
-        """Turn a failed response into the right exception.
-
-        The backend's own `error` field is preferred over the status reason: it
-        says which ID was wrong, where the reason phrase only says that one was.
-        """
+        """Turn a failed response into the right exception."""
         message = response.reason_phrase or f"HTTP {response.status_code}"
         try:
             body = response.json()
         except ValueError:
-            # A proxy or a panic can answer with HTML or nothing at all, and a
-            # client that raises while building an error message hides the
-            # failure it was reporting.
+            # A proxy or a panic can answer with HTML or nothing at all, and a client that raises
+            # while building an error message hides the failure it was reporting.
             pass
         else:
             if isinstance(body, dict) and isinstance(body.get("error"), str):
@@ -161,21 +118,8 @@ class BackendClient:
 
         return _classify(response.status_code)(response.status_code, message)
 
-    # --- reads --------------------------------------------------------------
-
     async def health(self) -> bool:
-        """Whether the backend is ready.
-
-        A bool rather than an exception: /readyz answering 503 is information
-        about a dependency, not an error in the caller. It sits outside
-        /api/v1 because kubelet cannot carry a credential.
-
-        Through _send like every other call, so this one is not the single
-        request in the service that leaves without a request ID -- a /readyz
-        that cannot be traced into the backend's own log is the one call where
-        you most want to know which side said no. The transport failure _send
-        raises is caught here and becomes the same False a 503 does.
-        """
+        """Whether the backend is ready."""
         try:
             response = await self._send("GET", "/readyz")
         except BackendUnavailable:
@@ -183,12 +127,7 @@ class BackendClient:
         return response.status_code == 200
 
     async def resolve_snapshot(self, sid: str) -> str:
-        """Turn a snapshot reference into a concrete ID.
-
-        The only place the alias "latest" is allowed to appear. Everything
-        downstream is pinned to the ID this returns, so an ingest part-way
-        through a conversation cannot change what is being talked about.
-        """
+        """Turn a snapshot reference into a concrete ID."""
         data = await self._get(f"{_API}/snapshots/{sid}")
         return Snapshot.model_validate(data).id
 
@@ -209,12 +148,7 @@ class BackendClient:
         return TableDetail.model_validate(data)
 
     async def get_tables(self, sid: str, ids: Sequence[str]) -> TablesDetailResponse:
-        """Several table documents in one call.
-
-        The IDs are one comma-separated `ids` parameter, which is the shape the
-        batch endpoint takes; an ID it cannot find comes back in `missing`
-        rather than failing the call.
-        """
+        """Several table documents in one call."""
         data = await self._get(f"{_API}/snapshots/{sid}/tables/detail", {"ids": ",".join(ids)})
         return TablesDetailResponse.model_validate(data)
 
@@ -225,11 +159,7 @@ class BackendClient:
     async def neighbourhood(
         self, sid: str, table_id: str, depth: int = 1, sources: bool = False
     ) -> Graph:
-        """The subgraph within `depth` hops of a table.
-
-        The route is spelled the American way because the Neo4j store's method
-        is; the Python name follows the house's British prose.
-        """
+        """The subgraph within `depth` hops of a table."""
         data = await self._get(
             f"{_API}/snapshots/{sid}/neighborhood",
             {"table": table_id, "depth": depth, "sources": str(sources).lower()},
@@ -248,11 +178,7 @@ class BackendClient:
     async def lineage(
         self, sid: str, table_id: str, direction: str = "upstream"
     ) -> list[LineageEntry]:
-        """Upstream sources feeding a table, or downstream tables fed by a source.
-
-        The response names the direction it answered as well as the entries;
-        only the entries are of interest here, since the caller chose it.
-        """
+        """Upstream sources feeding a table, or downstream tables fed by a source."""
         data = await self._get(
             f"{_API}/snapshots/{sid}/lineage", {"id": table_id, "direction": direction}
         )
@@ -267,20 +193,10 @@ class BackendClient:
         data = await self._get(f"{_API}/snapshots/{sid}/sources")
         return [SourceTable.model_validate(s) for s in data["sources"]]
 
-    # --- conversations ------------------------------------------------------
-    #
-    # The only methods in this service that cause a write, and every one goes
-    # through the Go API. A conversation ID is a UUID and carries no slash, so
-    # unlike a table ID it is safe as a path segment.
+    # The only methods in this service that cause a write, and every one goes through the Go API.
 
     async def create_conversation(self, snapshot_id: str, title: str = "") -> Conversation:
-        """Start a thread about one snapshot.
-
-        `snapshot_id` may be "latest". It is passed through untouched: the
-        backend resolves the alias and stores the concrete ID it resolved to, so
-        resolving here as well would put a second opinion in the system about
-        which snapshot a thread is pinned to.
-        """
+        """Start a thread about one snapshot."""
         data = await self._post(
             f"{_API}/conversations", {"snapshotId": snapshot_id, "title": title}
         )
@@ -289,12 +205,7 @@ class BackendClient:
     async def list_conversations(
         self, snapshot_id: str, limit: int | None = None
     ) -> list[Conversation]:
-        """The most recent threads about one snapshot.
-
-        The limit is the backend's to default and to clamp, so an unset one is
-        left out of the request rather than guessed at here -- two services with
-        their own idea of the default is one more thing to keep in step.
-        """
+        """The most recent threads about one snapshot."""
         params: dict[str, Any] = {"snapshot": snapshot_id}
         if limit is not None:
             params["limit"] = limit
@@ -302,17 +213,10 @@ class BackendClient:
         return [Conversation.model_validate(c) for c in data["conversations"]]
 
     async def get_conversation(self, cid: str) -> Conversation:
-        """One thread with its full transcript."""
         return Conversation.model_validate(await self._get(f"{_API}/conversations/{cid}"))
 
     async def set_conversation_title(self, cid: str, title: str) -> Conversation:
-        """Retitle a thread.
-
-        The title is the only thing about a conversation the backend will
-        change. Its snapshot in particular is not patchable -- resolving it once
-        at creation is what stops a transcript changing subject -- so this sends
-        that one field and nothing else.
-        """
+        """Retitle a thread."""
         data = await self._patch(f"{_API}/conversations/{cid}", {"title": title})
         return Conversation.model_validate(data)
 
@@ -327,13 +231,7 @@ class BackendClient:
         citations: list[str] | None = None,
         meta: dict[str, Any] | None = None,
     ) -> Message:
-        """Add one turn, returning it as stored.
-
-        The ordinal is the database's to assign, so what comes back is the
-        stored row rather than what was sent. `citations` is always a list:
-        "drew on no tables" is a real answer, and sending null or omitting the
-        key would make it indistinguishable from not having been asked.
-        """
+        """Add one turn, returning it as stored."""
         body: dict[str, Any] = {
             "role": role,
             "content": content,

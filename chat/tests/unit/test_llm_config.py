@@ -1,22 +1,11 @@
-"""LLM settings, the credential checks, and redaction.
-
-The posture is the Go service's: refuse to start without the credential the
-chosen provider needs, and name the environment variable in the message, because
-that string is what someone reads in `kubectl logs` at the moment they are least
-inclined to go digging.
-
-The redaction tests are the ones worth having. A key that leaks into a repr or a
-JSON dump leaks into a log line, and from there into wherever logs are shipped.
-"""
+"""LLM settings, the credential checks, and redaction."""
 
 import pytest
 from pydantic import SecretStr, ValidationError
 
 from urara_chat.config import Settings
 
-# Deliberately not shaped like a real Google key. A fixture with an
-# AIza prefix trips every secret scanner in the repository, and a leak
-# detector that always cries wolf is one nobody reads.
+# Deliberately not shaped like a real Google key.
 FAKE_KEY = "test-key-shaped-value-0123456789abcdef"
 
 LLM_VARS = (
@@ -89,8 +78,7 @@ class TestCredentialsMustMatchTheProvider:
         assert "VERTEX_PROJECT" in str(caught.value)
 
     def test_vertex_needs_no_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Vertex authenticates with Application Default Credentials, so a
-        missing key is correct rather than an oversight."""
+        """Vertex authenticates with Application Default Credentials, so a"""
         monkeypatch.setenv("LLM_PROVIDER", "vertex")
         monkeypatch.setenv("VERTEX_PROJECT", "my-project")
 
@@ -107,9 +95,7 @@ class TestCredentialsMustMatchTheProvider:
     def test_a_whitespace_only_key_is_refused(
         self, value: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """`export GOOGLE_API_KEY=$(cat key.txt)` picks up a trailing newline,
-        and whitespace is truthy: without stripping, the check passes and the
-        provider answers with a puzzling 400 instead."""
+        """`export GOOGLE_API_KEY=$(cat key.txt)` picks up a trailing newline,"""
         monkeypatch.setenv("GOOGLE_API_KEY", value)
         with pytest.raises(ValidationError) as caught:
             Settings()
@@ -139,8 +125,7 @@ class TestCredentialsMustMatchTheProvider:
 
 
 class TestTheKeyDoesNotLeak:
-    """A key in a repr is a key in a log line, and from there in whatever ships
-    the logs."""
+    """A key in a repr is a key in a log line, and from there in whatever ships"""
 
     def test_repr_carries_no_part_of_the_key(self) -> None:
         rendered = repr(studio())
@@ -172,9 +157,7 @@ class TestTheKeyDoesNotLeak:
 
 
 class TestTheStartupFailureLeaksNothing:
-    """pydantic's ValidationError embeds the input it was given, and it elides
-    the middle of a long value rather than the ends -- so a raw one carries the
-    tail of the API key into whatever prints it."""
+    """pydantic's ValidationError embeds the input it was given, and it elides"""
 
     def test_the_raw_validation_error_does_carry_part_of_the_key(
         self, monkeypatch: pytest.MonkeyPatch

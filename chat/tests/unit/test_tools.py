@@ -1,13 +1,4 @@
-"""The nine tools.
-
-Bugs here are the hardest in the service to see later, because a model papers
-over a bad tool result with plausible prose. So the assertions are about the
-things that would produce a confident wrong answer: a tool reading the wrong
-snapshot, a list silently cut, or a result the model cannot parse.
-
-The client is faked. No network, and no LLM package is imported anywhere in the
-chain under test.
-"""
+"""The nine tools."""
 
 import json
 from typing import Any
@@ -134,8 +125,7 @@ class TestTheSnapshotIsNotReachable:
 
 
 class TestArgumentBounds:
-    """Out of range is a validation error the model is told about, not a 400 it
-    has to interpret."""
+    """Out of range is a validation error the model is told about, not a 400 it"""
 
     def test_get_tables_rejects_an_empty_list(self) -> None:
         by_name, _ = tools()
@@ -179,8 +169,7 @@ class TestArgumentBounds:
 
 
 class TestTruncationIsAlwaysReported:
-    """A silently cut list teaches the model something false and it will pass
-    that on to the reader with no hedge."""
+    """A silently cut list teaches the model something false and it will pass"""
 
     async def test_a_long_list_is_capped_and_says_so(self) -> None:
         many = [Domain(id=f"d{i}", title=f"D{i}") for i in range(137)]
@@ -245,8 +234,7 @@ class TestShrinking:
         assert "notes" not in table
 
     async def test_false_flags_are_dropped_and_zeros_kept(self) -> None:
-        """In Python `False == 0`, so a naive zero check keeps every False flag.
-        Absence already says false; a zero ordinal is the first column."""
+        """In Python `False == 0`, so a naive zero check keeps every False flag."""
         from urara_chat.tools.registry import _prune
 
         pruned = _prune({"conformed": False, "ordinal": 0, "name": "x", "empty": ""})
@@ -278,8 +266,7 @@ class TestShrinking:
         assert result["links"][0]["fromColumn"] == "x"
 
     async def test_links_to_dropped_nodes_are_removed(self) -> None:
-        """A link naming a node that was cut tells the model about a table it
-        cannot see, which is worse than not mentioning it."""
+        """A link naming a node that was cut tells the model about a table it"""
         nodes = [{"id": f"d/t{i}", "label": f"t{i}"} for i in range(60)]
         graph = Graph(
             nodes=nodes,  # type: ignore[arg-type]
@@ -311,8 +298,7 @@ class TestShrinking:
 
 class TestResultsAreUsable:
     async def test_every_tool_result_survives_json_dumps(self) -> None:
-        """Whatever a tool returns is going into a prompt as text. A type that
-        cannot be serialised fails at the worst possible moment."""
+        """Whatever a tool returns is going into a prompt as text."""
         by_name, _ = tools(
             list_domains=[Domain(id="d")],
             list_tables=[TableSummary(id="d/t", name="t")],

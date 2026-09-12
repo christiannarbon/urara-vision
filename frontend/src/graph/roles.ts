@@ -1,46 +1,9 @@
-/**
- * The vocabulary of table roles, and how each one is drawn.
- *
- * This mirrors backend/internal/model/roles.go: the backend decides what a
- * document means by "Type: Hub", this file decides what a hub looks like. The
- * two lists are allowed to drift. A role the backend learns first falls through
- * to roleSpec's default and renders with a generated shape, a generated colour
- * and its own name -- which is exactly the treatment any role outside the three
- * known vocabularies gets, so a model built on a style nobody anticipated still
- * reads correctly rather than collapsing into a canvas of grey circles.
- *
- * A role's name is a catalogue key rather than a fixed word, so the legend and
- * the filter chips read in the language the rest of the interface is in. A
- * role the documents brought with them has no key and keeps their word, which
- * is the only name it has.
- *
- * Two channels carry the role, and they are deliberately unequal:
- *
- *   Shape is primary. It is theme-independent, survives being printed in grey,
- *   and is the only channel a reader with a colour vision deficiency can rely
- *   on. Every role gets its own.
- *
- *   Colour is secondary and derived. Themes define exactly two role hues,
- *   --fact and --dim, and regenerating twenty painting-derived palettes for
- *   sixteen roles is not a trade worth making -- see styles/art-themes.css.
- *   Each role instead sits at a small deterministic shift off whichever of the
- *   two hues it is nearest in meaning: tables that carry events and keys move
- *   off --fact, tables that carry context move off --dim. The shifts are kept
- *   small enough to stay inside a theme's character, which matters most for
- *   Haru Urara, whose graph is meant to read as sakura rather than as a wheel.
- *
- * Fact and dimension sit at zero shift and use their tokens untouched, so a
- * plain star schema looks exactly as it did before any of this existed.
- */
+/** The vocabulary of table roles, and how each one is drawn. */
 
 import { translate as t } from '../i18n'
 import type { MessageKey } from '../i18n'
 
-/**
- * A built-in role's catalogue key. Only the built-ins have one: a role read
- * from the documents is named by whatever word the documents used, and there
- * is nothing to translate it against.
- */
+/** A built-in role's catalogue key. */
 type RoleLabelKey = Extract<MessageKey, `role.${string}`>
 
 /** The modelling style a role belongs to. Mirrors model.RoleFamily. */
@@ -49,18 +12,12 @@ export type RoleFamily = 'kimball' | 'vault' | 'relational' | 'other'
 /** Which of the theme's two role hues a role derives its colour from. */
 export type Anchor = 'fact' | 'dim'
 
-/**
- * The legend draws a swatch rather than a node, and a 10px swatch cannot carry
- * a heptagon. Shapes collapse to three silhouettes there.
- */
+/** The legend draws a swatch rather than a node, and a 10px swatch cannot carry a heptagon. */
 export type Swatch = 'square' | 'round' | 'angular'
 
 export interface RoleSpec {
   id: string
-  /**
-   * The name to show. Resolved through the catalogue for a built-in role, and
-   * taken from the documents' own word for anything else -- see roleSpec.
-   */
+  /** The name to show. */
   label: string
   family: RoleFamily
   /** A Cytoscape node shape. */
@@ -75,12 +32,7 @@ export interface RoleSpec {
 
 const FAMILY_ORDER: RoleFamily[] = ['kimball', 'vault', 'relational', 'other']
 
-/**
- * The built-in roles, in the order the UI lists them.
- *
- * Within an anchor the hue shifts fan out either side of zero rather than
- * marching in one direction, so no role drifts far from the theme's own hue.
- */
+/** The built-in roles, in the order the UI lists them. */
 /** The built-in specs as declared: a catalogue key rather than a fixed name. */
 type KnownRole = Omit<RoleSpec, 'label'> & { labelKey: RoleLabelKey }
 
@@ -113,11 +65,7 @@ const KNOWN: KnownRole[] = [
 const byId = new Map(KNOWN.map((r) => [r.id, r]))
 const orderOf = new Map(KNOWN.map((r, i) => [r.id, i]))
 
-/**
- * The shapes an unrecognised role is assigned from, chosen so none of them is
- * already the silhouette of a common built-in role. Which one a role gets is
- * hashed from its name, so it stays put across ingests and across sessions.
- */
+/** The shapes an unrecognised role is assigned from, chosen so none of them is already the… */
 const SPARE_SHAPES = ['round-octagon', 'heptagon', 'concave-hexagon', 'right-rhomboid', 'round-pentagon', 'bottom-round-rectangle']
 
 /** A small stable hash. Not cryptographic; it only has to be deterministic. */
@@ -137,19 +85,12 @@ export function roleLabel(id: string): string {
   return [parts[0][0].toUpperCase() + parts[0].slice(1), ...parts.slice(1)].join(' ')
 }
 
-/**
- * The spec for a role id.
- *
- * A role outside the built-in list is given one rather than refused: it keeps
- * its own name, takes a spare shape and a hue shift hashed from that name, and
- * so comes out distinct from every other unrecognised role in the same model.
- */
+/** The spec for a role id. */
 export function roleSpec(id: string): RoleSpec {
   const known = byId.get(id) ?? (id ? undefined : byId.get('unknown'))
   if (known) {
-    // Resolved on every call rather than baked into KNOWN: the table is built
-    // once at module load, and a name fixed there would outlive the language
-    // it was chosen in. The key itself does not travel with the spec.
+    // Resolved on every call rather than baked into KNOWN: the table is built once at module
+    // load, and…
     const { labelKey, ...rest } = known
     return { ...rest, label: t(labelKey) }
   }
@@ -159,9 +100,8 @@ export function roleSpec(id: string): RoleSpec {
     label: roleLabel(id),
     family: 'other',
     shape: SPARE_SHAPES[h % SPARE_SHAPES.length],
-    // Unrecognised roles lean on --dim: a role this tool cannot place is more
-    // likely to be describing something than measuring it, and --fact reads as
-    // the emphatic hue in every theme.
+    // Unrecognised roles lean on --dim: a role this tool cannot place is more likely to be
+    // describing…
     anchor: 'dim',
     hueShift: ((h >> 3) % 61) - 30,
     lightShift: ((h >> 9) % 21) - 6,
@@ -170,9 +110,7 @@ export function roleSpec(id: string): RoleSpec {
 }
 
 /**
- * The roles present in a set of kinds, deduplicated and in display order:
- * built-in roles first in vocabulary order, then anything the documents brought
- * with them, alphabetically.
+ * The roles present in a set of kinds, deduplicated and in display order: built-in roles first in…
  */
 export function rolesPresent(kinds: Iterable<string>): RoleSpec[] {
   const ids = new Set<string>()
@@ -223,20 +161,13 @@ function hexToHsl(hex: string): HSL | null {
   return { h, s: s * 100, l: l * 100 }
 }
 
-/**
- * The colour a role is drawn in, given the theme's two role hues.
- *
- * Lightness is clamped well short of both ends: a role that comes out near
- * white loses its white node border, and one that comes out near black stops
- * being recognisable as the theme's colour at all.
- */
+/** The colour a role is drawn in, given the theme's two role hues. */
 export function roleColor(spec: RoleSpec, factHex: string, dimHex: string): string {
   const base = spec.anchor === 'fact' ? factHex : dimHex
   if (!spec.hueShift && !spec.lightShift) return base
   const hsl = hexToHsl(base)
-  // An unparseable token means a theme is using a colour form this cannot read;
-  // the unshifted hue is wrong for the role but right for the theme, which is
-  // the better failure.
+  // An unparseable token means a theme is using a colour form this cannot read; the unshifted
+  // hue is…
   if (!hsl) return base
   const h = (((hsl.h + spec.hueShift) % 360) + 360) % 360
   const l = Math.min(72, Math.max(24, hsl.l + spec.lightShift))

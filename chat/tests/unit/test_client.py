@@ -1,11 +1,4 @@
-"""The backend client, against a mocked transport.
-
-Nothing here touches the network. What is worth asserting is not that httpx
-works but that this client asks for the right thing: the paths, the query
-parameters, and above all that a table ID's slash is encoded into a parameter
-rather than becoming a path segment -- which would 404 in a way that reads
-exactly like a table that does not exist.
-"""
+"""The backend client, against a mocked transport."""
 
 import json
 from collections.abc import AsyncIterator
@@ -34,8 +27,8 @@ def settings(token: str = "") -> Settings:
     return Settings(
         backend_base_url=BASE,
         backend_api_token=token,
-        # Required since 03.2: the default provider refuses to construct
-        # without a key. Nothing here reaches an LLM.
+        # Required since 03.2: the default provider refuses to construct without a key. Nothing
+        # here reaches an LLM.
         google_api_key="test-key-not-real",  # type: ignore[arg-type]
         backend_timeout_seconds=5.0,
         log_level="info",
@@ -230,9 +223,7 @@ class TestErrorMapping:
 
     @respx.mock
     async def test_a_4xx_is_a_refusal_not_an_outage(self, client: BackendClient) -> None:
-        """The backend read the request and said no, which is a bug on this side
-        of the wire. Calling it an upstream failure sends whoever is on call to
-        the service that behaved correctly."""
+        """The backend read the request and said no, which is a bug on this side"""
         respx.get(f"{BASE}/api/v1/snapshots/{SID}/context").mock(
             return_value=httpx.Response(400, json={"error": "malformed parameter"})
         )
@@ -252,8 +243,7 @@ class TestErrorMapping:
 
     @respx.mock
     async def test_a_404_stays_its_own_thing(self, client: BackendClient) -> None:
-        """Neither an outage nor a bad request: an answer about something that
-        is not there."""
+        """Neither an outage nor a bad request: an answer about something that"""
         respx.get(f"{BASE}/api/v1/snapshots/gone/context").mock(
             return_value=httpx.Response(404, json={"error": "snapshot not found"})
         )
@@ -263,8 +253,7 @@ class TestErrorMapping:
 
     @respx.mock
     async def test_a_non_json_body_still_raises_cleanly(self, client: BackendClient) -> None:
-        """A proxy or a panic can answer with HTML; building the error message
-        must not raise over the failure it is reporting."""
+        """A proxy or a panic can answer with HTML; building the error message"""
         respx.get(f"{BASE}/api/v1/snapshots/{SID}/context").mock(
             return_value=httpx.Response(502, text="<html>Bad Gateway</html>")
         )
@@ -275,9 +264,7 @@ class TestErrorMapping:
 
 
 class TestTransportFailures:
-    """A refused connection or a timeout is still an upstream failure. Letting
-    httpx's own exception escape makes the handler answer 500, which blames this
-    service for an outage in the one it depends on."""
+    """A refused connection or a timeout is still an upstream failure."""
 
     @respx.mock
     async def test_a_refused_connection_raises_backend_unavailable(
@@ -311,8 +298,7 @@ class TestTransportFailures:
 class TestAuthorization:
     @respx.mock
     async def test_no_header_when_the_token_is_empty(self) -> None:
-        """Empty is the backend's documented unauthenticated mode; "Bearer "
-        with nothing after it would be refused rather than treated as absent."""
+        """Empty is the backend's documented unauthenticated mode; "Bearer " """
         route = respx.get(f"{BASE}/readyz").mock(return_value=httpx.Response(200))
         c = BackendClient(settings(token=""))
         await c.health()
@@ -381,8 +367,7 @@ class TestLifecycle:
 
 @respx.mock
 async def test_get_table_returns_the_captured_fixture(client: BackendClient) -> None:
-    """Driven by the real captured response rather than a hand-written body, so
-    the client and the models are checked against the same wire format."""
+    """Driven by the real captured response rather than a hand-written body, so"""
     raw = json.loads((Path(__file__).parent / "fixtures" / "table.json").read_text())
     respx.get(f"{BASE}/api/v1/snapshots/{SID}/table").mock(
         return_value=httpx.Response(200, json=raw)
@@ -413,9 +398,7 @@ class TestCreateConversation:
 
     @respx.mock
     async def test_latest_is_passed_through_untouched(self, client: BackendClient) -> None:
-        """The backend resolves the alias and stores the concrete ID. Resolving
-        here as well would put a second opinion in the system about which
-        snapshot a thread is pinned to."""
+        """The backend resolves the alias and stores the concrete ID."""
         route = respx.post(f"{BASE}/api/v1/conversations").mock(
             return_value=httpx.Response(
                 201, json={"id": "conv-1", "snapshotId": "resolved-id", "title": ""}
@@ -490,9 +473,7 @@ class TestDeleteConversation:
 class TestSetConversationTitle:
     @respx.mock
     async def test_it_patches_only_the_title(self, client: BackendClient) -> None:
-        """The snapshot is not patchable, and this must not try: resolving it
-        once at creation is what stops a transcript changing subject, and the
-        backend answers 400 for any other field."""
+        """The snapshot is not patchable, and this must not try: resolving it"""
         route = respx.patch(f"{BASE}/api/v1/conversations/conv-1").mock(
             return_value=httpx.Response(
                 200, json={"id": "conv-1", "snapshotId": SID, "title": "a new title"}
@@ -515,8 +496,7 @@ class TestSetConversationTitle:
 class TestAppendMessage:
     @respx.mock
     async def test_returns_the_server_assigned_ordinal(self, client: BackendClient) -> None:
-        """The ordinal is the database's to assign, so what comes back is the
-        stored row rather than what was sent."""
+        """The ordinal is the database's to assign, so what comes back is the"""
         respx.post(f"{BASE}/api/v1/conversations/conv-1/messages").mock(
             return_value=httpx.Response(
                 201,
@@ -529,8 +509,7 @@ class TestAppendMessage:
 
     @respx.mock
     async def test_citations_are_sent_as_a_list_when_none(self, client: BackendClient) -> None:
-        """Never null, never an absent key: "cited nothing" has to be
-        distinguishable from "was not asked"."""
+        """Never null, never an absent key: "cited nothing" has to be"""
         route = respx.post(f"{BASE}/api/v1/conversations/conv-1/messages").mock(
             return_value=httpx.Response(
                 201, json={"ordinal": 0, "role": "user", "content": "hi", "citations": []}
@@ -571,8 +550,7 @@ class TestAppendMessage:
 
     @respx.mock
     async def test_meta_is_omitted_rather_than_sent_as_null(self, client: BackendClient) -> None:
-        """The backend rejects unknown fields but accepts an absent one; sending
-        null would be a value it has to interpret."""
+        """The backend rejects unknown fields but accepts an absent one; sending"""
         route = respx.post(f"{BASE}/api/v1/conversations/conv-1/messages").mock(
             return_value=httpx.Response(
                 201, json={"ordinal": 0, "role": "user", "content": "hi", "citations": []}
@@ -593,8 +571,7 @@ class TestAppendMessage:
     async def test_an_invalid_role_surfaces_the_backends_message(
         self, client: BackendClient
     ) -> None:
-        """Role validation lives in the Go handler; the client's job is to carry
-        the reason back rather than to duplicate the rule."""
+        """Role validation lives in the Go handler; the client's job is to carry"""
         respx.post(f"{BASE}/api/v1/conversations/conv-1/messages").mock(
             return_value=httpx.Response(
                 400,
