@@ -33,6 +33,5 @@ spec:
             requests:
               cpu: 50m
               memory: 192Mi
-            # Still above the backend's 512Mi; LangChain would OOM there.
             limits:
-              memory: 640Mi
+              memory: 384Mi

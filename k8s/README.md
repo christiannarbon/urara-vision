@@ -111,7 +111,10 @@ its own. Only the frontend reaches it, and it reaches the backend's API like
 any other client.
 
 Set `VERTEX_PROJECT` in the overlay before applying. It has no default, and the
-pod refuses to start without it rather than failing on the first question.
+pod refuses to start without it rather than failing on the first question. The
+ConfigMap carries no content hash, so changing it later does not restart the
+pods -- follow an edit with
+`kubectl -n urara-vision rollout restart deploy/chat`.
 
 ### The model credential
 
@@ -243,9 +246,10 @@ enforce them as written.
 **HPAs are dropped in dev** along with the PDBs, since a single replica cannot
 satisfy `minAvailable: 1` during a rollout.
 
-**Chat's memory limit is 768Mi, not the backend's 512Mi.** A Python interpreter
-with LangChain imported has a much larger resident set than the Go binary and
-would OOM at the backend's ceiling.
+**Chat's memory limit is 512Mi, from measurement.** Four concurrent turns
+against the pod peaked at 105Mi (`/sys/fs/cgroup/memory.peak`); the rest is
+headroom for a corpus larger than the demo sets. The dev overlay trims it
+to 384Mi.
 
 ## Verified on minikube
 

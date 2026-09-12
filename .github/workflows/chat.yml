@@ -1,13 +1,16 @@
 # Lint, unit tests and integration tests for the Python chat service.
 #
-# Path-filtered so a Go-only change never starts a Python runner. Runnable
-# locally with `make ci-chat`, which drives this file through nektos/act.
+# Path-filtered so an unrelated Go change never starts a Python runner --
+# `backend/internal/api/**` is in the list because the integration job runs the
+# real backend and asserts against that surface. Runnable locally with
+# `make ci-chat`, which drives this file through nektos/act.
 name: chat
 
 on:
   pull_request:
     paths:
       - chat/**
+      - backend/internal/api/**
       # The integration suite ingests these demo sets before it asks anything.
       - docs/demo/**
       - .github/workflows/chat.yml
@@ -16,6 +19,7 @@ on:
       - main
     paths:
       - chat/**
+      - backend/internal/api/**
       - docs/demo/**
       - .github/workflows/chat.yml
   workflow_dispatch:
