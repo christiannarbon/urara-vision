@@ -9,6 +9,7 @@
 
 ![Go](https://img.shields.io/badge/Go-1.25-00ADD8?logo=go&logoColor=white)
 ![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
 ![Neo4j](https://img.shields.io/badge/Neo4j-5-4581C3?logo=neo4j&logoColor=white)
 ![Kubernetes](https://img.shields.io/badge/Kubernetes-ready-326CE5?logo=kubernetes&logoColor=white)
@@ -70,6 +71,12 @@ switch between three layouts, focus on one table's neighbourhood, overlay
 upstream source models, search across tables and columns, and click any table
 for its description, grain, columns, column-level lineage, joins and caveats.
 → [exploring the graph](docs/usage/exploring-the-graph.md)
+
+**Answers** questions about the model in words — "what joins to `dim_customer`,
+and on what key?" — from a chat panel beside the graph. It reads through the
+same public API the frontend does, holds no database credential, and cites the
+tables an answer rested on. It needs a Google model credential to run; nothing
+else does. → [deployment](docs/tech/architecture/deployment.md)
 
 ---
 
