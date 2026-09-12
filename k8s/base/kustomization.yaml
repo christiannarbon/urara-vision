@@ -13,6 +13,7 @@ resources:
   - postgres.yaml
   - neo4j.yaml
   - backend.yaml
+  - chat.yaml
   - frontend.yaml
   - ingress.yaml
   - network-policy.yaml
@@ -20,6 +21,8 @@ resources:
 
 images:
   - name: urara-vision/backend
+    newTag: latest
+  - name: urara-vision/chat
     newTag: latest
   - name: urara-vision/frontend
     newTag: latest
