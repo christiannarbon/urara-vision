@@ -1,0 +1,229 @@
+# Lint, unit tests and integration tests for the Python chat service.
+#
+# Path-filtered so a Go-only change never starts a Python runner. Runnable
+# locally with `make ci-chat`, which drives this file through nektos/act.
+name: chat
+
+on:
+  pull_request:
+    paths:
+      - chat/**
+      # The integration suite ingests these demo sets before it asks anything.
+      - docs/demo/**
+      - .github/workflows/chat.yml
+  push:
+    branches:
+      - main
+    paths:
+      - chat/**
+      - docs/demo/**
+      - .github/workflows/chat.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chat-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    working-directory: chat
+
+jobs:
+  lint:
+    name: ruff and mypy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: '3.12'
+          enable-cache: true
+          cache-dependency-glob: chat/uv.lock
+
+      - name: install
+        run: uv sync --frozen
+
+      - name: ruff
+        run: |
+          uv run --frozen ruff check .
+          uv run --frozen ruff format --check .
+
+      - name: mypy
+        run: uv run --frozen mypy src
+
+  test:
+    name: unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: '3.12'
+          enable-cache: true
+          cache-dependency-glob: chat/uv.lock
+
+      - name: install
+        run: uv sync --frozen
+
+      # No secret is available to this job, deliberately: the unit suite passing
+      # here is the proof it needs no provider.
+      - name: unit tests
+        run: uv run --frozen pytest tests/unit -v -m "not llm"
+
+  integration:
+    name: integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+
+    env:
+      # 24+ characters, or the backend refuses it. Committed on purpose: it
+      # authenticates nothing outside this job.
+      API_TOKEN: chat-ci-token-not-for-production
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: relviz
+          POSTGRES_PASSWORD: relviz
+          POSTGRES_DB: relviz_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U relviz -d relviz_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+      neo4j:
+        image: neo4j:5-community
+        env:
+          NEO4J_AUTH: neo4j/relviz-dev-password
+          NEO4J_server_memory_heap_max__size: 1G
+          NEO4J_server_memory_pagecache_size: 256m
+        ports:
+          - 7687:7687
+          - 7474:7474
+        options: >-
+          --health-cmd "wget -q -O /dev/null http://localhost:7474 || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: '3.12'
+          enable-cache: true
+          cache-dependency-glob: chat/uv.lock
+
+      - name: install
+        run: uv sync --frozen
+
+      - name: build the backend
+        working-directory: backend
+        run: go build -o /tmp/urara-server ./cmd/server
+
+      # Both services run for real: the conversation tests drive chat's HTTP
+      # surface, not just the backend's. LLM_PROVIDER and VERTEX_PROJECT only
+      # have to satisfy start-up validation -- nothing here reaches a model.
+      - name: start the backend and the chat service
+        env:
+          POSTGRES_DSN: postgres://relviz:relviz@localhost:5432/relviz_test?sslmode=disable
+          NEO4J_URI: bolt://localhost:7687
+          NEO4J_USER: neo4j
+          NEO4J_PASSWORD: relviz-dev-password
+          BACKEND_BASE_URL: http://localhost:8080
+          BACKEND_API_TOKEN: ${{ env.API_TOKEN }}
+          LLM_PROVIDER: vertex
+          VERTEX_PROJECT: ci-calls-no-model
+        run: |
+          set -euo pipefail
+
+          APP_ADDR=":8080" /tmp/urara-server >/tmp/backend.log 2>&1 &
+          APP_ADDR=":8090" uv run --frozen uvicorn urara_chat.main:app \
+            --host 127.0.0.1 --port 8090 >/tmp/chat.log 2>&1 &
+
+          # Polled rather than slept: a cold Neo4j is slower here than locally.
+          wait_for() {
+            for _ in $(seq 1 180); do
+              if curl -sf "$2" >/dev/null 2>&1; then
+                echo "$1 is up"
+                return 0
+              fi
+              sleep 1
+            done
+            echo "::error::$1 never became healthy"
+            return 1
+          }
+
+          wait_for backend http://localhost:8080/healthz
+          wait_for chat http://localhost:8090/healthz
+
+      # The `llm` tests call a real provider: they need a credential and cost
+      # money per run, so they are excluded here and run locally and in the
+      # Phase 08 evaluation instead.
+      - name: integration tests
+        env:
+          CHAT_TEST_BACKEND_URL: http://localhost:8080
+          CHAT_TEST_CHAT_URL: http://localhost:8090
+          CHAT_TEST_API_TOKEN: ${{ env.API_TOKEN }}
+        run: |
+          uv run --frozen pytest tests/integration -v \
+            -m "integration and not llm" --junitxml=report.xml
+
+      # A suite that quietly stops testing anything is worse than a red one, so
+      # both a skip and an empty run fail the job.
+      - name: fail if the suite skipped or ran nothing
+        run: |
+          python3 - <<'PY'
+          import sys
+          import xml.etree.ElementTree as ET
+
+          # pytest nests the counts in <testsuite>; the root <testsuites> has none.
+          root = ET.parse("report.xml").getroot()
+          suites = root.findall("testsuite") or [root]
+          tests = sum(int(s.get("tests", 0)) for s in suites)
+          skipped = sum(int(s.get("skipped", 0)) for s in suites)
+          print(f"{tests} tests, {skipped} skipped")
+          if skipped:
+              sys.exit("integration tests skipped; CI treats that as a failure")
+          if not tests:
+              sys.exit("no integration tests ran")
+          PY
+
+      - name: service logs
+        if: failure()
+        run: |
+          echo "::group::backend"
+          cat /tmp/backend.log || true
+          echo "::endgroup::"
+          echo "::group::chat"
+          cat /tmp/chat.log || true
+          echo "::endgroup::"
