@@ -25,6 +25,10 @@ FROM nginx:1.31-alpine
 ENV BACKEND_HOST=backend
 ENV BACKEND_PORT=8080
 
+# The chat service, templated the same way and for the same reason.
+ENV CHAT_HOST=chat
+ENV CHAT_PORT=8090
+
 # The Authorization header nginx presents when proxying /api, whole: "Bearer
 # <token>". Empty means the browser supplies its own, which is what the token
 # gate is for. It has to be declared even when empty -- the entrypoint only
