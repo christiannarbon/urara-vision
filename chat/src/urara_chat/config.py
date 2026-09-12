@@ -1,10 +1,4 @@
-"""Runtime settings, read from the environment.
-
-The Go service's `internal/config` does the same job and sets the posture this
-file follows: defaults that work against the bundled compose stack, and a
-setting that is wrong is corrected or refused here rather than surfacing later
-as a puzzling failure in a request.
-"""
+"""Runtime settings, read from the environment."""
 
 from __future__ import annotations
 
@@ -17,9 +11,7 @@ from typing import Any, Literal
 from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# The levels the Go server accepts, mapped to Python's. Anything else falls
-# back to info, matching its parseLevel: a typo in a log level should not stop
-# a service from starting.
+# The levels the Go server accepts, mapped to Python's.
 _LOG_LEVELS: dict[str, int] = {
     "debug": logging.DEBUG,
     "info": logging.INFO,
@@ -29,53 +21,26 @@ _LOG_LEVELS: dict[str, int] = {
 
 _DEFAULT_LOG_LEVEL = "info"
 
-# The longest a turn may hold a connection. Five minutes is already far past the
-# point where a reader has given up and reloaded, and past it the deadline stops
-# being a deadline: a hung provider holds a worker, and enough of them hold the
-# pod. A larger setting is clamped rather than refused -- it is a judgement about
-# patience, not a broken address.
+# The longest a turn may hold a connection.
 MAX_ANSWER_TIMEOUT_SECONDS = 300.0
 
-# The longest a turn may wait for a free slot. Deliberately the same as the
-# Retry-After a refused caller is told to honour: waiting longer than that is
-# queueing, which is the thing the cap exists to avoid.
+# The longest a turn may wait for a free slot.
 MAX_ADMISSION_WAIT_SECONDS = 5.0
-# A container listens on every interface; the pod's NetworkPolicy is what
-# narrows who may reach it.
+# A container listens on every interface; the pod's NetworkPolicy is what narrows who may reach
+# it.
 _DEFAULT_HOST = "0.0.0.0"
 
 
 class ConfigurationError(RuntimeError):
-    """Settings are invalid, carrying only the reasons.
-
-    Raised instead of letting pydantic's own ValidationError escape. That error
-    embeds the input it was given, and pydantic elides the *middle* of a long
-    value rather than the ends -- so a long API key leaves its tail in the
-    message, and re-raising puts that tail in the container log on every restart
-    of a crash loop.
-    """
+    """Settings are invalid, carrying only the reasons."""
 
 
 class Settings(BaseSettings):
-    """Everything the service needs, and nothing it does not.
-
-    There is deliberately no database setting: the service reaches Postgres and
-    Neo4j only through the Go backend's HTTP API, and holding no credentials is
-    what keeps it unable to write anything the backend has not given it an
-    endpoint for.
-
-    **A new field here is not reachable until it is declared elsewhere too.**
-    Compose passes a container only the variables `docker-compose.yml` names, so
-    a setting missing from that file cannot be changed without editing it -- and
-    the attempt fails silently, the container starting on the default while the
-    run reads as the feature being broken. `tests/unit/test_settings_are_reachable.py`
-    fails if the two drift apart. The cluster's ConfigMap is the third place,
-    once Phase 07 lands.
-    """
+    """Everything the service needs, and nothing it does not."""
 
     model_config = SettingsConfigDict(
-        # Field names are the environment variables, upper-cased: backend_base_url
-        # reads BACKEND_BASE_URL, so no field needs an alias of its own.
+        # Field names are the environment variables, upper-cased: backend_base_url reads
+        # BACKEND_BASE_URL, so no field needs an alias of its own.
         case_sensitive=False,
         extra="ignore",
     )
@@ -86,59 +51,42 @@ class Settings(BaseSettings):
     log_level: str = _DEFAULT_LOG_LEVEL
     app_addr: str = ":8090"
 
-    # A Literal rather than a string plus a check: an unknown provider is then
-    # refused by the type, in one place, with a message pydantic writes.
+    # A Literal rather than a string plus a check: an unknown provider is then refused by the
+    # type, in one place, with a message pydantic writes.
     llm_provider: Literal["gemini-studio", "vertex"] = "gemini-studio"
     llm_model: str = "gemini-2.5-flash"
     llm_temperature: float = 0.2
     llm_max_output_tokens: int = 2048
     llm_timeout_seconds: float = 60.0
 
-    # A snapshot is immutable once ingested, so a rendered context card stays
-    # true for as long as the pod cares to keep it. The TTL exists to bound
-    # memory and to pick up a re-ingest under the same ID, not for correctness.
+    # A snapshot is immutable once ingested, so a rendered context card stays true for as long as
+    # the pod cares to keep it.
     context_cache_ttl_seconds: float = 300.0
 
-    # An unbounded transcript is an unbounded bill: the whole history is resent
-    # on every turn. Twenty messages is roughly ten exchanges, which is more
-    # context than a follow-up question has ever needed here.
+    # An unbounded transcript is an unbounded bill: the whole history is resent on every turn.
     max_history_messages: int = 20
-    # How many times the model may ask for tools before it must answer with what
-    # it has. Six is generous for the nine tools available.
+    # How many times the model may ask for tools before it must answer with what it has. Six is
+    # generous for the nine tools available.
     max_tool_iterations: int = 6
 
-    # How many turns may be in flight at once, across every conversation. Each
-    # one is a provider call being paid for, so the ceiling is on the bill as
-    # much as on the pod. Four is enough for a handful of readers and small
-    # enough that a refresh loop cannot run away.
+    # How many turns may be in flight at once, across every conversation.
     max_concurrent_turns: int = 4
 
-    # How long a turn waits for a free slot before it is refused. Short on
-    # purpose: long enough to absorb two requests that arrived together, not
-    # long enough for a reader to wonder whether anything is happening. Past a
-    # few seconds this stops being a grace period and becomes the queue the
-    # limiter exists to avoid.
+    # How long a turn waits for a free slot before it is refused.
     turn_admission_wait_seconds: float = 0.5
 
-    # A question long enough to be a pasted document is not a question, and the
-    # prompt it would build is paid for in full before the model reads a word of
-    # it. Four thousand characters is several paragraphs.
+    # A question long enough to be a pasted document is not a question, and the prompt it would
+    # build is paid for in full before the model reads a word of it.
     max_question_chars: int = 4000
 
-    # A ceiling on the whole turn, not on one call. Each provider call is bounded
-    # by llm_timeout_seconds and each backend call by backend_timeout_seconds,
-    # but a turn is up to seven of the first plus its tools -- and Phase 08's
-    # eval runner drives this thousands of times, where a turn that hangs is a
-    # run that hangs.
+    # A ceiling on the whole turn, not on one call.
     answer_timeout_seconds: float = 120.0
 
-    # Refused on Content-Length, before the body is read. The question limit
-    # above cannot do this job: it runs in the handler, by which point the whole
-    # body has been received and parsed.
+    # Refused on Content-Length, before the body is read.
     max_request_bytes: int = 1_048_576
 
-    # SecretStr so redaction is the default rather than something to remember at
-    # every point the settings are printed. No credential has a default value.
+    # SecretStr so redaction is the default rather than something to remember at every point the
+    # settings are printed. No credential has a default value.
     google_api_key: SecretStr = SecretStr("")
     vertex_project: str = ""
     vertex_location: str = "us-central1"
@@ -146,16 +94,6 @@ class Settings(BaseSettings):
     @field_validator("google_api_key")
     @classmethod
     def _strip_key(cls, v: SecretStr) -> SecretStr:
-        """Trim the credential before anything judges whether it is present.
-
-        A trailing newline from `export GOOGLE_API_KEY=$(cat key.txt)` is the
-        common case, and whitespace is otherwise truthy: the check below would
-        pass and the provider would answer with a puzzling 400.
-
-        This unwraps the secret, which the factory is otherwise the only place
-        to do. The value never leaves the validator -- it is stripped and
-        re-wrapped -- and `str(v)` would return the mask and strip nothing.
-        """
         return SecretStr(v.get_secret_value().strip())
 
     @field_validator("vertex_project", "vertex_location")
@@ -165,33 +103,21 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def _credentials_match_the_provider(self) -> Settings:
-        """Refuse to start without the credential the chosen provider needs.
-
-        The same posture as the Go service's NEO4J_PASSWORD check: a process
-        that starts and then fails every request is worse than one that does not
-        start. The message names the environment variable because that string is
-        what someone reads in `kubectl logs` at the moment they are least
-        inclined to go digging.
-        """
-        # `not self.google_api_key` rather than unwrapping it: an empty
-        # SecretStr is already falsy, and get_secret_value() belongs only in the
-        # factory that hands the key to the SDK.
+        """Refuse to start without the credential the chosen provider needs."""
+        # `not self.google_api_key` rather than unwrapping it: an empty SecretStr is already
+        # falsy, and get_secret_value() belongs only in the factory that hands the key to the SDK.
         if self.llm_provider == "gemini-studio" and not self.google_api_key:
             raise ValueError("GOOGLE_API_KEY must be set when LLM_PROVIDER is 'gemini-studio'")
         if self.llm_provider == "vertex" and not self.vertex_project:
-            # Vertex authenticates with Application Default Credentials, so it
-            # needs no key -- only somewhere to send the request.
+            # Vertex authenticates with Application Default Credentials, so it needs no key --
+            # only somewhere to send the request.
             raise ValueError("VERTEX_PROJECT must be set when LLM_PROVIDER is 'vertex'")
         return self
 
     @field_validator("max_concurrent_turns")
     @classmethod
     def _at_least_one_turn(cls, v: int) -> int:
-        """Refuse a cap that lets nothing through.
-
-        Zero would refuse every turn with a 429 while the service reported
-        itself ready, which reads as an outage rather than as the setting it is.
-        """
+        """Refuse a cap that lets nothing through."""
         if v < 1:
             raise ValueError(f"MAX_CONCURRENT_TURNS must be at least 1, got {v}")
         return v
@@ -199,19 +125,7 @@ class Settings(BaseSettings):
     @field_validator("turn_admission_wait_seconds")
     @classmethod
     def _bounded_admission_wait(cls, v: float) -> float:
-        """Keep the grace period from becoming a queue, and from becoming zero.
-
-        Clamped above the ceiling because waiting longer than the Retry-After a
-        refused caller is given is the queueing this cap exists to prevent,
-        wearing a different name.
-
-        Refused at zero for a subtler reason: `asyncio.wait_for` with a
-        non-positive timeout cancels the acquisition before the event loop ever
-        runs it, so a wait of zero refuses *every* turn rather than only the
-        ones that found the cap full -- a service answering nothing while
-        reporting itself ready. Anything positive, however small, behaves as
-        "refuse when full".
-        """
+        """Keep the grace period from becoming a queue, and from becoming zero."""
         if v <= 0:
             raise ValueError(
                 f"TURN_ADMISSION_WAIT_SECONDS must be greater than zero, got {v}; "
@@ -222,13 +136,7 @@ class Settings(BaseSettings):
     @field_validator("answer_timeout_seconds")
     @classmethod
     def _bounded_answer_timeout(cls, v: float) -> float:
-        """Cap the turn deadline, and refuse one that cannot be met.
-
-        Zero or less is refused rather than clamped: it would time out every
-        turn instantly, and a service that answers nothing at all should say why
-        at start-up instead of failing each request in a way that looks like the
-        provider.
-        """
+        """Cap the turn deadline, and refuse one that cannot be met."""
         if v <= 0:
             raise ValueError(f"ANSWER_TIMEOUT_SECONDS must be greater than zero, got {v}")
         return min(v, MAX_ANSWER_TIMEOUT_SECONDS)
@@ -236,12 +144,6 @@ class Settings(BaseSettings):
     @field_validator("backend_base_url")
     @classmethod
     def _strip_trailing_slash(cls, v: str) -> str:
-        """Drop a trailing slash so callers can build `f"{base}/api/v1/..."`.
-
-        A base URL ending in a slash yields a double slash in every path, which
-        the backend answers with a 404 that reads like a missing route rather
-        than like a misconfigured setting.
-        """
         return v.rstrip("/")
 
     @field_validator("log_level")
@@ -254,12 +156,7 @@ class Settings(BaseSettings):
     @field_validator("app_addr")
     @classmethod
     def _parsable_address(cls, v: str) -> str:
-        """Refuse an address whose port is not a number.
-
-        Unlike a log level there is no sensible fallback for a listen address,
-        and the alternative is a ValueError raised from a property long after
-        start-up, where it reads as a bug rather than as a bad setting.
-        """
+        """Refuse an address whose port is not a number."""
         _, _, port = v.rpartition(":")
         if not port.isdigit():
             raise ValueError(f"app_addr must end in a port, got {v!r}")
@@ -267,11 +164,7 @@ class Settings(BaseSettings):
 
     @property
     def host(self) -> str:
-        """The interface to listen on.
-
-        `app_addr` is Go-style, so ":8090" is a valid address meaning every
-        interface; that form is what the backend's own APP_ADDR default uses.
-        """
+        """The interface to listen on."""
         host, _, _ = self.app_addr.rpartition(":")
         return host or _DEFAULT_HOST
 
@@ -285,35 +178,20 @@ class Settings(BaseSettings):
         return _LOG_LEVELS[self.log_level]
 
 
-# Everything logging puts on a record itself. Anything left over was passed by
-# a caller through `extra=`, which is the whole point of a structured log line.
-# Built from a real record rather than typed out, so a new attribute in a future
-# Python does not start appearing in the output as if someone had logged it.
+# Everything logging puts on a record itself.
 _RESERVED_RECORD_KEYS = frozenset(logging.LogRecord("", 0, "", 0, "", None, None).__dict__) | {
     "message",
     "asctime",
     "taskName",
 }
 
-# The four keys the shape is defined by. Held apart so a caller cannot displace
-# one of them with an `extra` field of the same name.
+# The four keys the shape is defined by. Held apart so a caller cannot displace one of them with
+# an `extra` field of the same name.
 _FIXED_KEYS = ("time", "level", "msg", "logger")
 
 
 class JSONLogFormatter(logging.Formatter):
-    """Renders a record as one JSON object per line.
-
-    The Go service logs JSON through slog, and two services in one cluster
-    emitting different shapes is a small permanent tax on anyone reading the
-    logs. The keys match slog's: time, level, msg.
-
-    Fields passed through `extra=` are rendered alongside those. They were
-    dropped until 04.R: every structured line in the service -- the per-turn
-    cost line Phase 08 bills from, the per-tool timing line, the provider on a
-    failed probe -- reached stdout as a bare message with its fields silently
-    gone. A test that asserts on the LogRecord will not see this. Assert on the
-    rendered string.
-    """
+    """Renders a record as one JSON object per line."""
 
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
@@ -322,8 +200,8 @@ class JSONLogFormatter(logging.Formatter):
             "msg": record.getMessage(),
             "logger": record.name,
         }
-        # Merged after the fixed keys and with them removed, so `extra={"msg":
-        # ...}` adds a field rather than rewriting the message.
+        # Merged after the fixed keys and with them removed, so `extra={"msg": ...}` adds a field
+        # rather than rewriting the message.
         payload.update(
             {
                 key: value
@@ -333,18 +211,14 @@ class JSONLogFormatter(logging.Formatter):
         )
         if record.exc_info:
             payload["error"] = self.formatException(record.exc_info)
-        # default=str rather than letting a value raise: a formatter that throws
-        # takes out the line it was writing and tells nobody why, and a log call
-        # is the last place that should be able to fail a request.
+        # default=str rather than letting a value raise: a formatter that throws takes out the
+        # line it was writing and tells nobody why, and a log call is the last place that should
+        # be able to fail a request.
         return json.dumps(payload, default=str)
 
 
 def configure_logging(settings: Settings) -> None:
-    """Send structured logs to stdout at the configured level.
-
-    Handlers are replaced rather than added to, so calling this twice -- which
-    uvicorn's reloader does -- cannot double every line.
-    """
+    """Send structured logs to stdout at the configured level."""
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JSONLogFormatter())
 
@@ -355,9 +229,4 @@ def configure_logging(settings: Settings) -> None:
 
 @lru_cache
 def get_settings() -> Settings:
-    """The process's settings, read once.
-
-    Cached because the environment does not change under a running process, and
-    because every call site would otherwise re-read and re-validate it.
-    """
     return Settings()
