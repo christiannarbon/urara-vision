@@ -265,6 +265,36 @@ Two behaviours worth knowing, both observed rather than assumed:
   the generous `startupProbe` budget is for. A `rollout restart` against a warm
   cluster completes in about 5 seconds.
 
+## Chat, verified on minikube with Calico
+
+The default minikube CNI accepts NetworkPolicies and ignores them, so the
+isolation claims below were taken on a separate `--cni=calico` profile
+(k8s v1.35.1), with ADC mounted from `relviz-adc`:
+
+- **The read-only root holds.** The pod runs as 65532 with
+  `readOnlyRootFilesystem`; `/app` refuses a write, `/tmp` accepts one, and the
+  ADC mount is read-only.
+- **Chat cannot reach either datastore.** DNS resolves `neo4j` and `postgres`
+  from the chat pod and the TCP connections then time out, while `backend:8080`
+  answers 200 — so the drop is the policy, not broken networking. The control:
+  the backend's own `/readyz` reported `{"graph":"ok","postgres":"ok"}` at the
+  same moment.
+- **A backend outage does not restart chat.** Scaled to zero for 135s — past
+  the liveness threshold — chat went `0/1` with `RESTARTS 0`. That is the whole
+  reason `/healthz` does not check the backend.
+- **A rollout does not drop a turn.** A question asked during
+  `rollout restart deploy/chat` answered in 5.1s. `maxUnavailable: 0` also kept
+  the old pod serving through both misconfiguration tests below.
+- **A missing `VERTEX_PROJECT` crash-loops legibly**, logging
+  `configuration is invalid, refusing to start: VERTEX_PROJECT must be set...`
+  before uvicorn's traceback. A missing `relviz-adc` never starts at all:
+  `MountVolume.SetUp failed ... secret "relviz-adc" not found`.
+- **An unusable credential is not caught at start-up.** Pointed at a project it
+  cannot use, the pod stays Ready — `/readyz` reports the configured provider
+  without calling it — and only `/debug/llm` catches it, with a 502 rather than
+  a traceback. Under Workload Identity, where nothing is mounted to fail, that
+  is the failure mode to expect.
+
 ## Verifying changes
 
 ```bash
