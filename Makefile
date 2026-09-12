@@ -173,12 +173,14 @@ demo-docs: ## Parse every shipped demo documentation set (make demo-docs SET=jaf
 	done
 
 BACKEND_IMAGE  := urara-vision/backend:dev
+CHAT_IMAGE     := urara-vision/chat:dev
 FRONTEND_IMAGE := urara-vision/frontend:dev
-IMAGES         := $(BACKEND_IMAGE) $(FRONTEND_IMAGE)
+IMAGES         := $(BACKEND_IMAGE) $(CHAT_IMAGE) $(FRONTEND_IMAGE)
 
 .PHONY: images
-images: ## Build both images tagged :dev for a local cluster
+images: ## Build all three images tagged :dev for a local cluster
 	docker build -t $(BACKEND_IMAGE) ./backend
+	docker build -t $(CHAT_IMAGE) ./chat
 	docker build -t $(FRONTEND_IMAGE) ./frontend
 
 .PHONY: k8s-load
@@ -215,6 +217,12 @@ k8s-up: ## Bring the whole Kubernetes stack up and open a tunnel to it
 	kubectl -n $(NS) wait --for=condition=Ready pod/neo4j-0 --timeout=300s
 	kubectl -n $(NS) rollout status deploy/backend --timeout=300s
 	kubectl -n $(NS) rollout status deploy/frontend --timeout=180s
+	@# chat mounts the out-of-band ADC secret, so it cannot start without it.
+	@if kubectl -n $(NS) get secret relviz-adc >/dev/null 2>&1; then \
+	  kubectl -n $(NS) rollout status deploy/chat --timeout=180s; \
+	else \
+	  echo "    no relviz-adc secret: chat stays down (see k8s/README.md)"; \
+	fi
 	@$(MAKE) --no-print-directory k8s-tunnel
 	@echo
 	@echo "  Urara Vision is up:  http://localhost:$(PF_PORT)"

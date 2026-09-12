@@ -6,11 +6,11 @@ browser stays on a single origin and CORS never applies.
 
 ```
 k8s/
-  base/                 namespace, both datastores, both apps, ingress,
+  base/                 namespace, both datastores, all three apps, ingress,
                         network policies, HPAs, PDBs
   overlays/dev/         1 replica each, generated dev secrets, small footprint
-  overlays/prod/        3 backend / 2 frontend, TLS ingress, 50Gi volumes,
-                        externally-managed secrets
+  overlays/prod/        3 backend / 2 frontend / 2 chat, TLS ingress, 50Gi
+                        volumes, externally-managed secrets
 ```
 
 ## Dev
@@ -20,14 +20,19 @@ The dev overlay is self-contained — it generates its own credentials, so
 
 ```bash
 docker build -t urara-vision/backend:dev  ./backend
+docker build -t urara-vision/chat:dev     ./chat
 docker build -t urara-vision/frontend:dev ./frontend
 
-# On kind: kind load docker-image urara-vision/backend:dev urara-vision/frontend:dev
+# On kind: kind load docker-image urara-vision/backend:dev urara-vision/chat:dev urara-vision/frontend:dev
 # On minikube: eval $(minikube docker-env) before building
 
 kubectl apply -k k8s/overlays/dev
 kubectl -n urara-vision rollout status deploy/backend
 ```
+
+The chat service is the exception to "no setup": it needs the ADC secret below,
+and stays in `ContainerCreating` until it exists. Everything else comes up
+without it.
 
 Reach it either through the ingress (`urara-vision.local`, add a hosts
 entry) or by port-forwarding:
@@ -97,6 +102,57 @@ tags at your registry in `overlays/prod/kustomization.yaml`, and apply:
 ```bash
 kubectl apply -k k8s/overlays/prod
 ```
+
+## The chat service
+
+`base/chat.yaml` carries a Deployment, a ClusterIP Service on `8090`, the
+`relviz-chat-config` ConfigMap, a PodDisruptionBudget and a ServiceAccount of
+its own. Only the frontend reaches it, and it reaches the backend's API like
+any other client.
+
+Set `VERTEX_PROJECT` in the overlay before applying. It has no default, and the
+pod refuses to start without it rather than failing on the first question.
+
+### The model credential
+
+Vertex authenticates with Application Default Credentials, not an API key, so
+there is no key in the ConfigMap and no key secret anywhere. How the credential
+arrives is the one thing that differs between the overlays.
+
+**Prod — Workload Identity.** Annotate the ServiceAccount with the Google
+service account to impersonate, and the pod reads a token from the metadata
+server. Nothing is mounted and nothing is stored:
+
+```bash
+kubectl -n urara-vision annotate serviceaccount chat \
+  iam.gke.io/gcp-service-account="$GSA@$PROJECT.iam.gserviceaccount.com"
+```
+
+**Dev — a mounted file.** A kind or minikube cluster has no metadata server, so
+ADC has to arrive as a file. Create it out of band; it is never committed:
+
+```bash
+kubectl -n urara-vision create secret generic relviz-adc \
+  --from-file="$HOME/.config/gcloud/application_default_credentials.json" \
+  --dry-run=client -o yaml | kubectl apply -f -
+```
+
+`overlays/dev/dev-chat-adc.yaml` mounts it read-only at `/var/run/gcp` and
+points `GOOGLE_APPLICATION_CREDENTIALS` at it. That is a dev patch on purpose:
+mounted in prod the file would shadow Workload Identity, and the pod would
+authenticate as whoever generated it.
+
+### What chat may reach
+
+`chat-allow-frontend` admits only the frontend, on 8090, and chat was added to
+the backend's policy as a second `from` entry. Chat has **no** path to Postgres
+or Neo4j, and that omission is the design: everything it reads goes through the
+backend's API, which keeps the projection's invariants in one place and keeps a
+prompt injection away from a database session.
+
+The policies are ingress-only. Nothing restricts egress, which is why chat's
+outbound call to Vertex needs no rule — add a default-deny egress policy and it
+will need 443 to the provider plus DNS.
 
 ## Storage
 
@@ -171,7 +227,7 @@ connections and applies its schema, so `startupProbe` allows five minutes while
 slow one.
 
 **Network policies need a CNI that enforces them.** Postgres and Neo4j accept
-traffic only from the backend; the backend only from the frontend. minikube's
+traffic only from the backend; the backend from the frontend and from chat. minikube's
 default CNI does *not* implement NetworkPolicy, so on a stock `minikube start`
 these objects are accepted and then ignored — any pod in the namespace can
 still reach Postgres. That is inert, not broken, but do not read a green
@@ -186,6 +242,10 @@ enforce them as written.
 
 **HPAs are dropped in dev** along with the PDBs, since a single replica cannot
 satisfy `minAvailable: 1` during a rollout.
+
+**Chat's memory limit is 768Mi, not the backend's 512Mi.** A Python interpreter
+with LangChain imported has a much larger resident set than the Go binary and
+would OOM at the backend's ceiling.
 
 ## Verified on minikube
 
