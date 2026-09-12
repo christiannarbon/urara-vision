@@ -24,7 +24,7 @@ from urara_chat.agent.context_card import ContextCardCache
 from urara_chat.agent.pipeline import Pipeline, configure_pipeline
 from urara_chat.api.chat_routes import router as chat_router
 from urara_chat.api.errors import install_error_handlers
-from urara_chat.api.middleware import RequestIDMiddleware
+from urara_chat.api.middleware import REQUEST_ID_HEADER, RequestIDMiddleware, request_id_of
 from urara_chat.api.routes import router
 from urara_chat.backend.client import BackendClient
 from urara_chat.config import ConfigurationError, configure_logging, get_settings
@@ -102,6 +102,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     log.info("agent pipeline configured")
 
+    # Said out loud, once, where kubectl logs will show it. ConversationLocks
+    # documents this properly, but its docstring is only read by somebody
+    # already in that file -- and the base manifest runs two replicas, so the
+    # person who needs this is the one scaling an overlay.
+    log.info(
+        "conversation turns are serialised per process, not across replicas; "
+        "run one replica or expect interleaved transcripts",
+        extra={"max_concurrent_turns": settings.max_concurrent_turns},
+    )
+
     try:
         yield
     finally:
@@ -134,9 +144,18 @@ async def limit_request_size(
     if declared is not None and declared.isdigit():
         limit = request.app.state.settings.max_request_bytes
         if int(declared) > limit:
+            # The request ID goes in the body as well as the header, as it does
+            # for every error the exception handlers render. This one answers
+            # from a middleware, before those handlers exist, which is how it
+            # came to be the only error a caller could not quote an ID for.
+            request_id = request_id_of(request)
             return JSONResponse(
                 status_code=413,
-                content={"detail": f"request body is larger than the {limit} byte limit"},
+                content={
+                    "detail": f"request body is larger than the {limit} byte limit",
+                    "requestId": request_id,
+                },
+                headers={REQUEST_ID_HEADER: request_id},
             )
     return await call_next(request)
 
