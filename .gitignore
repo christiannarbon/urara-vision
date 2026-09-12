@@ -62,3 +62,6 @@ docker-compose.override.yml
 
 # Chris personal notes
 dev_notes/
+
+# The junit report the chat CI job writes; only act leaves it in the tree.
+chat/report.xml
