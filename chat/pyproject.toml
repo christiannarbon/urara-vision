@@ -21,6 +21,9 @@ dev = [
     "respx",
     "ruff",
     "mypy",
+    # Only a transitive dependency otherwise; the manifest tests parse YAML.
+    "pyyaml",
+    "types-pyyaml",
 ]
 
 [build-system]
