@@ -1,14 +1,4 @@
-"""Pydantic mirrors of the JSON the Go backend returns.
-
-The wire format is camelCase because Go struct tags decide it; the Python side
-stays snake_case and `to_camel` bridges the two. Field names here were read off
-`internal/model/model.go`, `internal/store/neo4j/types.go`,
-`internal/store/postgres/{tables,relationships,search}.go` and
-`internal/api/context.go` rather than inferred from a sample, because a field
-that only appears when it is non-empty would not show up in one.
-
-These are data. Nothing here has behaviour.
-"""
+"""Pydantic mirrors of the JSON the Go backend returns."""
 
 from __future__ import annotations
 
@@ -19,22 +9,13 @@ from pydantic.alias_generators import to_camel
 
 
 class BackendModel(BaseModel):
-    """A response from the Go API.
-
-    Fields arrive camelCase, and unknown ones are ignored rather than refused:
-    the backend will grow fields, and a chat service that fails to parse a
-    response because the API added something is a chat service that breaks on
-    every backend release.
-    """
+    """A response from the Go API."""
 
     model_config = ConfigDict(
         extra="ignore",
         populate_by_name=True,
         alias_generator=to_camel,
     )
-
-
-# --- the snapshot and what it declares about itself -------------------------
 
 
 class Project(BackendModel):
@@ -77,9 +58,6 @@ class Snapshot(BackendModel):
     project: ProjectMeta = ProjectMeta()
 
 
-# --- domains and tables -----------------------------------------------------
-
-
 class DomainLineage(BackendModel):
     proposed_table: str = ""
     source_models: list[str] = []
@@ -103,9 +81,8 @@ class Column(BackendModel):
     type: str = ""
     description: str = ""
     ordinal: int = 0
-    # Go tags these "isPk"/"isFk", which to_camel would render "isPk" from
-    # is_pk -- it agrees, but the alias is written out so a rename cannot
-    # silently break the mapping.
+    # Go tags these "isPk"/"isFk", which to_camel would render "isPk" from is_pk -- it agrees, but
+    # the alias is written out so a rename cannot silently break the mapping.
     is_pk: bool = False
     is_fk: bool = False
 
@@ -189,11 +166,7 @@ class LineageEntry(BackendModel):
 
 
 class TableDetail(BackendModel):
-    """The `/table?id=` envelope.
-
-    The handler assembles four store calls into one object, so the table itself
-    is nested rather than being the response.
-    """
+    """The `/table?id=` envelope."""
 
     table: Table
     incoming: list[Referrer] = []
@@ -202,17 +175,10 @@ class TableDetail(BackendModel):
 
 
 class TablesDetailResponse(BackendModel):
-    """The `/tables/detail?ids=` envelope.
-
-    `missing` is how a wrong guess at an ID comes back: the call succeeds and
-    names what it could not find, rather than failing the whole batch.
-    """
+    """The `/tables/detail?ids=` envelope."""
 
     tables: list[TableDetail] = []
     missing: list[str] = []
-
-
-# --- search, graph and lineage ----------------------------------------------
 
 
 class SearchHit(BackendModel):
@@ -259,9 +225,9 @@ class Graph(BackendModel):
 
 
 class PathHop(BackendModel):
-    # The Go tag is "from", which is a Python keyword, so this is the one field
-    # that must be renamed and given an explicit alias -- the generator would
-    # otherwise look for "fromTable" and quietly leave it empty.
+    # The Go tag is "from", which is a Python keyword, so this is the one field that must be
+    # renamed and given an explicit alias -- the generator would otherwise look for "fromTable"
+    # and quietly leave it empty.
     from_table: str = Field(default="", alias="from")
     to: str = ""
     from_column: str = ""
@@ -273,9 +239,6 @@ class JoinPath(BackendModel):
     length: int = 0
     tables: list[str] = []
     hops: list[PathHop] = []
-
-
-# --- diagnostics and sources ------------------------------------------------
 
 
 class Diagnostic(BackendModel):
@@ -292,9 +255,6 @@ class SourceTable(BackendModel):
     dataset: str = ""
     name: str = ""
     refs: int = 0
-
-
-# --- the context catalogue --------------------------------------------------
 
 
 class ContextDomain(BackendModel):
@@ -315,11 +275,7 @@ class ContextTable(BackendModel):
 
 
 class SnapshotContext(BackendModel):
-    """The `/context` catalogue: a whole snapshot small enough to prime a prompt.
-
-    `truncated` says the table list was dropped rather than shortened, so an
-    empty `tables` with `truncated` true means "too many to list", not "none".
-    """
+    """The `/context` catalogue: a whole snapshot small enough to prime a prompt."""
 
     snapshot: Snapshot
     domains: list[ContextDomain] = []
@@ -328,15 +284,8 @@ class SnapshotContext(BackendModel):
     truncated: bool = False
 
 
-# --- conversations ----------------------------------------------------------
-
-
 class Message(BackendModel):
-    """One turn.
-
-    `citations` is a list and never None: "drew on no tables" is a real answer
-    and has to survive the round trip as an empty list rather than as absence.
-    """
+    """One turn."""
 
     ordinal: int = 0
     role: str

@@ -1,20 +1,4 @@
-"""The retrieval layer: the fixed set of tools an agent may call.
-
-A tool is a plain async function plus a schema, deliberately not a framework
-tool. Phase 03 wraps these. Keeping the callable separate from the binding is
-what lets this file be tested with no LLM package installed, and what stops a
-framework upgrade from reaching into retrieval logic.
-
-Two rules run through the whole file.
-
-**The snapshot is closed over, never an argument.** No schema here mentions one.
-An agent that can name a different snapshot is an agent that can answer
-confidently about the wrong model.
-
-**A truncated result says so.** Every list is capped, and the cap is reported in
-the result rather than applied silently -- a model shown 50 of 137 tables with
-no marker will tell the reader those are all of them, and be believed.
-"""
+"""The retrieval layer: the fixed set of tools an agent may call."""
 
 from __future__ import annotations
 
@@ -27,13 +11,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from urara_chat.backend.client import BackendClient
 from urara_chat.backend.models import Graph, JoinPath, TableDetail, TablesDetailResponse
 
-# The most entries any tool returns. Chosen to bound the prompt rather than for
-# any property of the data: past this a list stops informing an answer and
-# starts crowding out the question.
+# The most entries any tool returns. Bounds the prompt: past this a list stops
+# informing an answer and starts crowding out the question.
 MAX_ITEMS = 50
 
-# Column prose is the bulkiest thing a table document carries, and the model
-# needs enough to tell columns apart rather than the whole paragraph.
+# Column prose is the bulkiest thing a table document carries, and the model needs enough to tell
+# columns apart rather than the whole paragraph.
 MAX_COLUMN_DESCRIPTION_RUNES = 300
 
 
@@ -47,40 +30,21 @@ class ToolSpec:
     fn: Callable[..., Awaitable[Any]]
 
 
-# --- shaping results --------------------------------------------------------
-
-
 def _capped(items: list[Any]) -> dict[str, Any]:
-    """The one shape every list result takes.
-
-    Always an object, whether or not anything was cut: a result that is
-    sometimes a list and sometimes an object is a result the model handles
-    inconsistently, and the inconsistency shows up as a wrong answer rather
-    than as an error.
-    """
+    """The one shape every list result takes."""
     total = len(items)
     return {"items": items[:MAX_ITEMS], "truncated": total > MAX_ITEMS, "total": total}
 
 
 def _truncate_runes(text: str, limit: int) -> str:
-    """Shorten to `limit` characters, marking that it was cut.
-
-    Python strings index by code point, so this is safe for the bilingual
-    corpora without the byte-slicing care the Go side needs.
-    """
+    """Shorten to `limit` characters, marking that it was cut."""
     if len(text) <= limit:
         return text
     return text[:limit] + "…"
 
 
 def _prune(value: Any) -> Any:
-    """Drop what carries no information, recursively.
-
-    Empty strings, lists and dicts go, and so does False: absence means the
-    same thing, and every `"conformed": false` spent is prompt the answer does
-    not get. Zero stays -- a zero ordinal is the first column, not a missing
-    one.
-    """
+    """Drop what carries no information, recursively."""
     if isinstance(value, dict):
         pruned = {k: _prune(v) for k, v in value.items()}
         return {k: v for k, v in pruned.items() if _worth_keeping(v)}
@@ -90,13 +54,7 @@ def _prune(value: Any) -> Any:
 
 
 def _worth_keeping(value: Any) -> bool:
-    """Whether a pruned value earns its place in the prompt.
-
-    `False` goes, because absence says the same thing. `0` stays, because a zero
-    ordinal is the first column rather than a missing one. The bool check comes
-    first: in Python `False == 0`, so testing for zero without it keeps every
-    False flag -- which is the bug this replaced.
-    """
+    """Whether a pruned value earns its place in the prompt."""
     if isinstance(value, bool):
         return value
     if isinstance(value, int | float):
@@ -105,11 +63,7 @@ def _worth_keeping(value: Any) -> bool:
 
 
 def _shrink_table(detail: TableDetail) -> dict[str, Any]:
-    """One table document, reduced to what an answer is built from.
-
-    `docPath` goes because the model cannot open a file, and the column prose is
-    cut because it is the bulk of the document and the least of the meaning.
-    """
+    """One table document, reduced to what an answer is built from."""
     table = detail.table.model_dump(mode="json", by_alias=True, exclude={"doc_path", "snapshot_id"})
     for column in table.get("columns", []):
         column["description"] = _truncate_runes(
@@ -129,15 +83,7 @@ def _shrink_table(detail: TableDetail) -> dict[str, Any]:
 
 
 def _shrink_graph(graph: Graph) -> dict[str, Any]:
-    """A neighbourhood as IDs and joins rather than as drawing instructions.
-
-    The canvas needs degree, dataset and refs to size and colour a node; an
-    answer needs to know which tables are there and what joins them.
-
-    Links are filtered to the nodes that survived the cap. A link naming a node
-    that is not in the result tells the model about a table it cannot see, which
-    is worse than not mentioning it.
-    """
+    """A neighbourhood as IDs and joins rather than as drawing instructions."""
     nodes = [
         _prune(
             {
@@ -189,27 +135,19 @@ def _shrink_path(path: JoinPath) -> dict[str, Any]:
 
 def _shrink_batch(batch: TablesDetailResponse) -> dict[str, Any]:
     result = _capped([_shrink_table(d) for d in batch.tables])
-    # Reported even when empty: an ID that missed is something the model must
-    # act on, and an absent key reads as though every ID was found.
+    # Reported even when empty: an ID that missed is something the model must act on, and an
+    # absent key reads as though every ID was found.
     result["missing"] = list(batch.missing)
     return result
 
 
-# --- argument schemas -------------------------------------------------------
-#
-# Bounds live here rather than in the function body so an out-of-range value is
-# a validation error the model is told about and can correct, instead of a 400
-# from the backend that it has to interpret.
+# Bounds live here rather than in the function body so an out-of-range value is a validation error
+# the model is told about and can correct, instead of a 400 from the backend that it has to
+# interpret.
 
 
 class ToolArgs(BaseModel):
-    """Base for every tool's arguments.
-
-    Unknown keys are refused rather than ignored. A model that sends `limt`
-    instead of `limit` would otherwise get the default silently and reason about
-    a result it did not ask for -- the same failure the Go handlers were changed
-    to reject in Phase 01.
-    """
+    """Base for every tool's arguments."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -267,11 +205,8 @@ class DiagnosticsArgs(ToolArgs):
     )
 
 
-# --- the tools --------------------------------------------------------------
-#
-# A description is the only thing the model reads before choosing, so each says
-# what the tool is for, when to reach for it, what comes back, and the format of
-# any ID it takes.
+# A description is the only thing the model reads before choosing, so each says what the tool is
+# for, when to reach for it, what comes back, and the format of any ID it takes.
 
 TOOL_NAMES: tuple[str, ...] = (
     "list_domains",
@@ -287,12 +222,7 @@ TOOL_NAMES: tuple[str, ...] = (
 
 
 def build_tools(client: BackendClient, snapshot_id: str) -> list[ToolSpec]:
-    """The tools an agent may call, bound to one snapshot.
-
-    The snapshot is closed over rather than exposed as a parameter, so it is
-    absent from every schema the model sees. An agent that can name a different
-    snapshot is an agent that can answer confidently about the wrong model.
-    """
+    """The tools an agent may call, bound to one snapshot."""
 
     async def list_domains() -> dict[str, Any]:
         domains = await client.list_domains(snapshot_id)
