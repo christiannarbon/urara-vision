@@ -159,10 +159,17 @@ services:
       # nginx presents the backend's token on the browser's behalf, so
       # localhost:8081 opens without anyone being asked for a key.
       API_AUTHORIZATION: "Bearer relviz-dev-token-not-for-production"
+      # The /api/chat/ upstream, substituted into the nginx config at start.
+      CHAT_HOST: "chat"
+      CHAT_PORT: "8090"
     ports:
       - "8081:80"
     depends_on:
+      # Both upstreams, because nginx resolves a proxy_pass host once at
+      # startup: if the chat container does not exist yet, nginx exits with
+      # "host not found in upstream" and the frontend crash-loops until it does.
       - backend
+      - chat
     restart: unless-stopped
 
 volumes:
