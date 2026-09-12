@@ -6,9 +6,8 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   plugins: [vue()],
   test: {
-    // Unit specs are pure functions and stores; the integration specs mount
-    // components, which need a DOM. One environment for both keeps the setup
-    // to a single file.
+    // Unit specs are pure functions and stores; the integration specs mount components, which
+    // need a DOM.
     environment: 'jsdom',
     include: ['tests/**/*.spec.ts'],
     setupFiles: ['tests/setup.ts'],

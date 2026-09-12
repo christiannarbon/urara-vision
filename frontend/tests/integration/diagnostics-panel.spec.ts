@@ -1,11 +1,4 @@
-/**
- * The Diagnostics panel, mounted.
- *
- * This component is the reason the tool pays for itself, and its rules are all
- * about presentation: dropped documents above findings whatever their severity,
- * grouping by code, and a readable label for a code the frontend has never
- * seen. Those are only observable by rendering it.
- */
+/** The Diagnostics panel, mounted. */
 
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'

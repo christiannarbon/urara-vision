@@ -1,10 +1,4 @@
-/**
- * The detail pane, mounted, in both languages.
- *
- * This is the densest surface in the app -- five headings, a tab strip and two
- * counted strings -- and the one where a missed string would be least visible
- * in review. Mounting it is the only way to see them all resolve.
- */
+/** The detail pane, mounted, in both languages. */
 
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
@@ -134,14 +128,7 @@ describe('counted strings', () => {
   })
 })
 
-/**
- * The document's own words, as opposed to the app's.
- *
- * The pane is where nearly all of them land, and the point of reading them out
- * of the field rather than off the ingest is that switching language redraws
- * what is already loaded. That is what these assert: same props, same
- * component instance, different language.
- */
+/** The document's own words, as opposed to the app's. */
 describe('prose written in more than one language', () => {
   const bilingual = () =>
     detail({

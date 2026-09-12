@@ -1,10 +1,4 @@
-/**
- * Cluster colour assignment.
- *
- * The colours carry meaning -- one hue per domain, stable as filters change --
- * so the properties worth asserting are about identity and legibility, not
- * about any particular hue.
- */
+/** Cluster colour assignment. */
 
 import { describe, expect, it } from 'vitest'
 

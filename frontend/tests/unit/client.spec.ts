@@ -1,10 +1,4 @@
-/**
- * The fetch wrapper.
- *
- * Everything the UI knows about the backend goes through here, so what matters
- * is that a failure arrives as something the UI can act on -- an ApiError with
- * a status -- and that query strings are built the way the handlers expect.
- */
+/** The fetch wrapper. */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 

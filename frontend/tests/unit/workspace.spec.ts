@@ -1,11 +1,4 @@
-/**
- * The workspace store.
- *
- * This is where the UI's rules live: which filters trigger a refetch, what a
- * failed request leaves on screen, and when the reader gets interrupted about a
- * document that could not be parsed. The API client is mocked, so what is under
- * test is the store's own decisions.
- */
+/** The workspace store. */
 
 import { createPinia, setActivePinia } from 'pinia'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'

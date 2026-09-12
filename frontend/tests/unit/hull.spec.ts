@@ -1,11 +1,4 @@
-/**
- * Convex hull and petal geometry.
- *
- * These are the two pieces of pure maths in the app, and both have properties
- * worth asserting directly: a hull must actually enclose its points, and a
- * fitted petal must actually contain the hull. A cluster outline that crops a
- * node out is a visible bug that is hard to spot by eye.
- */
+/** Convex hull and petal geometry. */
 
 import { describe, expect, it } from 'vitest'
 
