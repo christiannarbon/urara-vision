@@ -15,12 +15,11 @@ is being tested.
 """
 
 import os
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
 
 import httpx
 import pytest
-from pydantic import SecretStr
 
 from urara_chat.backend.client import BackendClient
 from urara_chat.config import Settings
@@ -115,11 +114,17 @@ def other_snapshot_id(backend_url: str, auth_headers: dict[str, str]) -> Iterato
 
 @pytest.fixture(scope="session")
 def llm_settings() -> Settings:
-    """Settings for a real Studio call, or a skip.
+    """Settings for a real model call, or a skip.
 
     Separate from the backend fixtures on purpose: these tests spend money, so
     they are gated on their own credential and never run because a backend
     happened to be reachable.
+
+    Gated on VERTEX_PROJECT rather than on an API key. The credential is
+    Application Default Credentials now -- there is no key to look for, and a
+    project is the one setting a Vertex call cannot be made without. Gating on
+    GOOGLE_API_KEY would skip every billed test on a correctly configured
+    machine, and CI counts a skip as a failure.
 
     The output cap is small but not tiny, and 512 is not arbitrary. Gemini 2.5
     spends output tokens on reasoning before it emits anything, so at 64 the
@@ -128,18 +133,92 @@ def llm_settings() -> Settings:
     like a token limit. Cost is dominated by the ~1k input tokens the tool
     schemas take anyway, so the cap buys little and costs a confusing failure.
     """
-    key = os.getenv("GOOGLE_API_KEY")
-    if not key:
+    project = os.getenv("VERTEX_PROJECT")
+    if not project:
         pytest.skip(
-            "set GOOGLE_API_KEY to run this test; it calls a real model and "
-            "costs money (see chat/README.md)"
+            "set VERTEX_PROJECT (and run `gcloud auth application-default login`) "
+            "to run this test; it calls a real model and costs money "
+            "(see chat/README.md)"
         )
     return Settings(
-        llm_provider="gemini-studio",
-        google_api_key=SecretStr(key),
+        llm_provider="vertex",
+        vertex_project=project,
+        vertex_location=os.getenv("VERTEX_LOCATION", "us-central1"),
         llm_max_output_tokens=512,
         llm_timeout_seconds=30.0,
     )
+
+
+@pytest.fixture(scope="session")
+def other_demo_set() -> Path:
+    """The second demo set, as a path a test can ingest itself.
+
+    A fixture rather than an import: the test directory is not a package, so a
+    module here cannot import a sibling, and duplicating the path arithmetic is
+    how the two copies come to disagree.
+    """
+    return OTHER_DEMO_SET
+
+
+@pytest.fixture(scope="session")
+def chat_url() -> str:
+    """Where the chat service is, for the tests that drive its HTTP surface.
+
+    Its own variable rather than derived from CHAT_TEST_BACKEND_URL: the two
+    services are reachable at different addresses from inside the compose
+    network and from a developer's shell, and guessing one from the other gets
+    it wrong in exactly one of those places.
+    """
+    url = os.getenv("CHAT_TEST_CHAT_URL")
+    if not url:
+        pytest.skip("set CHAT_TEST_CHAT_URL to run this test (see: make test-chat-integration)")
+    return url.rstrip("/")
+
+
+@pytest.fixture
+async def chat(chat_url: str) -> AsyncIterator[httpx.AsyncClient]:
+    """An HTTP client for the chat service.
+
+    Generously timed: a turn is several model calls plus their tools, and a
+    client that gives up before the service does turns a slow answer into a
+    failure that looks like the service.
+    """
+    async with httpx.AsyncClient(base_url=chat_url, timeout=180.0) as client:
+        yield client
+
+
+@pytest.fixture
+def ingest(backend_url: str, auth_headers: dict[str, str]) -> Iterator[Callable[[Path, str], str]]:
+    """Ingest a demo set mid-test and clean it up afterwards.
+
+    The session fixtures below cannot do this: their order is decided by which
+    test asked for them first, and the pinning test needs a snapshot that is
+    provably *newer* than the one its conversation was created against. Ingested
+    here, at a moment the test controls, "latest" means something it can rely on.
+    """
+    created: list[str] = []
+
+    def go(demo_set: Path, name: str) -> str:
+        files = [
+            {"path": str(p.relative_to(demo_set)), "content": p.read_text()}
+            for p in sorted(demo_set.rglob("*"))
+            if p.suffix in {".md", ".toml"}
+        ]
+        with httpx.Client(base_url=backend_url, headers=auth_headers, timeout=60.0) as http:
+            response = http.post(
+                "/api/v1/ingest",
+                json={"name": name, "sourceLabel": "phase05", "files": files},
+            )
+            response.raise_for_status()
+            sid: str = response.json()["snapshot"]["id"]
+        created.append(sid)
+        return sid
+
+    yield go
+
+    with httpx.Client(base_url=backend_url, headers=auth_headers, timeout=60.0) as http:
+        for sid in created:
+            http.delete(f"/api/v1/snapshots/{sid}")
 
 
 @pytest.fixture
