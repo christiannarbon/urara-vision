@@ -65,3 +65,6 @@ dev_notes/
 
 # The junit report the chat CI job writes; only act leaves it in the tree.
 chat/report.xml
+
+# The requirements file the security workflow exports for pip-audit.
+chat/requirements.txt

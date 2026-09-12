@@ -11,6 +11,8 @@ on:
     paths:
       - backend/go.mod
       - backend/go.sum
+      - chat/pyproject.toml
+      - chat/uv.lock
       - frontend/package.json
       - frontend/package-lock.json
       - .github/workflows/security.yml
@@ -20,6 +22,8 @@ on:
     paths:
       - backend/go.mod
       - backend/go.sum
+      - chat/pyproject.toml
+      - chat/uv.lock
       - frontend/package.json
       - frontend/package-lock.json
       - .github/workflows/security.yml
@@ -61,6 +65,45 @@ jobs:
       - name: govulncheck
         working-directory: backend
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+
+  python:
+    name: pip-audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          python-version: '3.12'
+
+      # The lockfile is exported rather than installed, for the same reason the
+      # npm job does not `npm ci`: the scan reads pinned versions, and
+      # installing would run the dependencies' build hooks.
+      - name: pip-audit
+        working-directory: chat
+        run: |
+          uv export --frozen --format requirements-txt --no-emit-project -o requirements.txt
+          uvx pip-audit@2.9.0 -r requirements.txt --disable-pip
+
+      # The Python half of the npm job's registry check: a source that is not
+      # PyPI is how a dependency-confusion or mirror-poisoning attack looks, and
+      # pip-audit does not consider it.
+      - name: every dependency resolves to PyPI
+        working-directory: chat
+        run: |
+          foreign=$(grep -o 'source = {[^}]*}' uv.lock \
+            | grep -v 'registry = "https://pypi.org/simple"' \
+            | grep -v 'editable = "\."' || true)
+          if [ -n "$foreign" ]; then
+            echo "::error::lockfile entries resolve somewhere other than pypi.org:"
+            echo "$foreign"
+            exit 1
+          fi
 
   npm:
     name: npm audit
