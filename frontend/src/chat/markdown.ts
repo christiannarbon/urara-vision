@@ -1,12 +1,9 @@
 /**
  * Render the small markdown subset an answer uses, as escaped HTML.
  *
- * Assistant text is generated from documentation the reader uploaded, so it is
- * untrusted. The whole input is escaped first and only the constructs below are
- * turned back into markup; escaping afterwards would escape our own tags.
- *
- * No markdown library and no sanitiser: six constructs do not justify the
- * dependency, and a library configured wrongly is a worse hole than none.
+ * The text is untrusted. Everything is escaped first and only the constructs
+ * below are turned back into markup; escaping afterwards would escape our own
+ * tags. No markdown library and no sanitiser, deliberately.
  */
 
 const ESCAPES: Record<string, string> = {
@@ -31,14 +28,9 @@ function unescapeHtml(text: string): string {
     .replace(/&amp;/g, '&')
 }
 
-/**
- * Where finished markup waits out the remaining passes.
- *
- * A code span, a fence and an anchor are complete when recognised, and later
- * passes would only damage them -- emphasis would find the `_` in a URL. Each
- * is swapped for a NUL-delimited token, which the input cannot contain because
- * `renderAnswer` strips NUL up front.
- */
+/** Where finished markup waits out the remaining passes, so emphasis cannot
+ *  find the `_` in a URL. The token is NUL-delimited; the input cannot
+ *  contain one because `renderAnswer` strips NUL up front. */
 interface Slots {
   html: string[]
 }
@@ -68,20 +60,13 @@ function restore(html: string, slots: Slots): string {
 const SAFE_SCHEMES = new Set(['http:', 'https:'])
 const BLANK_OR_CONTROL = /[\s\u0000-\u0020\u007f-\u009f]/
 
-/**
- * The href to use, or null when the link must render as plain text.
- *
- * Parsed rather than prefix-matched: the URL parser strips tab and newline and
- * lower-cases the scheme, so `java<tab>script:` and `JaVaScRiPt:` both reach
- * the allowlist as `javascript:`, where `startsWith` would see three different
- * strings and pass two. Parsing without a base is also what rejects `//host`.
- */
+/** The href to use, or null when the link must render as plain text. */
 function safeHref(raw: string): string | null {
   const url = raw.trim()
   if (!url) return null
 
-  // A URL that is only valid once characters are removed from it is not one
-  // this renderer will link to.
+  // A URL that is only valid once characters are removed from it is not one this renderer will
+  // link to.
   if (BLANK_OR_CONTROL.test(url)) return null
 
   let parsed: URL
@@ -92,15 +77,14 @@ function safeHref(raw: string): string | null {
   }
   if (!SAFE_SCHEMES.has(parsed.protocol)) return null
 
-  // As written rather than the parser's normalisation, so the URL is not
-  // rewritten in front of the reader. Its quotes are already entities.
+  // As written rather than the parser's normalisation, so the URL is not rewritten in front of the
+  // reader.
   return url
 }
 
 // --- inline constructs ------------------------------------------------------
 
-/** Bold before italic, or `**x**` is read as an empty italic. The boundary
- *  conditions keep `a * b * c` and `fct_orders_daily` literal. */
+/** Bold before italic, or `**x**` is read as an empty italic. */
 function emphasis(text: string): string {
   return text
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
@@ -108,8 +92,10 @@ function emphasis(text: string): string {
     .replace(/(?<![\w_])_(?!\s)([^_\n]+?)(?<!\s)_(?![\w_])/g, '<em>$1</em>')
 }
 
-/** One level of nested parens, because `alert(1)` is the shape a hostile URL
- *  takes and a pattern stopping at the first `(` never reaches the validator. */
+/**
+ * One level of nested parens, because `alert(1)` is the shape a hostile URL takes and a pattern
+ * stopping at the first `(` never reaches the validator.
+ */
 const LINK = /\[([^\]\n]*)\]\(((?:[^()\n]|\([^()\n]*\))*)\)/g
 
 const INLINE_CODE = /`([^`\n]+)`/g
@@ -142,13 +128,7 @@ function listHtml(ordered: boolean, items: string[], slots: Slots): string {
   return `<${tag}>${li}</${tag}>`
 }
 
-/**
- * One run of lines with no blank line in it.
- *
- * List items are grouped as they are met rather than requiring the whole block
- * to be a list: an answer that introduces its list on the line above is the
- * common case, and the stricter reading renders it as literal hyphens.
- */
+/** One run of lines with no blank line in it. */
 function renderBlock(block: string, slots: Slots): string {
   const lines = block.split('\n').filter((line) => line.trim() !== '')
   const out: string[] = []
@@ -205,8 +185,8 @@ export function renderAnswer(markdown: string): string {
 
   const slots: Slots = { html: [] }
 
-  // NUL stripped, not escaped: it is what the slot tokens are built from, so
-  // removing it here is what makes a token in the input impossible to forge.
+  // NUL stripped, not escaped: it is what the slot tokens are built from, so removing it here is
+  // what makes a token in the input impossible to forge.
   const source = String(markdown).replace(/\r\n?/g, '\n').replace(/\u0000/g, '')
 
   // Below this line nothing in the text can still become a tag.

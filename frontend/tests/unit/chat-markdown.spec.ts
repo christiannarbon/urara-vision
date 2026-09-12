@@ -1,10 +1,5 @@
-/**
- * The answer renderer.
- *
- * Every test goes through `render`, which records its output for the sweep at
- * the bottom of the file: a construct added later has to get past that as well
- * as its own test.
- */
+/** The answer renderer. Every test goes through `render`, which records its
+ *  output for the sweep at the bottom of the file. */
 
 import { describe, expect, it } from 'vitest'
 
@@ -138,8 +133,8 @@ describe('escaping', () => {
   })
 
   it('escapes an event handler that sits inside otherwise valid markdown', () => {
-    // The surrounding markdown really does render, so the escaping has to
-    // survive a pass that is actively writing tags.
+    // The surrounding markdown really does render, so the escaping has to survive a pass that is
+    // actively writing tags.
     const html = render('a **bold** <b onclick="alert(1)">click</b> word')
     expect(html).toContain('<strong>bold</strong>')
     expect(html).not.toContain('<b ')
@@ -234,8 +229,7 @@ describe('link schemes', () => {
   })
 })
 
-/** Every output above, parsed as real HTML. Not written per-construct, so a
- *  feature added later is covered the moment its own test calls `render`. */
+/** Every output above, parsed as real HTML. */
 describe('the parsed output of every case above', () => {
   /** Checked here too, so this describe stands on its own under a name filter. */
   const CORPUS = [
@@ -259,8 +253,10 @@ describe('the parsed output of every case above', () => {
     '&lt;script&gt;alert(1)&lt;/script&gt;',
   ]
 
-  /** Scoped to the wrapper, so the document's own html/head/body are not
-   *  mistaken for the renderer's output. */
+  /**
+   * Scoped to the wrapper, so the document's own html/head/body are not mistaken for the
+   * renderer's output.
+   */
   function parse(html: string): Element {
     const doc = new DOMParser().parseFromString(`<div id="out">${html}</div>`, 'text/html')
     const out = doc.getElementById('out')
