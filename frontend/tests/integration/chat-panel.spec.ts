@@ -346,6 +346,25 @@ describe('accessibility', () => {
   })
 })
 
+describe('render cost', () => {
+  it('does not re-parse mounted answers while the reader types', async () => {
+    // Bound in the template, every keystroke re-parsed every answer in the
+    // thread; the count is what keeps that from coming back.
+    const markdown = await import('../../src/chat/markdown')
+    const render = vi.spyOn(markdown, 'renderAnswer')
+    const { w } = panel()
+
+    await type(w, 'first?')
+    await type(w, 'second?')
+    const parsed = render.mock.calls.length
+
+    const box = w.find('textarea')
+    for (const ch of 'hello') await box.setValue(box.element.value + ch)
+
+    expect(render.mock.calls.length).toBe(parsed)
+  })
+})
+
 describe('language', () => {
   it('re-renders its strings when the locale changes', async () => {
     const { w } = panel()
