@@ -1,4 +1,4 @@
-# Builds both container images. Nothing is pushed and nothing is uploaded --
+# Builds every container image. Nothing is pushed and nothing is uploaded --
 # this only answers "does it still build", which is the part that breaks when a
 # base image is repinned or a COPY path moves.
 name: images
@@ -10,6 +10,10 @@ on:
       - backend/.dockerignore
       - backend/go.mod
       - backend/go.sum
+      - chat/Dockerfile
+      - chat/.dockerignore
+      - chat/pyproject.toml
+      - chat/uv.lock
       - frontend/Dockerfile
       - frontend/nginx.conf
       - frontend/nginx-security-headers.conf
@@ -21,6 +25,10 @@ on:
     paths:
       - backend/Dockerfile
       - backend/.dockerignore
+      - chat/Dockerfile
+      - chat/.dockerignore
+      - chat/pyproject.toml
+      - chat/uv.lock
       - frontend/Dockerfile
       - frontend/nginx.conf
       - frontend/nginx-security-headers.conf
@@ -42,11 +50,12 @@ jobs:
     permissions:
       contents: read
     strategy:
-      # One broken image should not hide the other's result.
+      # One broken image should not hide the others' results.
       fail-fast: false
       matrix:
         image:
           - backend
+          - chat
           - frontend
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -75,7 +84,11 @@ jobs:
         run: |
           user=$(docker image inspect --format '{{.Config.User}}' "urara-vision/${{ matrix.image }}:ci")
           echo "configured user: ${user:-<empty>}"
-          if [ "${{ matrix.image }}" = "backend" ] && [ -z "$user" ]; then
-            echo "::error::the backend image does not set USER, but the pod spec requires runAsNonRoot"
-            exit 1
-          fi
+          case "${{ matrix.image }}" in
+            backend|chat)
+              if [ -z "$user" ]; then
+                echo "::error::the ${{ matrix.image }} image does not set USER, but its pod spec requires runAsNonRoot"
+                exit 1
+              fi
+              ;;
+          esac
