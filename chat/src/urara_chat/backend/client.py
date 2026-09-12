@@ -286,8 +286,19 @@ class BackendClient:
         )
         return Conversation.model_validate(data)
 
-    async def list_conversations(self, snapshot_id: str) -> list[Conversation]:
-        data = await self._get(f"{_API}/conversations", {"snapshot": snapshot_id})
+    async def list_conversations(
+        self, snapshot_id: str, limit: int | None = None
+    ) -> list[Conversation]:
+        """The most recent threads about one snapshot.
+
+        The limit is the backend's to default and to clamp, so an unset one is
+        left out of the request rather than guessed at here -- two services with
+        their own idea of the default is one more thing to keep in step.
+        """
+        params: dict[str, Any] = {"snapshot": snapshot_id}
+        if limit is not None:
+            params["limit"] = limit
+        data = await self._get(f"{_API}/conversations", params)
         return [Conversation.model_validate(c) for c in data["conversations"]]
 
     async def get_conversation(self, cid: str) -> Conversation:
