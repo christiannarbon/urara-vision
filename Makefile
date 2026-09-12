@@ -359,11 +359,11 @@ ci-list: ## List every job act can run
 ci-backend: ## Run the backend build and unit-test job locally
 	$(ACT) $(ACT_FLAGS) -W .github/workflows/backend.yml -j check
 
-.PHONY: ci-backend-integration
-ci-backend-integration: ## Run the backend integration job locally (starts service containers)
-	@# The job's service containers publish the same ports the compose stack
-	@# uses, so the two cannot both be up. A bare "port is already allocated"
-	@# from the daemon is not obvious, so say what to do about it.
+# The integration jobs' service containers publish the same ports the compose
+# stack uses, so the two cannot both be up. A bare "port is already allocated"
+# from the daemon is not obvious, so say what to do about it.
+.PHONY: ci-ports-free
+ci-ports-free:
 	@for port in 5432 7474 7687; do \
 	  if lsof -nP -iTCP:$$port -sTCP:LISTEN >/dev/null 2>&1; then \
 	    echo "port $$port is in use -- the integration services cannot bind it."; \
@@ -372,7 +372,19 @@ ci-backend-integration: ## Run the backend integration job locally (starts servi
 	    exit 1; \
 	  fi; \
 	done
+
+.PHONY: ci-backend-integration
+ci-backend-integration: ci-ports-free ## Run the backend integration job locally (starts service containers)
 	$(ACT) $(ACT_FLAGS) -W .github/workflows/backend.yml -j integration
+
+.PHONY: ci-chat
+ci-chat: ## Run the chat lint and unit-test jobs locally
+	$(ACT) $(ACT_FLAGS) -W .github/workflows/chat.yml -j lint
+	$(ACT) $(ACT_FLAGS) -W .github/workflows/chat.yml -j test
+
+.PHONY: ci-chat-integration
+ci-chat-integration: ci-ports-free ## Run the chat integration job locally (starts service containers)
+	$(ACT) $(ACT_FLAGS) -W .github/workflows/chat.yml -j integration
 
 .PHONY: ci-frontend
 ci-frontend: ## Run the frontend job locally
@@ -395,7 +407,7 @@ ci-workflows: ## Run the workflow-lint job locally, the way GitHub will
 	$(ACT) $(ACT_FLAGS) -W .github/workflows/workflows.yml -j lint
 
 .PHONY: ci
-ci: ci-lint ci-backend ci-frontend ci-manifests ## What a pull request runs, minus the service containers
+ci: ci-lint ci-backend ci-chat ci-frontend ci-manifests ## What a pull request runs, minus the service containers
 
 .PHONY: ci-clean
 ci-clean: ## Remove the containers act keeps around between runs
