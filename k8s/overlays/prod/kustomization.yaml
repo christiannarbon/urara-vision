@@ -15,6 +15,18 @@ replicas:
 patches:
   - path: prod-ingress.yaml
   - path: prod-storage.yaml
+  # Set before applying: empty stops the pod at startup, not at the first
+  # question.
+  - target:
+      kind: ConfigMap
+      name: relviz-chat-config
+    patch: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: relviz-chat-config
+      data:
+        VERTEX_PROJECT: ""
 
 # Production credentials are NOT generated here. Create the two secrets out of
 # band -- from a sealed secret, an external-secrets ExternalSecret, or a one-off
@@ -23,9 +35,15 @@ patches:
 # Required keys:
 #   relviz-postgres: username, password, database, dsn
 #   relviz-neo4j:    password
+#
+# No model credential: Vertex uses Workload Identity, so the ServiceAccount
+# annotation in base/chat.yaml is the whole of it. Mounting an ADC file here
+# would shadow it.
 
 images:
   - name: urara-vision/backend
+    newTag: v0.1.0
+  - name: urara-vision/chat
     newTag: v0.1.0
   - name: urara-vision/frontend
     newTag: v0.1.0
