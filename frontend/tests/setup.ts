@@ -2,8 +2,8 @@
 
 import { beforeEach, vi } from 'vitest'
 
-// The graph canvas measures its container; jsdom reports every element as 0x0,
-// which makes layout code divide by zero.
+// The graph canvas measures its container; jsdom reports every element as 0x0, which makes layout
+// code divide by zero.
 Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', {
   configurable: true,
   value() {
@@ -11,8 +11,7 @@ Object.defineProperty(HTMLElement.prototype, 'getBoundingClientRect', {
   },
 })
 
-// jsdom has no canvas implementation. Every drawing call is a no-op recorder,
-// which is enough for code that only traces paths.
+// jsdom has no canvas implementation.
 if (!HTMLCanvasElement.prototype.getContext) {
   HTMLCanvasElement.prototype.getContext = (() =>
     new Proxy(
@@ -67,11 +66,10 @@ if (!globalThis.matchMedia) {
 }
 
 beforeEach(() => {
-  // No spec should reach the network by accident; each one that needs fetch
-  // installs its own stub.
+  // No spec should reach the network by accident; each one that needs fetch installs its own stub.
   vi.restoreAllMocks()
-  // Storage is stubbed above where jsdom does not supply it, but a spec is still free to
-  // replace it…
+  // Storage is stubbed above where jsdom does not supply it, but a spec is still free to replace
+  // it…
   try {
     globalThis.localStorage?.clear()
   } catch {
