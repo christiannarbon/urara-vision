@@ -1,11 +1,11 @@
 # Deployment and configuration
 
-Three ways to run the same two images: compose for a laptop, Kubernetes for
-anything else, and the two apps natively for hot reload while developing.
+Three ways to run the same three images: compose for a laptop, Kubernetes for
+anything else, and the apps natively for hot reload while developing.
 
 ## Configuration
 
-Everything the server needs comes from the environment:
+Everything the backend needs comes from the environment:
 
 | Variable | Default | Notes |
 |---|---|---|
@@ -28,9 +28,32 @@ than 24 characters is refused outright, because a short token looks like a
 control while being trivially guessable — unset it deliberately instead, and
 the server logs a warning on every start to say authentication is off.
 
-The frontend needs no runtime configuration: nginx proxies `/api` to the
-backend, so the browser only ever talks to one origin. `VITE_API_BASE` (a build
-arg) overrides the API base if you want to point it elsewhere.
+The chat service reads its own set:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `APP_ADDR` | `:8090` | Listen address |
+| `BACKEND_BASE_URL` | `http://backend:8080` | Chat is an API client like any other |
+| `BACKEND_API_TOKEN` | _(unset)_ | The same `relviz-api` token the backend checks |
+| `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
+| `LLM_PROVIDER` | `gemini-studio` | `vertex` in the cluster |
+| `LLM_MODEL` | `gemini-2.5-flash` | |
+| `VERTEX_PROJECT` | — | Required under `vertex`; the pod refuses to start without it |
+| `VERTEX_LOCATION` | `us-central1` | |
+| `GOOGLE_APPLICATION_CREDENTIALS` | _(unset)_ | Only where ADC arrives as a file; unset under Workload Identity |
+| `MAX_TOOL_ITERATIONS` | `6` | Tool rounds before the model must answer with what it has |
+| `MAX_HISTORY_MESSAGES` | `20` | The whole history is resent every turn |
+| `MAX_CONCURRENT_TURNS` | `4` | In-flight turns across every conversation |
+| `MAX_QUESTION_CHARS` | `4000` | |
+| `CONTEXT_CACHE_TTL_SECONDS` | `300` | A snapshot is immutable, so its context card keeps |
+
+Under Vertex the credential is ADC, never a key: `gcloud auth
+application-default login` locally, Workload Identity in the cluster.
+
+The frontend needs no runtime configuration beyond the upstreams it proxies to
+— `BACKEND_HOST` / `BACKEND_PORT` for `/api` and `CHAT_HOST` / `CHAT_PORT` for
+`/api/chat` — so the browser only ever talks to one origin. `VITE_API_BASE` (a
+build arg) overrides the API base if you want to point it elsewhere.
 
 `relviz` survives the rename as the Postgres role and database, the Kubernetes
 secret names (`relviz-postgres`, `relviz-neo4j`) and the `localStorage` key.
@@ -98,11 +121,14 @@ existing volume. `k8s-clean` is the way through that.
 
 | Overlay | Replicas | Secrets | Storage |
 |---|---|---|---|
-| `dev` | 1 backend, 1 frontend | Generated, committed on purpose | 8Gi / 8Gi / 2Gi, default storage class |
-| `prod` | 3 backend, 2 frontend | Externally managed; the overlay creates none | 50Gi / 50Gi / 5Gi on `standard-rwo`, TLS ingress |
+| `dev` | 1 backend, 1 chat, 1 frontend | Generated, committed on purpose; `relviz-adc` created out of band | 8Gi / 8Gi / 2Gi, default storage class |
+| `prod` | 3 backend, 2 chat, 2 frontend | Externally managed; the overlay creates none | 50Gi / 50Gi / 5Gi on `standard-rwo`, TLS ingress |
 
 The dev overlay also drops the HPAs and PodDisruptionBudgets, which fight a
 single replica.
+
+Chat's memory limit is 768Mi against the backend's 512Mi: a Python interpreter
+with LangChain imported would OOM at the backend's ceiling.
 
 [`k8s/README.md`](../../../k8s/README.md) has the rest: creating the prod
 secrets, resizing a live volume, and the image-specific gotchas the live deploy
