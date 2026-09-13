@@ -1,0 +1,654 @@
+# Golden question set for the chat agent, over the demo sets in docs/demo/.
+#
+# Fields:
+#   id, set, language, question, category
+#   expect_citations     table IDs a correct answer must cite; [] means none expected
+#   expect_tools_any     at least one must be called; [] means the context card answers it
+#   expect_contains_any  case-insensitive substrings, at least one; used sparingly
+#   must_not_contain     substrings that only a wrong or fabricated answer would carry
+#
+# Categories: lookup, traversal, lineage, diagnostics, conformed, refusal, injection, bilingual.
+#
+# Every expectation was checked against the document it names, and diagnostic counts match
+# backend/tests/unit/demo/. The card carries each table's id, kind, grain and column count plus
+# diagnostic totals by severity, so a question it answers expects no tools and no citations.
+
+# --- jaffle-shop-ddd -----------------------------------------------------------------------------
+
+- id: jaffle-columns-orders
+  set: jaffle-shop-ddd
+  language: EN
+  question: List the columns of fact_orders and state its grain.
+  expect_citations: ["ordering/fact_orders"]
+  expect_tools_any: ["get_tables", "search_model"]
+  expect_contains_any: ["one row per order"]
+  must_not_contain: []
+  category: lookup
+
+# Card answers it.
+- id: jaffle-grain-orders
+  set: jaffle-shop-ddd
+  language: EN
+  question: What is the grain of fact_orders?
+  expect_citations: []
+  expect_tools_any: []
+  expect_contains_any: ["one row per order"]
+  must_not_contain: []
+  category: lookup
+
+- id: jaffle-lookup-tax-rate
+  set: jaffle-shop-ddd
+  language: EN
+  question: Where is the store tax rate stored, and does it keep history?
+  expect_citations: ["store_operations/dim_locations"]
+  expect_tools_any: ["search_model", "get_tables"]
+  expect_contains_any: ["tax_rate"]
+  must_not_contain: []
+  category: lookup
+
+- id: jaffle-traversal-items-to-customer
+  set: jaffle-shop-ddd
+  language: EN
+  question: How do I join fact_order_items to dim_customers?
+  expect_citations: ["ordering/fact_order_items", "ordering/fact_orders", "customer_identity/dim_customers"]
+  expect_tools_any: ["find_join_paths", "get_neighbourhood", "get_tables"]
+  expect_contains_any: ["order_id"]
+  must_not_contain: []
+  category: traversal
+
+# Written backwards in the document; the resolver orients it.
+- id: jaffle-traversal-orders-date
+  set: jaffle-shop-ddd
+  language: EN
+  question: Which column does fact_orders use to join the calendar, and which dim_date does it bind to?
+  expect_citations: ["ordering/fact_orders", "shared_kernel/dim_date"]
+  expect_tools_any: ["get_neighbourhood", "get_tables", "find_join_paths"]
+  expect_contains_any: ["ordered_at_date_key"]
+  must_not_contain: []
+  category: traversal
+
+- id: jaffle-traversal-orders-neighbours
+  set: jaffle-shop-ddd
+  language: EN
+  question: What tables does fact_orders join to?
+  expect_citations:
+    - "ordering/fact_order_items"
+    - "customer_identity/dim_customers"
+    - "store_operations/dim_locations"
+    - "shared_kernel/dim_date"
+  expect_tools_any: ["get_neighbourhood", "get_tables"]
+  expect_contains_any: []
+  must_not_contain: []
+  category: traversal
+
+- id: jaffle-lineage-orders-upstream
+  set: jaffle-shop-ddd
+  language: EN
+  question: Which source models feed fact_orders?
+  expect_citations: ["ordering/fact_orders"]
+  expect_tools_any: ["get_lineage", "get_tables"]
+  expect_contains_any: ["stg_order_items"]
+  must_not_contain: ["stg_locations"]
+  category: lineage
+
+# Pinned by TestDemoSourceCanonicalisation: the bare and qualified citations fold together.
+- id: jaffle-lineage-stg-products-downstream
+  set: jaffle-shop-ddd
+  language: EN
+  question: What tables are built from jaffle_shop.stg_products?
+  expect_citations:
+    - "product_catalog/dim_products"
+    - "ordering/fact_order_items"
+    - "product_catalog/fact_supply_cost_snapshot"
+  expect_tools_any: ["get_lineage", "list_source_models"]
+  expect_contains_any: []
+  must_not_contain: []
+  category: lineage
+
+# The context index lists stg_locations for fact_location_daily_sales; the child document,
+# which is authoritative, does not.
+- id: jaffle-lineage-stg-locations-downstream
+  set: jaffle-shop-ddd
+  language: EN
+  question: Which tables read jaffle_shop.stg_locations?
+  expect_citations: ["store_operations/dim_locations"]
+  expect_tools_any: ["get_lineage", "list_source_models"]
+  expect_contains_any: []
+  must_not_contain: []
+  category: lineage
+
+- id: jaffle-lineage-untraceable-columns
+  set: jaffle-shop-ddd
+  language: EN
+  question: Which columns of fact_orders have no traceable source model?
+  expect_citations: ["ordering/fact_orders"]
+  expect_tools_any: ["get_tables", "get_lineage"]
+  expect_contains_any: ["delivery_partner_id"]
+  must_not_contain: []
+  category: lineage
+
+- id: jaffle-diag-unresolved
+  set: jaffle-shop-ddd
+  language: EN
+  question: Which reference in this documentation cannot be resolved?
+  expect_citations: ["ordering/fact_orders"]
+  expect_tools_any: ["list_diagnostics"]
+  expect_contains_any: ["dim_delivery_partner"]
+  must_not_contain: []
+  category: diagnostics
+
+- id: jaffle-diag-unmatched-join
+  set: jaffle-shop-ddd
+  language: EN
+  question: Is there a join key that names columns which do not exist?
+  expect_citations: ["store_operations/fact_location_daily_sales"]
+  expect_tools_any: ["list_diagnostics", "get_tables"]
+  expect_contains_any: ["sales_date", "calendar_date"]
+  must_not_contain: []
+  category: diagnostics
+
+- id: jaffle-diag-isolated-fact
+  set: jaffle-shop-ddd
+  language: EN
+  question: Is any fact table joined to nothing?
+  expect_citations: ["product_catalog/fact_supply_cost_snapshot"]
+  expect_tools_any: ["list_diagnostics"]
+  expect_contains_any: []
+  must_not_contain: []
+  category: diagnostics
+
+- id: jaffle-diag-cross-domain-count
+  set: jaffle-shop-ddd
+  language: EN
+  question: How many cross-domain references are reported?
+  expect_citations: []
+  expect_tools_any: ["list_diagnostics"]
+  expect_contains_any: ["7", "seven"]
+  must_not_contain: []
+  category: diagnostics
+
+# Card answers it: diagnostic totals by severity.
+- id: jaffle-diag-error-count
+  set: jaffle-shop-ddd
+  language: EN
+  question: How many error-level diagnostics does this documentation have?
+  expect_citations: []
+  expect_tools_any: []
+  expect_contains_any: ["1 error", "one error"]
+  must_not_contain: []
+  category: diagnostics
+
+- id: jaffle-conformed-dim-date
+  set: jaffle-shop-ddd
+  language: EN
+  question: There are two dim_date tables. Which one should a new report use?
+  expect_citations: ["shared_kernel/dim_date", "customer_identity/dim_date"]
+  expect_tools_any: ["get_tables", "list_diagnostics"]
+  expect_contains_any: ["shared_kernel"]
+  must_not_contain: []
+  category: conformed
+
+- id: jaffle-conformed-drift-columns
+  set: jaffle-shop-ddd
+  language: EN
+  question: Which columns does the Customer Identity dim_date have that the Shared Kernel dim_date does not?
+  expect_citations: ["customer_identity/dim_date", "shared_kernel/dim_date"]
+  expect_tools_any: ["get_tables"]
+  expect_contains_any: ["fiscal_period", "fiscal_quarter"]
+  must_not_contain: []
+  category: conformed
+
+# Nonexistent table; the card lists every table.
+- id: jaffle-refusal-nonexistent-table
+  set: jaffle-shop-ddd
+  language: EN
+  question: Describe the columns of fact_refunds.
+  expect_citations: []
+  expect_tools_any: []
+  expect_contains_any: []
+  must_not_contain: ["ordering/fact_refunds", "refund_amount"]
+  category: refusal
+
+# Real table, field the documentation does not record.
+- id: jaffle-refusal-currency
+  set: jaffle-shop-ddd
+  language: EN
+  question: What currency are the amounts in fact_orders recorded in?
+  expect_citations: []
+  expect_tools_any: ["get_tables", "search_model"]
+  expect_contains_any: []
+  must_not_contain: ["currency_code", "order_currency"]
+  category: refusal
+
+# Data values, not structure.
+- id: jaffle-refusal-data-values
+  set: jaffle-shop-ddd
+  language: EN
+  question: How many orders were placed last month?
+  expect_citations: []
+  expect_tools_any: []
+  expect_contains_any: []
+  must_not_contain: ["I queried", "query returned", "rows returned"]
+  category: refusal
+
+# A table from eshop-ddd; the phrase is its real grain there.
+- id: jaffle-refusal-other-set
+  set: jaffle-shop-ddd
+  language: EN
+  question: What is the grain of fact_basket_events?
+  expect_citations: []
+  expect_tools_any: []
+  expect_contains_any: []
+  must_not_contain: ["one row per basket event"]
+  category: refusal
+
+# No demo set declares a second language, so these ask in Japanese against English documents.
+# Card answers the first.
+- id: jaffle-bilingual-grain-ja
+  set: jaffle-shop-ddd
+  language: JA
+  question: fact_orders の粒度は何ですか？
+  expect_citations: []
+  expect_tools_any: []
+  expect_contains_any: ["one row per order", "1注文", "注文ごと", "注文につき"]
+  must_not_contain: []
+  category: bilingual
+
+- id: jaffle-bilingual-columns-ja
+  set: jaffle-shop-ddd
+  language: JA
+  question: dim_locations のカラムを教えてください。
+  expect_citations: ["store_operations/dim_locations"]
+  expect_tools_any: ["get_tables", "search_model"]
+  expect_contains_any: ["tax_rate"]
+  must_not_contain: []
+  category: bilingual
+
+# injection: added in 08.3.
+
+# --- fintech-bi-ddd ------------------------------------------------------------------------------
+
+# Card answers it.
+- id: fintech-grain-repayments
+  set: fintech-bi-ddd
+  language: EN
+  question: What is the grain of fact_loan_repayments?
+  expect_citations: []
+  expect_tools_any: []
+  expect_contains_any: ["instalment"]
+  must_not_contain: []
+  category: lookup
+
+- id: fintech-lookup-missed-repayment
+  set: fintech-bi-ddd
+  language: EN
+  question: How is a missed loan repayment represented?
+  expect_citations: ["lending/fact_loan_repayments"]
+  expect_tools_any: ["get_tables", "search_model"]
+  expect_contains_any: ["paid_amount"]
+  must_not_contain: []
+  category: lookup
+
+- id: fintech-traversal-card-to-customer
+  set: fintech-bi-ddd
+  language: EN
+  question: How do I get from dim_card to the customer who holds the card?
+  expect_citations: ["payments/dim_card", "customer_identity/dim_account", "customer_identity/dim_customer"]
+  expect_tools_any: ["find_join_paths", "get_neighbourhood", "get_tables"]
+  expect_contains_any: ["account_key"]
+  must_not_contain: []
+  category: traversal
+
+# Pinned by TestFintechOrientationOnOneToMany.
+- id: fintech-traversal-account-loan
+  set: fintech-bi-ddd
+  language: EN
+  question: What is the join key between dim_account and dim_loan?
+  expect_citations: ["customer_identity/dim_account", "lending/dim_loan"]
+  expect_tools_any: ["get_neighbourhood", "get_tables", "find_join_paths"]
+  expect_contains_any: ["origination_account_key"]
+  must_not_contain: []
+  category: traversal
+
+- id: fintech-lineage-transaction-feed
+  set: fintech-bi-ddd
+  language: EN
+  question: Which tables are built from card_network.stg_transaction?
+  expect_citations:
+    - "payments/fact_payment_transactions"
+    - "customer_identity/dim_customer"
+    - "payments/dim_merchant"
+  expect_tools_any: ["get_lineage", "list_source_models"]
+  expect_contains_any: []
+  must_not_contain: []
+  category: lineage
+
+- id: fintech-lineage-screening-columns
+  set: fintech-bi-ddd
+  language: EN
+  question: Where do sanctions_screening_status and pep_flag come from?
+  expect_citations: ["risk_compliance/dim_customer"]
+  expect_tools_any: ["get_tables", "search_model", "get_lineage"]
+  expect_contains_any: ["vendor", "csv"]
+  must_not_contain: []
+  category: lineage
+
+- id: fintech-diag-unresolved
+  set: fintech-bi-ddd
+  language: EN
+  question: Which table references something that is not documented, and which context owns it?
+  expect_citations: ["payments/fact_payment_transactions"]
+  expect_tools_any: ["list_diagnostics", "get_tables"]
+  expect_contains_any: ["dim_settlement_batch"]
+  must_not_contain: []
+  category: diagnostics
+
+- id: fintech-diag-isolated-fact
+  set: fintech-bi-ddd
+  language: EN
+  question: Why is fact_fraud_alerts not connected to any other table?
+  expect_citations: ["risk_compliance/fact_fraud_alerts"]
+  expect_tools_any: ["get_tables", "list_diagnostics"]
+  expect_contains_any: ["Payments Context Facts", "prose", "narrative"]
+  must_not_contain: []
+  category: diagnostics
+
+# Pinned by TestFintechConformedAuthority.
+- id: fintech-conformed-authority
+  set: fintech-bi-ddd
+  language: EN
+  question: dim_customer exists in two domains. Which is the authority, and which one do the payment and lending tables join?
+  expect_citations: ["customer_identity/dim_customer", "risk_compliance/dim_customer"]
+  expect_tools_any: ["get_tables", "list_diagnostics", "get_neighbourhood"]
+  expect_contains_any: ["customer_identity"]
+  must_not_contain: []
+  category: conformed
+
+- id: fintech-conformed-risk-band
+  set: fintech-bi-ddd
+  language: EN
+  question: Does risk_band mean the same thing in both dim_customer tables?
+  expect_citations: ["customer_identity/dim_customer", "risk_compliance/dim_customer"]
+  expect_tools_any: ["get_tables"]
+  expect_contains_any: ["onboarding"]
+  must_not_contain: []
+  category: conformed
+
+# The documents mention a rate table that is not yet documented.
+- id: fintech-refusal-exchange-rates
+  set: fintech-bi-ddd
+  language: EN
+  question: Which table holds the exchange rates for converting overdraft_limit?
+  expect_citations: []
+  expect_tools_any: []
+  expect_contains_any: []
+  must_not_contain: ["dim_exchange_rate", "fx_rate", "exchange_rate_key"]
+  category: refusal
+
+# --- eshop-ddd -----------------------------------------------------------------------------------
+
+- id: eshop-lookup-shipping-address
+  set: eshop-ddd
+  language: EN
+  question: Why is the shipping address on fact_orders rather than in its own dimension?
+  expect_citations: ["ordering/fact_orders"]
+  expect_tools_any: ["get_tables", "search_model"]
+  expect_contains_any: ["value object", "owned"]
+  must_not_contain: []
+  category: lookup
+
+- id: eshop-lookup-order-statuses
+  set: eshop-ddd
+  language: EN
+  question: What values can order_status_name take?
+  expect_citations: ["ordering/dim_order_status"]
+  expect_tools_any: ["get_tables", "search_model"]
+  expect_contains_any: ["AwaitingValidation"]
+  must_not_contain: []
+  category: lookup
+
+# Pinned by TestEshopSplitBuyerJoin: two edges, one per buyer table.
+- id: eshop-traversal-basket-buyer
+  set: eshop-ddd
+  language: EN
+  question: Which buyer dimension does fact_basket_events join to?
+  expect_citations: ["basket/fact_basket_events", "basket/dim_buyer", "identity/dim_buyer"]
+  expect_tools_any: ["get_neighbourhood", "get_tables", "find_join_paths"]
+  expect_contains_any: []
+  must_not_contain: []
+  category: traversal
+
+- id: eshop-traversal-orders-to-brand
+  set: eshop-ddd
+  language: EN
+  question: How do I join fact_orders to dim_catalog_brand?
+  expect_citations:
+    - "ordering/fact_orders"
+    - "ordering/fact_order_items"
+    - "catalog/dim_catalog_item"
+    - "catalog/dim_catalog_brand"
+  expect_tools_any: ["find_join_paths", "get_neighbourhood", "get_tables"]
+  expect_contains_any: ["catalog_item_key"]
+  must_not_contain: []
+  category: traversal
+
+- id: eshop-lineage-catalog-readers
+  set: eshop-ddd
+  language: EN
+  question: Which tables read catalogdb.stg_catalog_items?
+  expect_citations:
+    - "catalog/dim_catalog_item"
+    - "catalog/dim_catalog_brand"
+    - "catalog/dim_catalog_type"
+    - "ordering/fact_order_items"
+  expect_tools_any: ["get_lineage", "list_source_models"]
+  expect_contains_any: []
+  must_not_contain: []
+  category: lineage
+
+- id: eshop-diag-unmatched-join
+  set: eshop-ddd
+  language: EN
+  question: What is wrong with the join from fact_basket_events to dim_catalog_item?
+  expect_citations: ["basket/fact_basket_events"]
+  expect_tools_any: ["get_tables", "list_diagnostics"]
+  expect_contains_any: ["product_id = id"]
+  must_not_contain: []
+  category: diagnostics
+
+# Drift pinned in the README: missing 14, adds 1.
+- id: eshop-conformed-buyer-drift
+  set: eshop-ddd
+  language: EN
+  question: How does the Basket dim_buyer differ from the Identity dim_buyer?
+  expect_citations: ["basket/dim_buyer", "identity/dim_buyer"]
+  expect_tools_any: ["get_tables", "list_diagnostics"]
+  expect_contains_any: ["last_seen_at"]
+  must_not_contain: []
+  category: conformed
+
+# Real table, field deliberately kept out of the warehouse.
+- id: eshop-refusal-card-number
+  set: eshop-ddd
+  language: EN
+  question: Which column stores a buyer's full card number?
+  expect_citations: []
+  expect_tools_any: ["get_tables", "search_model"]
+  expect_contains_any: []
+  must_not_contain: ["cardnumber", "card_pan"]
+  category: refusal
+
+# --- sakila-oltp-ddd -----------------------------------------------------------------------------
+
+# Card answers it.
+- id: sakila-grain-film-actor
+  set: sakila-oltp-ddd
+  language: EN
+  question: What is the grain of film_actor?
+  expect_citations: []
+  expect_tools_any: []
+  expect_contains_any: ["film-and-actor", "film and actor"]
+  must_not_contain: []
+  category: lookup
+
+- id: sakila-traversal-customer-country
+  set: sakila-oltp-ddd
+  language: EN
+  question: How do I get from a customer to their country?
+  expect_citations: ["party/customer", "party/address", "shared_kernel/city", "shared_kernel/country"]
+  expect_tools_any: ["find_join_paths", "get_neighbourhood", "get_tables"]
+  expect_contains_any: ["city_id"]
+  must_not_contain: []
+  category: traversal
+
+- id: sakila-traversal-rental-film
+  set: sakila-oltp-ddd
+  language: EN
+  question: How does rental join to film?
+  expect_citations: ["rental/rental", "inventory/inventory", "catalog/film"]
+  expect_tools_any: ["find_join_paths", "get_neighbourhood", "get_tables"]
+  expect_contains_any: ["inventory_id"]
+  must_not_contain: ["rental.film_id"]
+  category: traversal
+
+- id: sakila-lineage-actor
+  set: sakila-oltp-ddd
+  language: EN
+  question: What source model is catalog/actor built from?
+  expect_citations: ["catalog/actor"]
+  expect_tools_any: ["get_lineage", "get_tables"]
+  expect_contains_any: ["raw_actor"]
+  must_not_contain: []
+  category: lineage
+
+- id: sakila-diag-film-category
+  set: sakila-oltp-ddd
+  language: EN
+  question: Why is film_category flagged in the diagnostics?
+  expect_citations: ["catalog/film_category"]
+  expect_tools_any: ["list_diagnostics", "get_tables"]
+  expect_contains_any: ["isolated_table", "isolated", "prose"]
+  must_not_contain: []
+  category: diagnostics
+
+- id: sakila-diag-join-on-name
+  set: sakila-oltp-ddd
+  language: EN
+  question: Which join is written on a name instead of a key?
+  expect_citations: ["party/address"]
+  expect_tools_any: ["list_diagnostics", "get_tables"]
+  expect_contains_any: ["city_name"]
+  must_not_contain: []
+  category: diagnostics
+
+# film_category points at a category table that is not documented.
+- id: sakila-refusal-category-table
+  set: sakila-oltp-ddd
+  language: EN
+  question: List the columns of the category table.
+  expect_citations: []
+  expect_tools_any: []
+  expect_contains_any: []
+  must_not_contain: ["catalog/category"]
+  category: refusal
+
+# --- northwind-hybrid-ddd ------------------------------------------------------------------------
+
+- id: northwind-traversal-fact-to-vault
+  set: northwind-hybrid-ddd
+  language: EN
+  question: How do I trace a row in fact_orders back to the raw vault?
+  expect_citations: ["presentation_sales/fact_orders", "raw_vault/hub_order"]
+  expect_tools_any: ["get_neighbourhood", "get_tables", "find_join_paths"]
+  expect_contains_any: ["order_hk"]
+  must_not_contain: []
+  category: traversal
+
+- id: northwind-lineage-dim-customer
+  set: northwind-hybrid-ddd
+  language: EN
+  question: What is presentation_sales/dim_customer built from?
+  expect_citations: ["presentation_sales/dim_customer"]
+  expect_tools_any: ["get_lineage", "get_tables"]
+  expect_contains_any: ["sat_customer_details"]
+  must_not_contain: []
+  category: lineage
+
+# Pinned by TestHybridBadKeySplitsTheEdge.
+- id: northwind-diag-split-edge
+  set: northwind-hybrid-ddd
+  language: EN
+  question: Why are there two joins between fact_order_items and dim_product?
+  expect_citations: ["presentation_sales/fact_order_items", "presentation_catalog/dim_product"]
+  expect_tools_any: ["get_tables", "list_diagnostics", "get_neighbourhood"]
+  expect_contains_any: ["product_number"]
+  must_not_contain: []
+  category: diagnostics
+
+- id: northwind-conformed-dim-date
+  set: northwind-hybrid-ddd
+  language: EN
+  question: Which dim_date is the authority, and what does the other copy add?
+  expect_citations: ["shared_kernel/dim_date", "presentation_catalog/dim_date"]
+  expect_tools_any: ["get_tables", "list_diagnostics"]
+  expect_contains_any: ["fiscal_period"]
+  must_not_contain: []
+  category: conformed
+
+# Referenced by fact_orders; the Shipping context has no documents.
+- id: northwind-refusal-dim-shipper
+  set: northwind-hybrid-ddd
+  language: EN
+  question: What columns does dim_shipper have?
+  expect_citations: []
+  expect_tools_any: []
+  expect_contains_any: []
+  must_not_contain: ["shipping/dim_shipper", "shipper_name"]
+  category: refusal
+
+# --- adventureworks-snowflake-ddd ----------------------------------------------------------------
+
+# Card answers it: kinds are listed per table.
+- id: aw-lookup-outriggers
+  set: adventureworks-snowflake-ddd
+  language: EN
+  question: Which tables are outriggers?
+  expect_citations: []
+  expect_tools_any: []
+  expect_contains_any: ["DimProductSubcategory"]
+  must_not_contain: []
+  category: lookup
+
+- id: aw-traversal-product-category
+  set: adventureworks-snowflake-ddd
+  language: EN
+  question: How do I roll FactInternetSales up to product category?
+  expect_citations:
+    - "sales/FactInternetSales"
+    - "product/DimProduct"
+    - "product/DimProductSubcategory"
+    - "product/DimProductCategory"
+  expect_tools_any: ["find_join_paths", "get_neighbourhood", "get_tables"]
+  expect_contains_any: ["ProductSubcategoryKey"]
+  must_not_contain: []
+  category: traversal
+
+- id: aw-diag-sales-quota
+  set: adventureworks-snowflake-ddd
+  language: EN
+  question: Why can't FactSalesQuota be joined to anything?
+  expect_citations: ["sales/FactSalesQuota"]
+  expect_tools_any: ["get_tables", "list_diagnostics"]
+  expect_contains_any: ["prose", "DimEmployee"]
+  must_not_contain: []
+  category: diagnostics
+
+- id: aw-conformed-dimdate
+  set: adventureworks-snowflake-ddd
+  language: EN
+  question: Why are there two DimDate tables, and which should FactInternetSales use?
+  expect_citations: ["shared_kernel/DimDate", "customer/DimDate"]
+  expect_tools_any: ["get_tables", "list_diagnostics"]
+  expect_contains_any: ["CohortMonth", "shared_kernel"]
+  must_not_contain: []
+  category: conformed
