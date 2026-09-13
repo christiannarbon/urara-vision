@@ -568,8 +568,8 @@ class TestDebugAnswer:
 
         record = next(r for r in caplog.records if r.message == "language model call failed")
         assert record.request_id  # type: ignore[attr-defined]
-        assert "snap-1" in str(record.exc_info[1])  # type: ignore[index]
-        assert "the real reason" in str(record.exc_info[1].__cause__)  # type: ignore[index,union-attr]
+        assert record.reason == "the real reason"  # type: ignore[attr-defined]
+        assert "RuntimeError" in record.error  # type: ignore[attr-defined]
 
     def test_a_spent_tool_budget_is_200_with_truncated_set(
         self, monkeypatch: pytest.MonkeyPatch

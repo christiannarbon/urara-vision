@@ -406,4 +406,4 @@ class TestTheTokenBudget:
         spent = [r for r in caplog.records if r.message == "turn budget spent"]
         assert len(spent) == 1
         assert spent[0].reason == "tokens"  # type: ignore[attr-defined]
-        assert hasattr(spent[0], "requestId")
+        assert hasattr(spent[0], "request_id")

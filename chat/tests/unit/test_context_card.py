@@ -60,7 +60,7 @@ class TestTheRenderedShape:
 
     def test_the_header_carries_project_and_counts(self) -> None:
         card = render_context_card(jaffle())
-        assert card.startswith("PROJECT: jaffle-shop-ddd (v0.1.0) — ")
+        assert card.splitlines()[0] == "PROJECT: jaffle-shop-ddd (v0.1.0)"
         assert "COUNTS: 6 domains, 10 tables, 80 columns" in card
 
     def test_diagnostics_are_broken_down_by_severity(self) -> None:
@@ -89,6 +89,9 @@ class TestTheRenderedShape:
     def test_no_column_lists(self) -> None:
         """That is what get_tables is for; naming every column here would cost"""
         assert "order_id" not in render_context_card(jaffle())
+
+    def test_the_project_description_never_reaches_the_card(self) -> None:
+        assert "a demo" not in render_context_card(context())
 
 
 class TestDomains:

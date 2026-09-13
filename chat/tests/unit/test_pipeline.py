@@ -348,3 +348,14 @@ class TestTheModuleEntryPoint:
         module._pipeline = None
         with pytest.raises(RuntimeError, match="has not been configured"):
             await answer("q", "snap-1", [])
+
+
+class TestRefusedToolCalls:
+    async def test_a_call_the_budget_refused_is_not_reported(self) -> None:
+        built, _ = pipeline(
+            [call_tool("1"), call_tool("2"), AIMessage(content="done")], max_tool_iterations=1
+        )
+        result = await built.answer("q", "snap-1", [])
+
+        assert result.truncated is True
+        assert len(result.tool_calls) == 1

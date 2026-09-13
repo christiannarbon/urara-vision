@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import asdict
 from typing import Any
 
 from fastapi import HTTPException
 
 from urara_chat.agent.pipeline import AgentAnswer, answer
-from urara_chat.api.errors import ProviderError
+from urara_chat.api.errors import ProviderError, redact_reason
 from urara_chat.api.middleware import current_request_id
 from urara_chat.api.schemas import AnswerResponse
 from urara_chat.backend.client import BackendClient
@@ -42,17 +43,22 @@ async def run_pipeline(
     history: list[Message],
     language: str,
     settings: Settings,
+    conversation_id: str | None = None,
 ) -> AgentAnswer:
     """Run one turn, classifying what went wrong rather than mapping it."""
+    started = time.perf_counter()
     try:
         return await asyncio.wait_for(
             answer(question, snapshot_id, history=history, language=language),
             timeout=settings.answer_timeout_seconds,
         )
-    except BackendError:
-        raise
     except Exception as exc:
-        raise ProviderError(f"the turn failed for snapshot {snapshot_id}") from exc
+        log_failed_turn(snapshot_id, conversation_id, exc, started)
+        if isinstance(exc, BackendError):
+            raise
+        raise ProviderError(
+            f"the turn failed for snapshot {snapshot_id}", reason=redact_reason(str(exc), question)
+        ) from exc
 
 
 async def answer_question(
@@ -76,6 +82,7 @@ def turn_record(
 ) -> dict[str, Any]:
     """Logged per turn and stored as the assistant message's meta."""
     return {
+        "outcome": "answered",
         "requestId": current_request_id(),
         "conversationId": conversation_id,
         "snapshotId": snapshot_id,
@@ -98,3 +105,21 @@ def log_turn(record: dict[str, Any]) -> None:
 
 def to_response(result: AgentAnswer) -> AnswerResponse:
     return AnswerResponse(**asdict(result))
+
+
+def log_failed_turn(
+    snapshot_id: str, conversation_id: str | None, exc: Exception, started: float
+) -> None:
+    # The exception type only: provider messages can quote the prompt back.
+    log.warning(
+        "turn failed",
+        extra={
+            "event": "turn",
+            "outcome": "failed",
+            "requestId": current_request_id(),
+            "conversationId": conversation_id,
+            "snapshotId": snapshot_id,
+            "error": type(exc).__name__,
+            "latencyMs": round((time.perf_counter() - started) * 1000),
+        },
+    )

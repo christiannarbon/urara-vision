@@ -10,11 +10,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.tools import BaseTool
 
 from urara_chat.agent.context_card import MAX_CACHED_CARDS, ContextCardCache
 from urara_chat.agent.graph import build_graph, initial_state
+from urara_chat.agent.prompts import TOOL_BUDGET_SPENT_RESULT
 from urara_chat.backend.client import BackendClient
 from urara_chat.backend.models import Message
 
@@ -162,10 +163,20 @@ class Pipeline:
 
 def _tool_calls(messages: Sequence[BaseMessage]) -> list[dict[str, Any]]:
     """Every tool call the turn made, in order."""
+    # A call the budget refused was never run.
+    refused = {
+        m.tool_call_id
+        for m in messages
+        if isinstance(m, ToolMessage) and m.content == TOOL_BUDGET_SPENT_RESULT
+    }
     calls: list[dict[str, Any]] = []
     for message in messages:
         if isinstance(message, AIMessage):
-            calls.extend({"name": c["name"], "args": c["args"]} for c in message.tool_calls)
+            calls.extend(
+                {"name": c["name"], "args": c["args"]}
+                for c in message.tool_calls
+                if c["id"] not in refused
+            )
     return calls
 
 

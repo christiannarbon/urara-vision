@@ -30,9 +30,8 @@ def _header(ctx: SnapshotContext) -> list[str]:
     project = ctx.snapshot.project.project
     name = project.name or ctx.snapshot.name or ctx.snapshot.id
     version = f" (v{project.version})" if project.version else ""
-    description = f" — {project.description}" if project.description else ""
-
-    lines = [f"PROJECT: {name}{version}{description}"]
+    # No description: reader-written prose in the system message was obeyed (08.7 F3).
+    lines = [f"PROJECT: {name}{version}"]
 
     i18n = ctx.snapshot.project.internationalization
     others = [lang for lang in i18n.supported if lang != i18n.primary]

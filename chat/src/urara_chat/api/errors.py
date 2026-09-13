@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import re
+import traceback
 from typing import Any
 
 from fastapi import FastAPI
@@ -28,6 +30,35 @@ INTERNAL = "internal error"
 
 class ProviderError(Exception):
     """A call to the language model failed."""
+
+    def __init__(self, message: str, reason: str = "") -> None:
+        super().__init__(message)
+        self.reason = reason
+
+
+_KEY_SHAPED = re.compile(r"AIza[0-9A-Za-z_\-]{10,}")
+MAX_REASON_CHARS = 300
+
+
+def redact_reason(text: str, question: str) -> str:
+    """A provider message with the question and key-shaped strings removed."""
+    # Below 8 characters the question is an ordinary word, and replacing it would shred the reason.
+    if len(question) >= 8:
+        text = text.replace(question, "[question]")
+    return _KEY_SHAPED.sub("[key]", text)[:MAX_REASON_CHARS]
+
+
+def redacted_trace(exc: BaseException) -> str:
+    """The exception chain's types and frames, without any message."""
+    parts: list[str] = []
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        frames = "".join(traceback.format_list(traceback.extract_tb(current.__traceback__)))
+        parts.append(f"{type(current).__module__}.{type(current).__qualname__}\n{frames}")
+        current = current.__cause__ or current.__context__
+    return "\n".join(parts)
 
 
 def _body(request: Request, status: int, **fields: Any) -> JSONResponse:
@@ -79,8 +110,14 @@ async def turns_busy(request: Request, exc: Exception) -> Response:
 
 async def provider_failed(request: Request, exc: Exception) -> Response:
     """502 -- the model did not answer, or did not answer in time."""
+    # No exc_info: the traceback would carry the provider's unredacted message.
     log.error(
-        "language model call failed", extra={"request_id": request_id_of(request)}, exc_info=exc
+        "language model call failed",
+        extra={
+            "request_id": request_id_of(request),
+            "reason": exc.reason if isinstance(exc, ProviderError) else "",
+            "error": redacted_trace(exc),
+        },
     )
     return _body(request, 502, error=PROVIDER_FAILED)
 

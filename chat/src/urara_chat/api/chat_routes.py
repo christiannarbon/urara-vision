@@ -34,7 +34,7 @@ from urara_chat.api.schemas import (
 )
 from urara_chat.api.titles import title_from_question
 from urara_chat.backend.client import BackendClient
-from urara_chat.backend.errors import BackendError
+from urara_chat.backend.errors import BackendError, BackendNotFound
 from urara_chat.backend.models import Conversation, Message
 from urara_chat.config import Settings
 
@@ -103,11 +103,16 @@ async def stats(
 
     gate = asyncio.Semaphore(STATS_FETCH_CONCURRENCY)
 
-    async def fetch(cid: str) -> Conversation:
+    async def fetch(cid: str) -> Conversation | None:
         async with gate:
-            return await client.get_conversation(cid)
+            try:
+                return await client.get_conversation(cid)
+            except BackendNotFound:
+                # Deleted after it was listed.
+                return None
 
-    conversations = await asyncio.gather(*(fetch(c.id) for c in listed))
+    fetched = await asyncio.gather(*(fetch(c.id) for c in listed))
+    conversations = [c for c in fetched if c is not None]
     return aggregate_stats(
         snapshot_id, conversations, capped=len(listed) >= STATS_CONVERSATION_LIMIT
     )
@@ -248,7 +253,9 @@ async def _run_turn(
     # transcript and the reader can retry without retyping.
     user_message = await client.append_message(cid, "user", question)
 
-    result = await run_pipeline(question, conversation.snapshot_id, history, language, settings)
+    result = await run_pipeline(
+        question, conversation.snapshot_id, history, language, settings, conversation_id=cid
+    )
     record = turn_record(result, conversation.snapshot_id, conversation_id=cid)
     log_turn(record)
 

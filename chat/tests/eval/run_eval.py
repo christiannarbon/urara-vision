@@ -318,8 +318,9 @@ def report(summary: dict[str, Any], repeat: int, wall_seconds: float) -> None:
 
 def check_thresholds(summary: dict[str, Any], thresholds: dict[str, Any]) -> list[str]:
     missed = []
-    recall = summary["overall"]["recall"] or 0.0
-    if recall < (floor := thresholds["overall_citation_recall"]):
+    recall = summary["overall"]["recall"]
+    # None when the selection expects no citations; that is not a failure to cite.
+    if recall is not None and recall < (floor := thresholds["overall_citation_recall"]):
         missed.append(f"overall citation recall {recall:.2f} < {floor}")
     refusal = summary["refusal_accuracy"]
     if refusal is not None and refusal < thresholds["refusal_accuracy"]:
