@@ -233,6 +233,13 @@ k8s-up: ## Bring the whole Kubernetes stack up and open a tunnel to it
 	fi
 	@echo "==> deploy"
 	kubectl apply -k k8s/overlays/dev
+	@# VERTEX_PROJECT from the environment, so a personal project stays out of
+	@# the committed overlay. The ConfigMap change does not restart chat.
+	@if [ -n "$(VERTEX_PROJECT)" ]; then \
+	  kubectl -n $(NS) patch configmap relviz-chat-config --type merge \
+	    -p '{"data":{"VERTEX_PROJECT":"$(VERTEX_PROJECT)"}}' && \
+	  kubectl -n $(NS) rollout restart deploy/chat; \
+	fi
 	@echo "==> waiting for pods (first boot takes a minute or two)"
 	kubectl -n $(NS) wait --for=condition=Ready pod/postgres-0 --timeout=300s
 	kubectl -n $(NS) wait --for=condition=Ready pod/neo4j-0 --timeout=300s
@@ -243,7 +250,7 @@ k8s-up: ## Bring the whole Kubernetes stack up and open a tunnel to it
 	@if ! kubectl -n $(NS) get secret relviz-adc >/dev/null 2>&1; then \
 	  echo "    no relviz-adc secret: chat stays down (see k8s/README.md)"; \
 	elif [ -z "$$(kubectl -n $(NS) get configmap relviz-chat-config -o jsonpath='{.data.VERTEX_PROJECT}' 2>/dev/null)" ]; then \
-	  echo "    VERTEX_PROJECT is empty: chat stays down (set it in k8s/overlays/dev/kustomization.yaml)"; \
+	  echo "    VERTEX_PROJECT is empty: chat stays down (run VERTEX_PROJECT=<project> make k8s-up)"; \
 	elif ! kubectl -n $(NS) rollout status deploy/chat --timeout=180s; then \
 	  echo "    chat did not roll out; the rest of the stack is up:"; \
 	  kubectl -n $(NS) get pods -l app.kubernetes.io/name=chat | sed 's/^/      /'; \

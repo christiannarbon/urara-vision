@@ -110,7 +110,8 @@ kubectl apply -k k8s/overlays/prod
 its own. Only the frontend reaches it, and it reaches the backend's API like
 any other client.
 
-Set `VERTEX_PROJECT` in the overlay before applying. It has no default, and the
+Set `VERTEX_PROJECT` before applying: `VERTEX_PROJECT=<project> make k8s-up`
+patches it into the ConfigMap, or set it in the overlay. It has no default, and the
 pod refuses to start without it rather than failing on the first question. The
 ConfigMap carries no content hash, so changing it later does not restart the
 pods -- follow an edit with
