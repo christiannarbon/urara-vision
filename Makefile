@@ -33,6 +33,10 @@ help: ## Show this help
 up: ## Build and start the whole stack
 	$(COMPOSE) up -d --build
 
+.PHONY: up-without-chat
+up-without-chat: ## Build and start the stack with chat left out
+	CHAT_ENABLED=false $(COMPOSE) up -d --build --scale chat=0
+
 .PHONY: down
 down: ## Stop the stack, keeping volumes
 	$(COMPOSE) down
@@ -359,12 +363,13 @@ k8s-clean: ## Tear the stack down and delete its volumes with it
 	@echo "Urara Vision removed, volumes and all. The minikube cluster itself is still running."
 
 .PHONY: k8s-validate
-k8s-validate: ## Render and schema-check both overlays
+k8s-validate: ## Render and schema-check every overlay
 	kubectl kustomize k8s/overlays/dev > /tmp/relviz-dev.yaml
+	kubectl kustomize k8s/overlays/dev-without-chat > /tmp/relviz-dev-without-chat.yaml
 	kubectl kustomize k8s/overlays/prod > /tmp/relviz-prod.yaml
 	docker run --rm -v /tmp:/work ghcr.io/yannh/kubeconform:latest \
 	  -strict -summary -kubernetes-version 1.33.0 \
-	  /work/relviz-dev.yaml /work/relviz-prod.yaml
+	  /work/relviz-dev.yaml /work/relviz-dev-without-chat.yaml /work/relviz-prod.yaml
 
 # --- CI ---------------------------------------------------------------------
 # The workflows in .github/workflows are meant to be run here first. Every
