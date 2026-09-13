@@ -1,0 +1,5 @@
+# Set from the first real run, minus a margin. A threshold invented before a
+# run is a number someone made up.
+overall_citation_recall: 0.00      # replace after the first run (08.7)
+refusal_accuracy: 1.00             # a fabricated answer is never acceptable
+max_violations: 0
