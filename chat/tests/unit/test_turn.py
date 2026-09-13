@@ -439,3 +439,56 @@ class TestTheCostRecord:
         assert meta.keys() >= TURN_FIELDS
         assert meta["conversationId"] == "conv-1"
         assert meta["toolCalls"][0]["name"] == "get_tables"
+
+    def test_a_failed_turn_still_writes_a_cost_line(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.INFO, logger="urara_chat.api.answering"):
+            response = turn(
+                monkeypatch, pipeline=FakePipeline(raises=RuntimeError(PROVIDER_TEXT)), question="q"
+            )
+
+        assert response.status_code == 502
+        records = [r for r in caplog.records if getattr(r, "event", None) == "turn"]
+        assert len(records) == 1
+        assert records[0].outcome == "failed"  # type: ignore[attr-defined]
+        assert records[0].conversationId == "conv-1"  # type: ignore[attr-defined]
+        assert records[0].error == "RuntimeError"  # type: ignore[attr-defined]
+        assert PROVIDER_TEXT not in json.dumps(records[0].__dict__, default=str)
+
+
+class TestProviderFailureLogging:
+    def failure_line(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        message: str,
+        question: str,
+    ) -> str:
+        """The failure's log line, rendered as the service writes it."""
+        from urara_chat.config import JSONLogFormatter
+
+        with caplog.at_level(logging.ERROR, logger="urara_chat.api.errors"):
+            turn(
+                monkeypatch, pipeline=FakePipeline(raises=RuntimeError(message)), question=question
+            )
+        record = next(r for r in caplog.records if r.message == "language model call failed")
+        return JSONLogFormatter().format(record)
+
+    def test_the_reason_is_kept_without_the_key(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        line = self.failure_line(monkeypatch, caplog, PROVIDER_TEXT, "q")
+
+        assert "429 quota exceeded" in line
+        assert "AIza-shaped-thing" not in line
+        assert "RuntimeError" in line
+
+    def test_a_quoted_question_is_not_logged(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        question = "what is the grain of fact_orders?"
+        line = self.failure_line(monkeypatch, caplog, f"400 invalid request: {question}", question)
+
+        assert question not in line
+        assert "[question]" in line
