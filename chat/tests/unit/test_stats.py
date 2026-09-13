@@ -40,6 +40,7 @@ class FakeClient:
         self.conversations = conversations or {}
         self.resolved: list[str] = []
         self.limits: list[int | None] = []
+        self.deleted: set[str] = set()
 
     async def resolve_snapshot(self, sid: str) -> str:
         self.resolved.append(sid)
@@ -54,6 +55,8 @@ class FakeClient:
         return [Conversation(id=cid, snapshot_id=snapshot_id) for cid in self.conversations]
 
     async def get_conversation(self, cid: str) -> Conversation:
+        if cid in self.deleted:
+            raise BackendNotFound(404, "conversation not found")
         return Conversation(id=cid, snapshot_id=SNAPSHOT, messages=self.conversations[cid])
 
 
@@ -180,3 +183,12 @@ class TestEmptyAndErrors:
     def test_a_full_listing_is_marked_capped(self) -> None:
         fake = FakeClient({f"c{i}": [] for i in range(STATS_CONVERSATION_LIMIT)})
         assert get_stats(fake).json()["conversationsCapped"] is True
+
+    def test_a_conversation_deleted_mid_read_is_skipped(self) -> None:
+        fake = FakeClient({"c1": turn(meta()), "gone": turn(meta())})
+        fake.deleted = {"gone"}
+        response = get_stats(fake)
+
+        assert response.status_code == 200
+        assert response.json()["conversations"] == 1
+        assert response.json()["turns"] == 1
