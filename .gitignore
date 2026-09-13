@@ -66,5 +66,9 @@ dev_notes/
 # The junit report the chat CI job writes; only act leaves it in the tree.
 chat/report.xml
 
+# Eval results: large, numerous, and diffed locally rather than committed.
+chat/tests/eval/results/*
+!chat/tests/eval/results/.gitkeep
+
 # The requirements file the security workflow exports for pip-audit.
 chat/requirements.txt
