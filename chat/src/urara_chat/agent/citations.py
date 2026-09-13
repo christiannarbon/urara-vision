@@ -118,5 +118,5 @@ def _bare_name_pattern(bare: str) -> re.Pattern[str]:
     name = re.escape(bare.lower())
     # A plain lowercase word such as `film` is also prose, so only a code span counts as naming it.
     if re.fullmatch(r"[a-z]+", bare):
-        return re.compile(rf"`{name}`")
+        return re.compile(rf"`{name}(?=[`.])")
     return re.compile(rf"(?<![0-9a-z_]){name}(?![0-9a-z_])")
