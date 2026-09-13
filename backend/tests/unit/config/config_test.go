@@ -164,6 +164,31 @@ func TestAPITokenAccepted(t *testing.T) {
 	}
 }
 
+func TestChatEnabled(t *testing.T) {
+	for _, tc := range []struct {
+		env  string
+		want bool
+	}{
+		{"", true},
+		{"false", false},
+		{"true", true},
+		{"nonsense", true},
+	} {
+		t.Run(tc.env, func(t *testing.T) {
+			setRequired(t)
+			t.Setenv("CHAT_ENABLED", tc.env)
+
+			c, err := config.Load()
+			if err != nil {
+				t.Fatalf("Load() = %v", err)
+			}
+			if c.ChatEnabled != tc.want {
+				t.Errorf("CHAT_ENABLED=%q: ChatEnabled = %v, want %v", tc.env, c.ChatEnabled, tc.want)
+			}
+		})
+	}
+}
+
 // An unset token is the documented way to run without authentication.
 func TestAPITokenDefaultsEmpty(t *testing.T) {
 	t.Setenv("NEO4J_PASSWORD", "x")

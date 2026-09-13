@@ -31,6 +31,8 @@ type Config struct {
 	MaxContextTables int
 	ShutdownTimeout  time.Duration
 	LogLevel         string
+	// ChatEnabled is the deploy-time chat switch.
+	ChatEnabled bool
 }
 
 // Load builds a Config from the environment, applying defaults that work with
@@ -49,6 +51,7 @@ func Load() (*Config, error) {
 		MaxContextTables: int(envInt64("MAX_CONTEXT_TABLES", 400)),
 		ShutdownTimeout:  time.Duration(envInt64("SHUTDOWN_TIMEOUT_SECONDS", 20)) * time.Second,
 		LogLevel:         env("LOG_LEVEL", "info"),
+		ChatEnabled:      envBool("CHAT_ENABLED", true),
 	}
 	if c.Neo4jPassword == "" {
 		return nil, fmt.Errorf("NEO4J_PASSWORD must be set")
