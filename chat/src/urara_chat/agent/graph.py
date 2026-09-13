@@ -71,6 +71,8 @@ def build_graph(
 ) -> Any:
     """Compile the agent."""
     bound = model.bind_tools(list(tools))
+    # The first call must retrieve: answers that skipped every tool fabricated joins and columns.
+    grounded = model.bind_tools(list(tools), tool_choice="any")
 
     async def load_context(state: AgentState) -> dict[str, Any]:
         """Fetch the inventory and put the system prompt in front of the turn."""
@@ -85,7 +87,8 @@ def build_graph(
         }
 
     async def agent(state: AgentState) -> dict[str, Any]:
-        reply = await bound.ainvoke(state["messages"])
+        chosen = grounded if state["iterations"] == 0 else bound
+        reply = await chosen.ainvoke(state["messages"])
         return {
             "messages": [reply],
             "iterations": state["iterations"] + 1,
