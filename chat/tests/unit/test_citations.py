@@ -207,6 +207,13 @@ class TestPlainWordNames:
             "catalog/film"
         ]
 
+    def test_a_column_reference_in_a_code_span_cites_it(self) -> None:
+        cited = extract_citations([tool_result("catalog/film")], "join on `film.language_id`")
+        assert cited == ["catalog/film"]
+
+    def test_a_longer_word_in_a_code_span_does_not(self) -> None:
+        assert extract_citations([tool_result("catalog/film")], "see `filmography`") == []
+
 
 class TestDegenerateInput:
     def test_empty_tool_results(self) -> None:
