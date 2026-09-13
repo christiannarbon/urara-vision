@@ -70,6 +70,38 @@ type fakeMeta struct {
 	patchedTitle  string
 	appendedTo    string
 	appendedMsg   model.Message
+
+	// settings is keyed by setting name; a missing key returns the default.
+	settings      map[string]bool
+	errSetting    error
+	settingReads  int
+	settingWrites map[string]bool
+}
+
+func (f *fakeMeta) GetBoolSetting(_ context.Context, key string, def bool) (bool, error) {
+	f.settingReads++
+	if f.errSetting != nil {
+		return false, f.errSetting
+	}
+	if v, ok := f.settings[key]; ok {
+		return v, nil
+	}
+	return def, nil
+}
+
+func (f *fakeMeta) SetBoolSetting(_ context.Context, key string, v bool) error {
+	if f.errSetting != nil {
+		return f.errSetting
+	}
+	if f.settingWrites == nil {
+		f.settingWrites = map[string]bool{}
+	}
+	if f.settings == nil {
+		f.settings = map[string]bool{}
+	}
+	f.settingWrites[key] = v
+	f.settings[key] = v
+	return nil
 }
 
 func (f *fakeMeta) SaveSnapshot(_ context.Context, m *model.Model) error {

@@ -28,6 +28,8 @@ Every read route accepts `latest` in place of a snapshot ID.
 | `GET` | `/api/v1/conversations/{cid}` | One conversation with its messages |
 | `DELETE` | `/api/v1/conversations/{cid}` | Delete a conversation |
 | `POST` | `/api/v1/conversations/{cid}/messages` | Append a turn |
+| `GET` | `/api/v1/features` | Whether chat is deployed and switched on |
+| `PATCH` | `/api/v1/settings` | Switch chat on or off at runtime |
 | `GET` | `/healthz`, `/readyz` | Liveness; readiness includes both datastores |
 
 Table IDs are `domain/table` and contain a slash, so they travel as a query
@@ -139,6 +141,30 @@ Turns are appended one at a time and their order is the database's to decide:
 and empty content is refused; both are `400` naming the problem. `citations` is
 the table IDs an answer drew on, and comes back as `[]` when it drew on none.
 
+## Features and settings
+
+Chat has two switches, and `GET /api/v1/features` combines them so no caller
+has to:
+
+```json
+{"chat": {"available": true, "enabled": false}}
+```
+
+`available` is `CHAT_ENABLED`, fixed at deploy time. `enabled` is `available`
+and the runtime `chat.enabled` setting, which defaults to on.
+
+`PATCH /api/v1/settings` changes the runtime setting:
+
+```bash
+curl -X PATCH localhost:8080/api/v1/settings \
+  -H 'Content-Type: application/json' \
+  -d '{"chatEnabled": false}'
+```
+
+It answers `200` with the same body as `/features`. A body without
+`chatEnabled`, or with any other field, is `400`. Turning chat on while
+`CHAT_ENABLED=false` is `409`, because there is no chat service to turn on.
+
 ## Errors
 
 Failures are JSON with an `error` field and the status the outcome maps to:
@@ -148,4 +174,5 @@ Failures are JSON with an `error` field and the status the outcome maps to:
 | `400` | A parameter the handler can see is wrong, a body that will not decode, a missing or invalid `projectmeta.toml`, no `.md` files, too many files, or an upload past `MAX_UPLOAD_BYTES` |
 | `401` | `API_TOKEN` is set and the request did not carry it as `Authorization: Bearer <token>` |
 | `404` | No such snapshot or table — including `latest` when nothing has been ingested yet, which says so rather than returning an empty graph |
+| `409` | Turning chat on while `CHAT_ENABLED=false` |
 | `500` | Anything the stores report; the detail is logged with the request ID rather than returned |
