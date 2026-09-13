@@ -122,6 +122,11 @@ class TestTheHappyPaths:
         _, model, _ = await run([AIMessage(content="done")])
         assert [t.name for t in model.bound_tools] == ["get_tables"]
 
+    async def test_only_the_first_call_is_forced_to_retrieve(self) -> None:
+        """Answers that skipped every tool fabricated joins and columns (08.7)."""
+        _, model, _ = await run([call_tool(), AIMessage(content="done")])
+        assert model.choices == ["any", None]
+
 
 class TestTheSystemPrompt:
     async def test_it_is_first_and_appears_once(self) -> None:
