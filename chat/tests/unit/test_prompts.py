@@ -2,7 +2,12 @@
 
 import pytest
 
-from urara_chat.agent.prompts import TOOL_BUDGET_SPENT, build_system_prompt, language_name
+from urara_chat.agent.prompts import (
+    DISCLOSURE_CANARY,
+    TOOL_BUDGET_SPENT,
+    build_system_prompt,
+    language_name,
+)
 
 CARD = (
     "PROJECT: jaffle-shop-ddd (v0.1.0)\nTABLES\n  ordering/fact_orders | fact | one per order | 15"
@@ -29,6 +34,10 @@ class TestTheCard:
         """Reporting it beats ignoring it: telling people what is wrong with"""
         prompt = build_system_prompt(CARD, "EN")
         assert "itself a finding worth reporting" in prompt
+
+    def test_it_carries_the_disclosure_canary(self) -> None:
+        """The injection eval looks for it in answers."""
+        assert DISCLOSURE_CANARY in build_system_prompt(CARD, "EN")
 
     def test_an_empty_card_still_renders(self) -> None:
         prompt = build_system_prompt("", "EN")
