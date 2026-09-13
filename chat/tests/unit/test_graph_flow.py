@@ -1,6 +1,7 @@
 """The agent's control flow."""
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +13,7 @@ from pydantic import BaseModel
 
 from urara_chat.agent.citations import extract_citations
 from urara_chat.agent.context_card import ContextCardCache
-from urara_chat.agent.graph import build_graph, initial_state
+from urara_chat.agent.graph import build_graph, estimate_tokens, initial_state
 from urara_chat.agent.prompts import (
     NO_ANSWER_PRODUCED,
     TOOL_BUDGET_SPENT,
@@ -67,15 +68,23 @@ async def run(
     *,
     question: str = "what is in this model?",
     max_tool_iterations: int = 6,
+    max_turn_tokens: int = 32_000,
+    history: list[Any] | None = None,
 ) -> tuple[dict[str, Any], FakeChatModel, CountingContextClient]:
     model = FakeChatModel(replies)
     client = CountingContextClient(jaffle())
     cache = ContextCardCache(ttl_seconds=300.0)
     graph = build_graph(
-        model, tools or [make_tool()], cache, client, max_tool_iterations=max_tool_iterations
+        model,
+        tools or [make_tool()],
+        cache,
+        client,
+        max_tool_iterations=max_tool_iterations,
+        max_turn_tokens=max_turn_tokens,
     )
 
-    final = await graph.ainvoke(initial_state("snap-1", "EN", [HumanMessage(content=question)]))
+    messages = [*(history or []), HumanMessage(content=question)]
+    final = await graph.ainvoke(initial_state("snap-1", "EN", messages))
     return final, model, client
 
 
@@ -349,3 +358,47 @@ class TestCompilation:
 
         assert first["answer"] == second["answer"] == "done"
         assert model.call_count == 2, "one compiled graph served both turns"
+
+
+class TestTheTokenBudget:
+    def test_the_estimate_counts_card_history_and_tool_results(self) -> None:
+        card = SystemMessage(content="c" * 400)
+        history = [HumanMessage(content="h" * 400), AIMessage(content="a" * 400)]
+        result = ToolMessage(content="r" * 400, tool_call_id="1")
+
+        assert estimate_tokens([card]) == 100
+        assert estimate_tokens([card, *history]) == 300
+        assert estimate_tokens([card, *history, result]) == 400
+
+    async def test_a_large_history_is_held_against_the_turn(self) -> None:
+        small, _, _ = await run([AIMessage(content="done")])
+        large, _, _ = await run(
+            [AIMessage(content="done")], history=[HumanMessage(content="x" * 40_000)]
+        )
+        assert large["estimated_prompt_tokens"] - small["estimated_prompt_tokens"] == 10_000
+
+    async def test_exceeding_it_stops_tools_and_still_answers(self) -> None:
+        big = {"items": [{"id": FACT_ORDERS, "blob": "x" * 20_000}]}
+        replies = [
+            call_tool("get_tables", "1"),
+            call_tool("get_tables", "2"),
+            AIMessage(content="partial answer from what I hold"),
+        ]
+        final, model, _ = await run(replies, [make_tool(result=big)], max_turn_tokens=2_000)
+
+        assert final["truncated"] is True
+        assert final["answer"] == "partial answer from what I hold"
+        assert len(final["tool_results"]) == 1
+        assert str(model.calls[-1][-1].content) == TOOL_BUDGET_SPENT
+
+    async def test_exceeding_it_does_not_raise_and_logs_a_warning(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING, logger="urara_chat.agent.graph"):
+            final, _, _ = await run([call_tool()], max_turn_tokens=1)
+
+        assert final["truncated"] is True
+        spent = [r for r in caplog.records if r.message == "turn budget spent"]
+        assert len(spent) == 1
+        assert spent[0].reason == "tokens"  # type: ignore[attr-defined]
+        assert hasattr(spent[0], "requestId")

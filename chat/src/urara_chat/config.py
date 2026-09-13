@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     # How many times the model may ask for tools before it must answer with what it has. Six is
     # generous for the nine tools available.
     max_tool_iterations: int = 6
+    # Estimated tokens a turn may hold before it must answer with what it has.
+    max_turn_tokens: int = 32_000
+    # Assistant turns per conversation; a resent history makes cost superlinear in turns.
+    max_conversation_turns: int = 50
 
     # How many turns may be in flight at once, across every conversation.
     max_concurrent_turns: int = 4
@@ -120,6 +124,13 @@ class Settings(BaseSettings):
         """Refuse a cap that lets nothing through."""
         if v < 1:
             raise ValueError(f"MAX_CONCURRENT_TURNS must be at least 1, got {v}")
+        return v
+
+    @field_validator("max_turn_tokens", "max_conversation_turns")
+    @classmethod
+    def _positive_ceiling(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError(f"must be at least 1, got {v}")
         return v
 
     @field_validator("turn_admission_wait_seconds")

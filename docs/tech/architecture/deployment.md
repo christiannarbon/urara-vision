@@ -46,6 +46,8 @@ The chat service reads its own set:
 | `VERTEX_LOCATION` | `us-central1` | |
 | `GOOGLE_APPLICATION_CREDENTIALS` | _(unset)_ | Only where ADC arrives as a file; unset under Workload Identity |
 | `MAX_TOOL_ITERATIONS` | `6` | Tool rounds before the model must answer with what it has |
+| `MAX_TURN_TOKENS` | `32000` | Estimated tokens a turn may hold before it must answer with what it has |
+| `MAX_CONVERSATION_TURNS` | `50` | Assistant turns per conversation; past it a turn is refused with 409 |
 | `MAX_HISTORY_MESSAGES` | `20` | The whole history is resent every turn |
 | `MAX_CONCURRENT_TURNS` | `4` | In-flight turns across every conversation |
 | `MAX_QUESTION_CHARS` | `4000` | |

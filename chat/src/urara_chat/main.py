@@ -73,6 +73,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             model_name=settings.llm_model,
             max_history_messages=settings.max_history_messages,
             max_tool_iterations=settings.max_tool_iterations,
+            max_turn_tokens=settings.max_turn_tokens,
         )
     )
     log.info("agent pipeline configured")

@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 
 from urara_chat.api.answering import (
     answer_question,
     clean_question,
+    log_turn,
     run_pipeline,
     to_response,
+    turn_record,
 )
 from urara_chat.api.locks import ConversationLocks, TurnLimiter
 from urara_chat.api.middleware import current_request_id
@@ -131,11 +133,24 @@ async def _run_turn(
     # the question it is being asked.
     history = list(conversation.messages)
 
+    # 409, not 400: the request is fine, the conversation's length is what refuses it.
+    turns = sum(1 for m in history if m.role == "assistant")
+    if turns >= settings.max_conversation_turns:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"this conversation has reached its limit of {settings.max_conversation_turns} "
+                "turns; start a new conversation to keep asking"
+            ),
+        )
+
     # The question is stored before the model is called, so a provider failure leaves it in the
     # transcript and the reader can retry without retyping.
     user_message = await client.append_message(cid, "user", question)
 
     result = await run_pipeline(question, conversation.snapshot_id, history, language, settings)
+    record = turn_record(result, conversation.snapshot_id, conversation_id=cid)
+    log_turn(record)
 
     try:
         assistant_message = await client.append_message(
@@ -143,16 +158,8 @@ async def _run_turn(
             "assistant",
             result.text,
             citations=result.citations,
-            # What the turn cost and what it did. Phase 08 bills from these, and a stored turn
-            # that cannot say what it spent cannot be costed later.
-            meta={
-                "model": result.model,
-                "usage": result.usage,
-                "toolCalls": result.tool_calls,
-                "iterations": result.iterations,
-                "latencyMs": result.latency_ms,
-                "truncated": result.truncated,
-            },
+            # Stores the calls themselves; the log line carries only their count.
+            meta={**record, "toolCalls": result.tool_calls, "usage": result.usage},
         )
     except BackendError:
         # The turn still fails -- telling the caller it worked would leave the next fetch of this

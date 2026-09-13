@@ -30,6 +30,7 @@ from urara_chat.agent.prompts import (
     build_system_prompt,
     fence,
 )
+from urara_chat.api.middleware import current_request_id
 from urara_chat.backend.client import BackendClient
 from urara_chat.llm.content import flatten_content
 
@@ -56,6 +57,8 @@ class AgentState(TypedDict):
     budget_notice_sent: bool
     citations: list[str]
     answer: str
+    estimated_prompt_tokens: int
+    estimated_completion_tokens: int
 
 
 def build_graph(
@@ -64,6 +67,7 @@ def build_graph(
     cache: ContextCardCache,
     client: BackendClient,
     max_tool_iterations: int = 6,
+    max_turn_tokens: int = 32_000,
 ) -> Any:
     """Compile the agent."""
     bound = model.bind_tools(list(tools))
@@ -82,7 +86,14 @@ def build_graph(
 
     async def agent(state: AgentState) -> dict[str, Any]:
         reply = await bound.ainvoke(state["messages"])
-        return {"messages": [reply], "iterations": state["iterations"] + 1}
+        return {
+            "messages": [reply],
+            "iterations": state["iterations"] + 1,
+            "estimated_prompt_tokens": state["estimated_prompt_tokens"]
+            + estimate_tokens(state["messages"]),
+            "estimated_completion_tokens": state["estimated_completion_tokens"]
+            + estimate_tokens([reply]),
+        }
 
     tool_node = ToolNode(list(tools))
 
@@ -120,6 +131,17 @@ def build_graph(
     async def spend_budget(state: AgentState) -> dict[str, Any]:
         """Tell the model its budget is gone and let it answer from what it has."""
         last = state["messages"][-1]
+        held = estimate_tokens(state["messages"])
+        log.warning(
+            "turn budget spent",
+            extra={
+                "requestId": current_request_id(),
+                "reason": "tokens" if held >= max_turn_tokens else "iterations",
+                "estimatedTokens": held,
+                "maxTurnTokens": max_turn_tokens,
+                "iterations": state["iterations"],
+            },
+        )
         refusals: list[BaseMessage] = [
             ToolMessage(content=TOOL_BUDGET_SPENT_RESULT, tool_call_id=call["id"] or "")
             for call in (last.tool_calls if isinstance(last, AIMessage) else [])
@@ -141,7 +163,10 @@ def build_graph(
             # The post-budget pass asked for tools anyway. It has had its one extra turn; answer
             # with what is held rather than looping.
             return "finalise"
-        if state["iterations"] >= max_tool_iterations:
+        if (
+            state["iterations"] >= max_tool_iterations
+            or estimate_tokens(state["messages"]) >= max_turn_tokens
+        ):
             return "spend_budget"
         return "tools"
 
@@ -178,7 +203,19 @@ def initial_state(snapshot_id: str, language: str, messages: list[BaseMessage]) 
         budget_notice_sent=False,
         citations=[],
         answer="",
+        estimated_prompt_tokens=0,
+        estimated_completion_tokens=0,
     )
+
+
+def estimate_tokens(messages: Sequence[BaseMessage]) -> int:
+    # Characters / 4, not a tokeniser: an approximate limit is not worth a dependency.
+    chars = 0
+    for message in messages:
+        chars += len(flatten_content(message.content))
+        if isinstance(message, AIMessage) and message.tool_calls:
+            chars += len(json.dumps([call["args"] for call in message.tool_calls], default=str))
+    return chars // 4
 
 
 def _last_answer(messages: Sequence[BaseMessage]) -> str:

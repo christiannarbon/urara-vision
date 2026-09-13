@@ -482,3 +482,15 @@ class TestAnswerTakesASlotButNoLock:
             assert (await running).status_code == 200
 
         assert tracked_while_running == set(), "the answer route took a conversation lock"
+
+
+class TestTheStatelessRouteHasNoTurnLimit:
+    def test_it_answers_under_a_turn_limit_of_one(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        client = answer_app(WritelessClient(), FakePipeline(), monkeypatch)
+        client.app.state.settings = Settings(  # type: ignore[attr-defined]
+            google_api_key=FAKE_KEY,  # type: ignore[arg-type]
+            max_conversation_turns=1,
+        )
+
+        for _ in range(3):
+            assert ask(client, snapshotId="latest", question="hi").status_code == 200

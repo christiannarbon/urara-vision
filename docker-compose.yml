@@ -103,6 +103,8 @@ services:
       # What a turn is allowed to spend before it must answer with what it has.
       MAX_HISTORY_MESSAGES: "${MAX_HISTORY_MESSAGES:-20}"
       MAX_TOOL_ITERATIONS: "${MAX_TOOL_ITERATIONS:-6}"
+      MAX_TURN_TOKENS: "${MAX_TURN_TOKENS:-32000}"
+      MAX_CONVERSATION_TURNS: "${MAX_CONVERSATION_TURNS:-50}"
       CONTEXT_CACHE_TTL_SECONDS: "${CONTEXT_CACHE_TTL_SECONDS:-300}"
       # The only settings in this file that are not committed values. They come
       # from the host environment or a .env file, because a model credential is

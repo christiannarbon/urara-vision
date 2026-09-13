@@ -15,7 +15,6 @@ from langchain_core.tools import BaseTool
 
 from urara_chat.agent.context_card import MAX_CACHED_CARDS, ContextCardCache
 from urara_chat.agent.graph import build_graph, initial_state
-from urara_chat.api.middleware import current_request_id
 from urara_chat.backend.client import BackendClient
 from urara_chat.backend.models import Message
 
@@ -41,6 +40,10 @@ class AgentAnswer:
     # Token counts where the provider reports them, and empty where it does not. Never guessed: a
     # fabricated number in a cost report is worse than a gap.
     usage: dict[str, int] = field(default_factory=dict)
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    # True when any model call went unreported, so both counts are estimates rather than a mix.
+    tokens_estimated: bool = False
 
 
 def truncate_history(history: Sequence[Message], limit: int) -> list[Message]:
@@ -78,6 +81,7 @@ class Pipeline:
         model_name: str,
         max_history_messages: int = 20,
         max_tool_iterations: int = 6,
+        max_turn_tokens: int = 32_000,
         max_graphs: int = MAX_CACHED_GRAPHS,
     ) -> None:
         self._model = model
@@ -87,6 +91,7 @@ class Pipeline:
         self._model_name = model_name
         self._max_history = max_history_messages
         self._max_tool_iterations = max_tool_iterations
+        self._max_turn_tokens = max_turn_tokens
         self._max_graphs = max_graphs
         self._graphs: OrderedDict[str, Any] = OrderedDict()
 
@@ -103,6 +108,7 @@ class Pipeline:
             self._cache,
             self._client,
             max_tool_iterations=self._max_tool_iterations,
+            max_turn_tokens=self._max_turn_tokens,
         )
         self._graphs[snapshot_id] = graph
         while len(self._graphs) > self._max_graphs:
@@ -133,7 +139,9 @@ class Pipeline:
         latency_ms = int((time.perf_counter() - started) * 1000)
 
         produced: list[BaseMessage] = final["messages"]
-        answer = AgentAnswer(
+        usage = _usage(produced)
+        reported = _reported_calls(produced) == final["iterations"] and bool(usage)
+        return AgentAnswer(
             text=final["answer"],
             citations=final["citations"],
             tool_calls=_tool_calls(produced),
@@ -141,28 +149,15 @@ class Pipeline:
             truncated=final["truncated"],
             model=self._model_name,
             latency_ms=latency_ms,
-            usage=_usage(produced),
+            usage=usage,
+            prompt_tokens=(
+                usage.get("input_tokens", 0) if reported else final["estimated_prompt_tokens"]
+            ),
+            completion_tokens=(
+                usage.get("output_tokens", 0) if reported else final["estimated_completion_tokens"]
+            ),
+            tokens_estimated=not reported,
         )
-
-        # One line per turn. Phase 08 costs the feature from these, so it carries what was spent
-        # as well as what was done.
-        log.info(
-            "turn answered",
-            extra={
-                # Ties the turn's cost to the HTTP request that paid for it; without it the two
-                # logs cannot be joined.
-                "request_id": current_request_id(),
-                "snapshot_id": snapshot_id,
-                "language": language,
-                "iterations": answer.iterations,
-                "tools": [call["name"] for call in answer.tool_calls],
-                "citations": len(answer.citations),
-                "latency_ms": answer.latency_ms,
-                "usage": answer.usage,
-                "truncated": answer.truncated,
-            },
-        )
-        return answer
 
 
 def _tool_calls(messages: Sequence[BaseMessage]) -> list[dict[str, Any]]:
@@ -172,6 +167,10 @@ def _tool_calls(messages: Sequence[BaseMessage]) -> list[dict[str, Any]]:
         if isinstance(message, AIMessage):
             calls.extend({"name": c["name"], "args": c["args"]} for c in message.tool_calls)
     return calls
+
+
+def _reported_calls(messages: Sequence[BaseMessage]) -> int:
+    return sum(1 for m in messages if isinstance(m, AIMessage) and m.usage_metadata)
 
 
 def _usage(messages: Sequence[BaseMessage]) -> dict[str, int]:
