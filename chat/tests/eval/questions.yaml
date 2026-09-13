@@ -68,6 +68,17 @@
   must_not_contain: []
   category: traversal
 
+# Phase 05 saw this answer without traversing about 1 run in 15; run it with --repeat.
+- id: jaffle-traversal-join-orders-customers
+  set: jaffle-shop-ddd
+  language: EN
+  question: How do I join orders to customers?
+  expect_citations: ["ordering/fact_orders", "customer_identity/dim_customers"]
+  expect_tools_any: ["find_join_paths", "get_neighbourhood"]
+  expect_contains_any: ["customer_id"]
+  must_not_contain: []
+  category: traversal
+
 - id: jaffle-traversal-orders-neighbours
   set: jaffle-shop-ddd
   language: EN
