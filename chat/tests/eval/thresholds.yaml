@@ -1,5 +1,7 @@
-# Set from the first real run, minus a margin. A threshold invented before a
-# run is a number someone made up.
-overall_citation_recall: 0.00      # replace after the first run (08.7)
-refusal_accuracy: 1.00             # a fabricated answer is never acceptable
+# From the 08.7 Flash runs (results/p87/d-first-tool, 2026-09-13); see FINDINGS.md.
+# Lowest run 0.9898, minus twice the largest run-to-run spread seen at any stage (0.03).
+overall_citation_recall: 0.93
+# A fabricated answer is never acceptable. Measured 0.96 +/- 0.06, so a run can miss this.
+refusal_accuracy: 1.00
+# Zero in every run except the reverted prompt change that fabricated columns.
 max_violations: 0
