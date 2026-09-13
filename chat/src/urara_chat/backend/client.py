@@ -18,6 +18,7 @@ from urara_chat.backend.models import (
     Conversation,
     Diagnostic,
     Domain,
+    Features,
     Graph,
     JoinPath,
     LineageEntry,
@@ -125,6 +126,9 @@ class BackendClient:
         except BackendUnavailable:
             return False
         return response.status_code == 200
+
+    async def features(self) -> Features:
+        return Features.model_validate(await self._get(f"{_API}/features"))
 
     async def resolve_snapshot(self, sid: str) -> str:
         """Turn a snapshot reference into a concrete ID."""

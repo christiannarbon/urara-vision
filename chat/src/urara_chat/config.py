@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     # the pod cares to keep it.
     context_cache_ttl_seconds: float = 300.0
 
+    # How long the backend's /features answer is trusted.
+    features_cache_seconds: float = 15.0
+
     # An unbounded transcript is an unbounded bill: the whole history is resent on every turn.
     max_history_messages: int = 20
     # How many times the model may ask for tools before it must answer with what it has. Six is
@@ -131,6 +134,13 @@ class Settings(BaseSettings):
     def _positive_ceiling(cls, v: int) -> int:
         if v < 1:
             raise ValueError(f"must be at least 1, got {v}")
+        return v
+
+    @field_validator("features_cache_seconds")
+    @classmethod
+    def _at_least_one_second(cls, v: float) -> float:
+        if v < 1:
+            raise ValueError(f"FEATURES_CACHE_SECONDS must be at least 1, got {v}")
         return v
 
     @field_validator("turn_admission_wait_seconds")

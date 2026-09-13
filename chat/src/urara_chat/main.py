@@ -15,6 +15,7 @@ from urara_chat.agent.context_card import ContextCardCache
 from urara_chat.agent.pipeline import Pipeline, configure_pipeline
 from urara_chat.api.chat_routes import router as chat_router
 from urara_chat.api.errors import install_error_handlers
+from urara_chat.api.features import FeatureGate
 from urara_chat.api.middleware import REQUEST_ID_HEADER, RequestIDMiddleware, request_id_of
 from urara_chat.api.routes import router
 from urara_chat.backend.client import BackendClient
@@ -48,6 +49,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.settings = settings
     app.state.client = BackendClient(settings)
+    app.state.feature_gate = FeatureGate(app.state.client, settings.features_cache_seconds)
     # Built once, here. A model per request adds latency to every turn and, on Vertex, a
     # credential refresh with it.
     try:

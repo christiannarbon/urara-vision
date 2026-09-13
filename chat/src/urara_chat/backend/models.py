@@ -284,6 +284,17 @@ class SnapshotContext(BackendModel):
     truncated: bool = False
 
 
+class ChatFeature(BackendModel):
+    available: bool = False
+    enabled: bool = False
+
+
+class Features(BackendModel):
+    """The `/features` envelope."""
+
+    chat: ChatFeature
+
+
 class Message(BackendModel):
     """One turn."""
 
