@@ -28,6 +28,7 @@ from urara_chat.agent.prompts import (
     TOOL_BUDGET_SPENT,
     TOOL_BUDGET_SPENT_RESULT,
     build_system_prompt,
+    fence,
 )
 from urara_chat.backend.client import BackendClient
 from urara_chat.llm.content import flatten_content
@@ -93,7 +94,9 @@ def build_graph(
         results: list[Any] = []
         for message in messages:
             if isinstance(message, ToolMessage):
+                # Parsed before fencing, so citations still read the raw result.
                 results.append(_parsed(message.content))
+                message.content = fence(flatten_content(message.content), message.name or "tool")
 
         return {"messages": messages, "tool_results": results}
 
