@@ -8,7 +8,7 @@ import math
 from collections import Counter
 from collections.abc import Sequence
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from urara_chat.api.answering import (
     answer_question,
@@ -18,6 +18,7 @@ from urara_chat.api.answering import (
     to_response,
     turn_record,
 )
+from urara_chat.api.features import require_chat
 from urara_chat.api.locks import ConversationLocks, TurnLimiter
 from urara_chat.api.middleware import current_request_id
 from urara_chat.api.routes import get_client, get_settings_for
@@ -38,7 +39,7 @@ from urara_chat.backend.errors import BackendError, BackendNotFound
 from urara_chat.backend.models import Conversation, Message
 from urara_chat.config import Settings
 
-router = APIRouter(prefix="/api/chat", tags=["chat"])
+router = APIRouter(prefix="/api/chat", tags=["chat"], dependencies=[Depends(require_chat)])
 log = logging.getLogger(__name__)
 
 
