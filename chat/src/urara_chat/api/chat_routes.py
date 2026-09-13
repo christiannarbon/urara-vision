@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import math
+from collections import Counter
+from collections.abc import Sequence
 
 from fastapi import APIRouter, HTTPException, Query, Request
 
@@ -24,6 +28,7 @@ from urara_chat.api.schemas import (
     ConversationResponse,
     CreateConversationRequest,
     MessageResponse,
+    StatsResponse,
     TurnRequest,
     TurnResponse,
 )
@@ -77,6 +82,101 @@ async def list_conversations(
     ),
 ) -> dict[str, list[Conversation]]:
     return {"conversations": await get_client(request).list_conversations(snapshot, limit)}
+
+
+# Fetches every conversation for the snapshot: fine at this scale, not at ten thousand. The fix
+# then is a GET /api/v1/conversations/stats aggregate in the Go backend.
+STATS_CONVERSATION_LIMIT = 200  # the backend's own list cap
+STATS_FETCH_CONCURRENCY = 8
+# Nearest-rank p95 over fewer samples than this is not a percentile.
+MIN_P95_SAMPLES = 20
+
+
+@router.get("/stats", response_model=StatsResponse)
+async def stats(
+    request: Request,
+    snapshot: str = Query(min_length=1, description="Snapshot to report on. 'latest' is accepted."),
+) -> StatsResponse:
+    client = get_client(request)
+    snapshot_id = await client.resolve_snapshot(snapshot)
+    listed = await client.list_conversations(snapshot_id, STATS_CONVERSATION_LIMIT)
+
+    gate = asyncio.Semaphore(STATS_FETCH_CONCURRENCY)
+
+    async def fetch(cid: str) -> Conversation:
+        async with gate:
+            return await client.get_conversation(cid)
+
+    conversations = await asyncio.gather(*(fetch(c.id) for c in listed))
+    return aggregate_stats(
+        snapshot_id, conversations, capped=len(listed) >= STATS_CONVERSATION_LIMIT
+    )
+
+
+def aggregate_stats(
+    snapshot_id: str, conversations: Sequence[Conversation], *, capped: bool = False
+) -> StatsResponse:
+    turns = 0
+    prompt: list[int] = []
+    completion: list[int] = []
+    latencies: list[int] = []
+    estimated = truncated = recorded_estimated = recorded_truncated = 0
+    by_model: Counter[str] = Counter()
+
+    for conversation in conversations:
+        for message in conversation.messages:
+            if message.role != "assistant":
+                continue
+            turns += 1
+            meta: dict[str, object] = message.meta if isinstance(message.meta, dict) else {}
+            raw_usage = meta.get("usage")
+            usage: dict[str, object] = raw_usage if isinstance(raw_usage, dict) else {}
+
+            # Pre-08.5 messages carry only the provider's usage block.
+            if (tokens := _count(meta.get("promptTokens"), usage.get("input_tokens"))) is not None:
+                prompt.append(tokens)
+            tokens = _count(meta.get("completionTokens"), usage.get("output_tokens"))
+            if tokens is not None:
+                completion.append(tokens)
+            if (latency := _count(meta.get("latencyMs"))) is not None:
+                latencies.append(latency)
+            if isinstance(model := meta.get("model"), str) and model:
+                by_model[model] += 1
+            if isinstance(was_estimated := meta.get("tokensEstimated"), bool):
+                recorded_estimated += 1
+                estimated += was_estimated
+            if isinstance(was_truncated := meta.get("truncated"), bool):
+                recorded_truncated += 1
+                truncated += was_truncated
+
+    return StatsResponse(
+        snapshot_id=snapshot_id,
+        conversations=len(conversations),
+        conversations_capped=capped,
+        turns=turns,
+        prompt_tokens=sum(prompt) if prompt else None,
+        completion_tokens=sum(completion) if completion else None,
+        estimated_token_turns=estimated if recorded_estimated else None,
+        mean_latency_ms=round(sum(latencies) / len(latencies)) if latencies else None,
+        p95_latency_ms=_p95(latencies),
+        truncated_turns=truncated if recorded_truncated else None,
+        by_model=dict(by_model),
+    )
+
+
+def _count(*candidates: object) -> int | None:
+    """The first non-negative integer, ignoring bools and malformed values."""
+    for value in candidates:
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+    return None
+
+
+def _p95(values: list[int]) -> int | None:
+    if len(values) < MIN_P95_SAMPLES:
+        return None
+    ordered = sorted(values)
+    return ordered[math.ceil(0.95 * len(ordered)) - 1]
 
 
 @router.get("/conversations/{cid}", response_model=ConversationResponse)
