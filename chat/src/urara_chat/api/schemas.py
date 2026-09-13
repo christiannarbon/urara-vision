@@ -155,3 +155,22 @@ class TurnResponse(BaseModel):
     truncated: bool
     latency_ms: int
     model: str
+
+
+class StatsResponse(BaseModel):
+    """Usage over a snapshot's conversations. None means nothing was recorded."""
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
+    snapshot_id: str
+    conversations: int
+    # True when the backend's list cap was hit, so older conversations are left out.
+    conversations_capped: bool
+    turns: int
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    estimated_token_turns: int | None
+    mean_latency_ms: int | None
+    p95_latency_ms: int | None
+    truncated_turns: int | None
+    by_model: dict[str, int]
