@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+from urara_chat.agent.citations import extract_citations
 from urara_chat.backend.models import (
     Diagnostic,
     Domain,
@@ -352,3 +353,9 @@ class TestResultsAreUsable:
         by_name, _ = tools(lineage=[LineageEntry(id="src.model")])
         result = await by_name["get_lineage"].fn(table_id="d/t", direction="downstream")
         assert result["direction"] == "downstream"
+
+    async def test_lineage_names_the_table_it_was_asked_about(self) -> None:
+        """So an answer about that table can cite it."""
+        by_name, _ = tools(lineage=[LineageEntry(id="src.model")])
+        result = await by_name["get_lineage"].fn(table_id="d/t")
+        assert extract_citations([result], "`d/t` is built from src.model") == ["d/t"]

@@ -302,6 +302,8 @@ def build_tools(client: BackendClient, snapshot_id: str) -> list[ToolSpec]:
             ]
         )
         result["direction"] = direction
+        # Lets an answer about this table cite it; entries are sources, not the table itself.
+        result["tableId"] = table_id
         return result
 
     async def list_diagnostics(severity: str | None = None) -> dict[str, Any]:

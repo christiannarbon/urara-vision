@@ -19,9 +19,12 @@ class FakeChatModel(BaseChatModel):
     replies: list[AIMessage]
     calls: list[list[BaseMessage]] = []
     bound_tools: list[Any] = []
+    tool_choice: Any = None
+    # The tool_choice of each call, shared with bound copies.
+    choices: list[Any] = []
 
     def __init__(self, replies: Sequence[AIMessage], **kwargs: Any) -> None:
-        super().__init__(replies=list(replies), calls=[], bound_tools=[], **kwargs)
+        super().__init__(replies=list(replies), calls=[], bound_tools=[], choices=[], **kwargs)
 
     @property
     def _llm_type(self) -> str:
@@ -38,6 +41,7 @@ class FakeChatModel(BaseChatModel):
         **kwargs: Any,
     ) -> ChatResult:
         self.calls.append(list(messages))
+        self.choices.append(self.tool_choice)
         index = min(len(self.calls) - 1, len(self.replies) - 1)
 
         # A fresh id per call. add_messages merges by id, so replaying one would replace
@@ -46,9 +50,11 @@ class FakeChatModel(BaseChatModel):
         return ChatResult(generations=[ChatGeneration(message=reply)])
 
     def bind_tools(self, tools: Sequence[Any], **kwargs: Any) -> FakeChatModel:
-        """Records what it was bound to, and stays itself."""
+        """Records what it was bound to; a tool_choice binds a copy sharing the call log."""
         self.bound_tools = list(tools)
-        return self
+        if "tool_choice" not in kwargs:
+            return self
+        return self.model_copy(update={"tool_choice": kwargs["tool_choice"]})
 
     @property
     def call_count(self) -> int:

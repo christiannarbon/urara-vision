@@ -37,9 +37,9 @@ RETRIES_ON_429 = 5
 
 @dataclass
 class Scores:
-    recall: float
+    recall: float | None
     precision: float | None
-    tools: bool
+    tools: bool | None
     substr: bool | None
     violations: list[str]
     refusal_ok: bool | None
@@ -47,8 +47,8 @@ class Scores:
     @property
     def passed(self) -> bool:
         return (
-            self.recall == 1.0
-            and self.tools
+            self.recall in (None, 1.0)
+            and self.tools is not False
             and self.substr is not False
             and not self.violations
             and self.refusal_ok is not False
@@ -81,22 +81,24 @@ def score(
     actual = {c.lower() for c in citations}
     hit = len(expected & actual)
 
-    # Nothing expected: full recall only for citing nothing, whatever the category.
-    recall = hit / len(expected) if expected else float(not actual)
+    # Nothing required means nothing to recall; a refusal's citations are judged below instead.
+    recall = hit / len(expected) if expected else None
     # An empty citation list claims nothing, so precision is undefined rather than zero.
     precision = hit / len(actual) if expected and actual else None
 
     called = {c.get("name") for c in tool_calls}
     wanted = set(q.get("expect_tools_any") or [])
-    # Empty means the context card answers it, so any call is the miss.
-    tools = bool(called & wanted) if wanted else not called
+    # Nothing required: every turn now retrieves first (08.7), so a call is not a miss.
+    tools = bool(called & wanted) if wanted else None
 
     lowered = text.lower()
     contains = q.get("expect_contains_any") or []
     substr = any(s.lower() in lowered for s in contains) if contains else None
     violations = [s for s in q.get("must_not_contain") or [] if s.lower() in lowered]
 
-    refusal_ok = (not actual and not violations) if q["category"] == "refusal" else None
+    # A correct refusal may name the table it checked; anything else cited is suspect.
+    allowed = expected | {c.lower() for c in q.get("allow_citations") or []}
+    refusal_ok = (actual <= allowed and not violations) if q["category"] == "refusal" else None
     return Scores(recall, precision, tools, substr, violations, refusal_ok)
 
 
@@ -230,9 +232,9 @@ def summarise(results: list[Result]) -> dict[str, Any]:
         s = [r.scores for r in rs if r.scores]
         return {
             "n": len(rs),
-            "recall": mean([x.recall for x in s]),
+            "recall": mean([x.recall for x in s if x.recall is not None]),
             "precision": mean([x.precision for x in s if x.precision is not None]),
-            "tools": mean([float(x.tools) for x in s]),
+            "tools": mean([float(x.tools) for x in s if x.tools is not None]),
             "substr": mean([float(x.substr) for x in s if x.substr is not None]),
             "violations": sum(len(x.violations) for x in s),
         }
@@ -246,7 +248,7 @@ def summarise(results: list[Result]) -> dict[str, Any]:
     refusals = [r.scores.refusal_ok for r in scored if r.scores and r.scores.refusal_ok is not None]
     per_question = {}
     for qid, rs in by_question.items():
-        recalls = [r.scores.recall for r in rs if r.scores]
+        recalls = [r.scores.recall for r in rs if r.scores and r.scores.recall is not None]
         per_question[qid] = {
             "runs": len(rs),
             "passes": sum(1 for r in rs if r.scores and r.scores.passed),

@@ -185,15 +185,27 @@ class TestAmbiguity:
 
         assert set(cited) == {shared, local}
 
-    def test_a_full_id_still_selects_only_that_one(self) -> None:
+    def test_a_full_id_selects_only_that_one(self) -> None:
         shared = "shared_kernel/dim_date"
         local = "customer_identity/dim_date"
 
         cited = extract_citations([tool_result(shared, local)], f"join on {shared}")
 
-        # The bare name appears inside the full ID, so both still match -- which is the documented
-        # behaviour: the reader learns there are two.
-        assert set(cited) == {shared, local}
+        assert cited == [shared]
+
+
+class TestPlainWordNames:
+    def test_prose_does_not_cite_a_plain_word_table(self) -> None:
+        result = tool_result("catalog/film", "catalog/film_actor")
+        cited = extract_citations(
+            [result], "`catalog/film_actor` is one row per film-and-actor pair."
+        )
+        assert cited == ["catalog/film_actor"]
+
+    def test_a_code_span_does_cite_it(self) -> None:
+        assert extract_citations([tool_result("catalog/film")], "join to `film`") == [
+            "catalog/film"
+        ]
 
 
 class TestDegenerateInput:

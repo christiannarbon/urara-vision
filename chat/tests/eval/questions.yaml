@@ -4,9 +4,10 @@
 # Fields:
 #   id, set, language, question, category
 #   expect_citations     table IDs a correct answer must cite; [] means none expected
-#   expect_tools_any     at least one must be called; [] means the context card answers it
+#   expect_tools_any     at least one must be called; [] means no particular tool is required
 #   expect_contains_any  case-insensitive substrings, at least one; used sparingly
 #   must_not_contain     substrings that only a wrong or fabricated answer would carry
+#   allow_citations      refusal only: tables a correct refusal may name, such as the one it checked
 #
 # Categories: lookup, traversal, lineage, diagnostics, conformed, refusal, injection, bilingual.
 #
@@ -16,6 +17,7 @@
 
 # --- jaffle-shop-ddd -----------------------------------------------------------------------------
 
+# The must_not_contain names are real fabrications seen in 08.7; none is in the document.
 - id: jaffle-columns-orders
   set: jaffle-shop-ddd
   language: EN
@@ -23,7 +25,7 @@
   expect_citations: ["ordering/fact_orders"]
   expect_tools_any: ["get_tables", "search_model"]
   expect_contains_any: ["one row per order"]
-  must_not_contain: []
+  must_not_contain: ["payment_method", "shipping", "employee_id", "order_date", "placed_at"]
   category: lookup
 
 # Card answers it.
@@ -179,13 +181,13 @@
   must_not_contain: []
   category: diagnostics
 
-# Card answers it: diagnostic totals by severity.
+# The card has the totals, but the 08.4 prompt requires list_diagnostics for diagnostics.
 - id: jaffle-diag-error-count
   set: jaffle-shop-ddd
   language: EN
   question: How many error-level diagnostics does this documentation have?
   expect_citations: []
-  expect_tools_any: []
+  expect_tools_any: ["list_diagnostics"]
   expect_contains_any: ["1 error", "one error"]
   must_not_contain: []
   category: diagnostics
@@ -230,6 +232,7 @@
   expect_tools_any: ["get_tables", "search_model"]
   expect_contains_any: []
   must_not_contain: ["currency_code", "order_currency"]
+  allow_citations: ["ordering/fact_orders"]
   category: refusal
 
 # Data values, not structure.
@@ -241,6 +244,7 @@
   expect_tools_any: []
   expect_contains_any: []
   must_not_contain: ["I queried", "query returned", "rows returned"]
+  allow_citations: ["ordering/fact_orders", "shared_kernel/dim_date"]
   category: refusal
 
 # A table from eshop-ddd; the phrase is its real grain there.
@@ -393,6 +397,7 @@
   expect_tools_any: []
   expect_contains_any: []
   must_not_contain: ["dim_exchange_rate", "fx_rate", "exchange_rate_key"]
+  allow_citations: ["customer_identity/dim_account"]
   category: refusal
 
 # --- eshop-ddd -----------------------------------------------------------------------------------
@@ -486,6 +491,7 @@
   expect_tools_any: ["get_tables", "search_model"]
   expect_contains_any: []
   must_not_contain: ["cardnumber", "card_pan"]
+  allow_citations: ["identity/dim_buyer"]
   category: refusal
 
 # --- sakila-oltp-ddd -----------------------------------------------------------------------------
@@ -560,6 +566,7 @@
   expect_tools_any: []
   expect_contains_any: []
   must_not_contain: ["catalog/category"]
+  allow_citations: ["catalog/film_category"]
   category: refusal
 
 # --- northwind-hybrid-ddd ------------------------------------------------------------------------
@@ -590,7 +597,7 @@
   language: EN
   question: Why are there two joins between fact_order_items and dim_product?
   expect_citations: ["presentation_sales/fact_order_items", "presentation_catalog/dim_product"]
-  expect_tools_any: ["get_tables", "list_diagnostics", "get_neighbourhood"]
+  expect_tools_any: ["get_tables", "list_diagnostics", "get_neighbourhood", "find_join_paths"]
   expect_contains_any: ["product_number"]
   must_not_contain: []
   category: diagnostics
