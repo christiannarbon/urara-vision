@@ -1,7 +1,6 @@
 """The agent's public entry point."""
 
 import json
-import logging
 from pathlib import Path
 from typing import Any
 
@@ -233,23 +232,40 @@ class TestHistory:
         assert [type(m).__name__ for m in converted] == ["HumanMessage"]
 
 
-class TestLogging:
-    async def test_one_structured_line_per_turn(self, caplog: pytest.LogCaptureFixture) -> None:
-        """Phase 08 costs the feature from these."""
+class TestTokenCost:
+    async def test_unreported_counts_are_marked_estimated(self) -> None:
         built, _ = pipeline([call_tool(), AIMessage(content="fact_orders.")])
+        result = await built.answer("q", "snap-1", [])
 
-        with caplog.at_level(logging.INFO, logger="urara_chat.agent.pipeline"):
-            await built.answer("q", "snap-1", [])
+        assert result.tokens_estimated is True
+        assert result.prompt_tokens > 0
+        assert result.completion_tokens > 0
 
-        lines = [r for r in caplog.records if r.message == "turn answered"]
-        assert len(lines) == 1
+    async def test_reported_counts_are_used_when_every_call_reports(self) -> None:
+        usage = {"input_tokens": 1000, "output_tokens": 50, "total_tokens": 1050}
+        built, _ = pipeline(
+            [
+                call_tool().model_copy(update={"usage_metadata": usage}),
+                AIMessage(content="fact_orders.", usage_metadata=usage),  # type: ignore[arg-type]
+            ]
+        )
+        result = await built.answer("q", "snap-1", [])
 
-        record = lines[0]
-        assert record.snapshot_id == "snap-1"  # type: ignore[attr-defined]
-        assert record.iterations == 2  # type: ignore[attr-defined]
-        assert record.tools == ["get_tables"]  # type: ignore[attr-defined]
-        assert record.citations == 1  # type: ignore[attr-defined]
-        assert record.latency_ms >= 0  # type: ignore[attr-defined]
+        assert result.tokens_estimated is False
+        assert (result.prompt_tokens, result.completion_tokens) == (2000, 100)
+
+    async def test_a_partial_report_is_not_mixed_with_estimates(self) -> None:
+        usage = {"input_tokens": 1000, "output_tokens": 50, "total_tokens": 1050}
+        built, _ = pipeline(
+            [
+                call_tool().model_copy(update={"usage_metadata": usage}),
+                AIMessage(content="fact_orders."),
+            ]
+        )
+        result = await built.answer("q", "snap-1", [])
+
+        assert result.tokens_estimated is True
+        assert result.prompt_tokens != 1000
 
 
 class TestOneGraphPerSnapshot:
@@ -305,29 +321,6 @@ class TestOneGraphPerSnapshot:
         await built.answer("q", "snap-1", [])
 
         assert asked == ["snap-1", "snap-2", "snap-1"]
-
-
-class TestTheCostLineReachesTheLog:
-    """Phase 08 bills the feature from this line, so it is asserted on the"""
-
-    async def test_the_turn_line_carries_usage_and_iterations(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        from urara_chat.config import JSONLogFormatter
-
-        built, _ = pipeline([call_tool(), AIMessage(content="fact_orders is one per order.")])
-
-        with caplog.at_level(logging.INFO, logger="urara_chat.agent.pipeline"):
-            await built.answer("q", "snap-1", [])
-
-        record = next(r for r in caplog.records if r.message == "turn answered")
-        line = json.loads(JSONLogFormatter().format(record))
-
-        assert line["snapshot_id"] == "snap-1"
-        assert line["iterations"] == 2
-        assert line["tools"] == ["get_tables"]
-        assert line["latency_ms"] >= 0
-        assert "usage" in line
 
 
 class TestTheModuleEntryPoint:
