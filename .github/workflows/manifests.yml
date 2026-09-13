@@ -1,4 +1,4 @@
-# Renders both kustomize overlays and schema-checks the result.
+# Renders every kustomize overlay and schema-checks the result.
 #
 # This is `make k8s-validate` with the same two images, so a failure here
 # reproduces locally with one command.
@@ -45,9 +45,9 @@ jobs:
       # produced inside the job would not resolve for it. That is invisible on a
       # GitHub runner and fails immediately under act, and stdin sidesteps it in
       # both.
-      - name: render and schema-check both overlays
+      - name: render and schema-check every overlay
         run: |
-          for overlay in dev prod; do
+          for overlay in dev dev-without-chat prod; do
             echo "==> $overlay"
             docker run --rm -v "$PWD:/work" -w /work \
               registry.k8s.io/kustomize/kustomize:v5.7.1 \

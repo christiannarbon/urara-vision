@@ -56,6 +56,7 @@ services:
       API_TOKEN: "relviz-dev-token-not-for-production"
       CORS_ORIGINS: "http://localhost:5173,http://localhost:8081"
       LOG_LEVEL: "info"
+      CHAT_ENABLED: "${CHAT_ENABLED:-true}"
     ports:
       - "8080:8080"
     depends_on:
@@ -165,14 +166,18 @@ services:
       # The /api/chat/ upstream, substituted into the nginx config at start.
       CHAT_HOST: "chat"
       CHAT_PORT: "8090"
+      # false serves a 503 at /api/chat/ instead of proxying to chat.
+      CHAT_ENABLED: "${CHAT_ENABLED:-true}"
     ports:
       - "8081:80"
     depends_on:
-      # Both upstreams, because nginx resolves a proxy_pass host once at
-      # startup: if the chat container does not exist yet, nginx exits with
-      # "host not found in upstream" and the frontend crash-loops until it does.
-      - backend
-      - chat
+      backend:
+        condition: service_started
+      # nginx resolves the chat host at startup, so chat starts first when it
+      # runs at all. Optional for CHAT_ENABLED=false, where it is never proxied.
+      chat:
+        condition: service_started
+        required: false
     restart: unless-stopped
 
 volumes:
