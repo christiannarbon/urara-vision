@@ -152,7 +152,7 @@ EVAL_ARGS := $(if $(SET),--set $(SET)) $(if $(CATEGORY),--category $(CATEGORY)) 
              $(if $(REPEAT),--repeat $(REPEAT)) $(if $(CONCURRENCY),--concurrency $(CONCURRENCY))
 
 .PHONY: eval
-eval: ## Score the agent over the demo sets (needs ADC and VERTEX_PROJECT; costs money)
+eval: ## Score the agent over the demo sets (costs money; MODEL= checks, not sets, LLM_MODEL)
 	exec docker run --rm --init --network $(COMPOSE_NET) \
 	  -v "$(PWD)/chat":/src \
 	  -v "$(PWD)/docs":/docs:ro \
