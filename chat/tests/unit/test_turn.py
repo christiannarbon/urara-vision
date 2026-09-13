@@ -1,5 +1,6 @@
 """The turn route: the ordering decisions that cost the most when got wrong."""
 
+import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -344,3 +345,97 @@ class TestValidation:
 
         assert response.status_code == 200
         assert pipeline.calls[0]["language"] == "EN"
+
+
+def assistant_turns(n: int) -> list[Message]:
+    history: list[Message] = []
+    for i in range(n):
+        history.append(Message(ordinal=2 * i, role="user", content=f"q{i}"))
+        history.append(Message(ordinal=2 * i + 1, role="assistant", content=f"a{i}"))
+    return history
+
+
+class TestTheConversationTurnLimit:
+    def test_the_turn_past_the_limit_is_a_409(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake = FakeClient(assistant_turns(50))
+        pipeline = FakePipeline()
+        response = turn(monkeypatch, fake, pipeline, question="one more?")
+
+        assert response.status_code == 409
+        assert "start a new conversation" in response.json()["detail"]
+        assert pipeline.calls == []
+        assert fake.appended == []
+
+    def test_the_last_turn_within_the_limit_is_answered(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        response = turn(monkeypatch, FakeClient(assistant_turns(49)), question="last one?")
+        assert response.status_code == 200
+
+    def test_the_limit_is_configurable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        response = turn(
+            monkeypatch,
+            FakeClient(assistant_turns(2)),
+            config=settings(max_conversation_turns=2),
+            question="third?",
+        )
+        assert response.status_code == 409
+
+
+TURN_FIELDS = {
+    "requestId",
+    "conversationId",
+    "snapshotId",
+    "model",
+    "promptTokens",
+    "completionTokens",
+    "tokensEstimated",
+    "toolCalls",
+    "tools",
+    "iterations",
+    "citations",
+    "latencyMs",
+    "truncated",
+}
+
+
+class TestTheCostRecord:
+    def test_the_log_line_carries_every_field(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from urara_chat.config import JSONLogFormatter
+
+        result = agent_answer(prompt_tokens=900, completion_tokens=120)
+        with caplog.at_level(logging.INFO, logger="urara_chat.api.answering"):
+            turn(monkeypatch, pipeline=FakePipeline(result), question="q")
+
+        records = [r for r in caplog.records if getattr(r, "event", None) == "turn"]
+        assert len(records) == 1
+        line = json.loads(JSONLogFormatter().format(records[0]))
+
+        assert line.keys() >= TURN_FIELDS
+        assert line["conversationId"] == "conv-1"
+        assert line["snapshotId"] == SNAPSHOT
+        assert (line["promptTokens"], line["completionTokens"]) == (900, 120)
+        assert line["toolCalls"] == 1
+        assert line["tools"] == ["get_tables"]
+        assert line["requestId"]
+
+    def test_estimated_counts_are_marked(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        result = agent_answer(usage={}, prompt_tokens=400, tokens_estimated=True)
+        with caplog.at_level(logging.INFO, logger="urara_chat.api.answering"):
+            turn(monkeypatch, pipeline=FakePipeline(result), question="q")
+
+        record = next(r for r in caplog.records if getattr(r, "event", None) == "turn")
+        assert record.tokensEstimated is True  # type: ignore[attr-defined]
+
+    def test_the_stored_meta_carries_every_field(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake = FakeClient()
+        turn(monkeypatch, fake, question="q")
+
+        meta = fake.appended[1]["meta"]
+        assert meta.keys() >= TURN_FIELDS
+        assert meta["conversationId"] == "conv-1"
+        assert meta["toolCalls"][0]["name"] == "get_tables"
