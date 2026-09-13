@@ -158,6 +158,7 @@ data:
   # Bounded by terminationGracePeriodSeconds above.
   ANSWER_TIMEOUT_SECONDS: "120"
   CONTEXT_CACHE_TTL_SECONDS: "300"
+  FEATURES_CACHE_SECONDS: "15"
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
