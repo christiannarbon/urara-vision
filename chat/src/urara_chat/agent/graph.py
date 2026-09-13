@@ -138,7 +138,7 @@ def build_graph(
         log.warning(
             "turn budget spent",
             extra={
-                "requestId": current_request_id(),
+                "request_id": current_request_id(),
                 "reason": "tokens" if held >= max_turn_tokens else "iterations",
                 "estimatedTokens": held,
                 "maxTurnTokens": max_turn_tokens,
