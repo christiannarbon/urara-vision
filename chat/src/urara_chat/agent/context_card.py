@@ -11,10 +11,6 @@ from dataclasses import dataclass
 from urara_chat.backend.client import BackendClient
 from urara_chat.backend.models import SnapshotContext
 
-# A domain description is a paragraph of orientation. One sentence of it is enough to choose by,
-# and the whole thing is one list_domains call away.
-_MAX_DOMAIN_SUMMARY = 160
-
 # An empty grain renders as this rather than as nothing, which would leave the column blank and
 # the row misaligned against its neighbours.
 _NO_GRAIN = "—"
@@ -73,22 +69,11 @@ def _counts(ctx: SnapshotContext) -> str:
 def _domains(ctx: SnapshotContext) -> list[str]:
     lines = ["DOMAINS"]
     for domain in ctx.domains:
-        # A domain with no tables is marked rather than dropped.
-        detail = (
-            "(no tables documented)" if not domain.table_count else _summarise(domain.description)
-        )
-        lines.append(f"  {domain.id} — {detail}" if detail else f"  {domain.id}")
+        # No description: the card sits in the system message, where injected prose was obeyed.
+        count = domain.table_count
+        detail = f"{count} table{'s' if count != 1 else ''}" if count else "(no tables documented)"
+        lines.append(f"  {domain.id} — {detail}")
     return lines
-
-
-def _summarise(text: str) -> str:
-    """One sentence, or 160 characters, whichever is shorter."""
-    collapsed = " ".join(text.split())
-    sentence, stop, _ = collapsed.partition(". ")
-    first = sentence + "." if stop else collapsed
-    if len(first) <= _MAX_DOMAIN_SUMMARY:
-        return first
-    return first[:_MAX_DOMAIN_SUMMARY].rstrip() + "…"
 
 
 def _tables(ctx: SnapshotContext) -> list[str]:
