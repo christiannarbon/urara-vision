@@ -67,6 +67,9 @@ type MetaStore interface {
 	AppendMessage(ctx context.Context, conversationID string, m model.Message) (*model.Message, error)
 	ListMessages(ctx context.Context, conversationID string) ([]model.Message, error)
 
+	GetBoolSetting(ctx context.Context, key string, def bool) (bool, error)
+	SetBoolSetting(ctx context.Context, key string, v bool) error
+
 	Ping(ctx context.Context) error
 }
 
@@ -113,6 +116,9 @@ func (s *Server) Routes() http.Handler {
 	// deliberately are not: kubelet cannot carry a credential.
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Use(s.requireToken)
+
+		r.Get("/features", s.handleFeatures)
+		r.Patch("/settings", s.handlePatchSettings)
 
 		r.Post("/ingest", s.handleIngest)
 		r.Get("/snapshots", s.handleListSnapshots)
