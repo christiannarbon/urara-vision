@@ -28,6 +28,8 @@ ENV BACKEND_PORT=8080
 # The chat service, templated the same way and for the same reason.
 ENV CHAT_HOST=chat
 ENV CHAT_PORT=8090
+# false, 0 or no serves a 503 at /api/chat/ and needs no chat host.
+ENV CHAT_ENABLED=true
 
 # The Authorization header nginx presents when proxying /api, whole: "Bearer
 # <token>". Empty means the browser supplies its own, which is what the token
@@ -39,6 +41,9 @@ ENV API_AUTHORIZATION=""
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 COPY nginx-security-headers.conf /etc/nginx/snippets/security-headers.conf
+COPY nginx-chat-proxy.conf /etc/nginx/chat/proxy.conf
+COPY nginx-chat-disabled.conf /etc/nginx/chat/disabled.conf
+COPY --chmod=755 docker-entrypoint.d/15-chat-location.sh /docker-entrypoint.d/15-chat-location.sh
 
 EXPOSE 80
 
