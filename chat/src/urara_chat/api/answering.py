@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import asdict
+from typing import Any
 
 from fastapi import HTTPException
 
 from urara_chat.agent.pipeline import AgentAnswer, answer
 from urara_chat.api.errors import ProviderError
+from urara_chat.api.middleware import current_request_id
 from urara_chat.api.schemas import AnswerResponse
 from urara_chat.backend.client import BackendClient
 from urara_chat.backend.errors import BackendError
 from urara_chat.backend.models import Message
 from urara_chat.config import Settings
+
+log = logging.getLogger(__name__)
 
 
 def clean_question(question: str, max_chars: int) -> str:
@@ -61,7 +66,34 @@ async def answer_question(
     cleaned = clean_question(question, settings.max_question_chars)
     # 404 for an unknown snapshot, through the shared handler.
     snapshot_id = await client.resolve_snapshot(snapshot_ref)
-    return await run_pipeline(cleaned, snapshot_id, [], language, settings)
+    result = await run_pipeline(cleaned, snapshot_id, [], language, settings)
+    log_turn(turn_record(result, snapshot_id, conversation_id=None))
+    return result
+
+
+def turn_record(
+    result: AgentAnswer, snapshot_id: str, conversation_id: str | None
+) -> dict[str, Any]:
+    """Logged per turn and stored as the assistant message's meta."""
+    return {
+        "requestId": current_request_id(),
+        "conversationId": conversation_id,
+        "snapshotId": snapshot_id,
+        "model": result.model,
+        "promptTokens": result.prompt_tokens,
+        "completionTokens": result.completion_tokens,
+        "tokensEstimated": result.tokens_estimated,
+        "toolCalls": len(result.tool_calls),
+        "tools": [call["name"] for call in result.tool_calls],
+        "iterations": result.iterations,
+        "citations": len(result.citations),
+        "latencyMs": result.latency_ms,
+        "truncated": result.truncated,
+    }
+
+
+def log_turn(record: dict[str, Any]) -> None:
+    log.info("turn answered", extra={"event": "turn", **record})
 
 
 def to_response(result: AgentAnswer) -> AnswerResponse:
