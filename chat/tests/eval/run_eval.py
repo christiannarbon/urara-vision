@@ -26,6 +26,7 @@ import yaml
 HERE = Path(__file__).resolve().parent
 # parents[2] is the repo root locally and / in the container, where docs/ is mounted at /docs.
 DEMO_DIR = Path(os.getenv("EVAL_DEMO_DIR", HERE.parents[2] / "docs" / "demo"))
+SET_DIRS = (DEMO_DIR, HERE / "fixtures")
 QUESTIONS = HERE / "questions.yaml"
 THRESHOLDS = HERE / "thresholds.yaml"
 RESULTS_DIR = HERE / "results"
@@ -118,13 +119,14 @@ class Snapshots:
         self.ids: dict[str, str] = {}
 
     def ingest(self, name: str) -> str:
-        root = DEMO_DIR / name
-        if not root.is_dir():
-            raise RuntimeError(f"demo set not found at {root}")
+        root = next((d / name for d in SET_DIRS if (d / name).is_dir()), None)
+        if root is None:
+            raise RuntimeError(f"set {name!r} not found in {', '.join(map(str, SET_DIRS))}")
         files = [
             {"path": str(p.relative_to(root)), "content": p.read_text()}
             for p in sorted(root.rglob("*"))
-            if p.suffix in {".md", ".toml"}
+            # A fixture's README is for people; ingested, it would add a diagnostic.
+            if p.suffix in {".md", ".toml"} and p.relative_to(root) != Path("README.md")
         ]
         body = {"name": name, "sourceLabel": self.label, "files": files}
         response = self.http.post("/api/v1/ingest", json=body)
