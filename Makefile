@@ -145,6 +145,26 @@ test-chat-integration: ## Chat service tests against the compose stack
 	  -w /src $(UV_IMAGE) \
 	  uv run --frozen pytest tests/integration -q -m integration
 
+# Never add eval to test, test-all or any CI workflow: it calls a real model and costs money.
+# --init and exec let a SIGTERM reach the runner, so an interrupted run still deletes its snapshots.
+EVAL_ARGS := $(if $(SET),--set $(SET)) $(if $(CATEGORY),--category $(CATEGORY)) \
+             $(if $(ID),--id $(ID)) $(if $(MODEL),--model $(MODEL)) \
+             $(if $(REPEAT),--repeat $(REPEAT)) $(if $(CONCURRENCY),--concurrency $(CONCURRENCY))
+
+.PHONY: eval
+eval: ## Score the agent over the demo sets (needs ADC and VERTEX_PROJECT; costs money)
+	exec docker run --rm --init --network $(COMPOSE_NET) \
+	  -v "$(PWD)/chat":/src \
+	  -v "$(PWD)/docs":/docs:ro \
+	  -v urara-vision-uv-cache:/root/.cache/uv \
+	  -e UV_PROJECT_ENVIRONMENT=/venv \
+	  -e UV_LINK_MODE=copy \
+	  -e EVAL_CHAT_URL="http://chat:8090" \
+	  -e EVAL_BACKEND_URL="http://backend:8080" \
+	  -e EVAL_API_TOKEN="relviz-dev-token-not-for-production" \
+	  -w /src $(UV_IMAGE) \
+	  uv run --frozen python tests/eval/run_eval.py $(EVAL_ARGS)
+
 .PHONY: lint-chat
 lint-chat: ## ruff and mypy over the chat service
 	$(CHAT_RUN) uv run --frozen ruff check .
