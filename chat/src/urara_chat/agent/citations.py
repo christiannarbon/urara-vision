@@ -31,10 +31,15 @@ def extract_citations(tool_results: Sequence[Any], answer: str) -> list[str]:
         return []
 
     lowered = answer.lower()
+    candidates = _candidates(tool_results)
+    # A full ID names one table, so its bare name inside that ID must not cite a namesake too.
+    unpinned = lowered
+    for candidate in candidates:
+        unpinned = _full_id_pattern(candidate).sub(lambda m: " " * len(m.group()), unpinned)
     mentioned: list[tuple[int, int, str]] = []
 
-    for order, candidate in enumerate(_candidates(tool_results)):
-        position = _first_mention(candidate, lowered)
+    for order, candidate in enumerate(candidates):
+        position = _first_mention(candidate, lowered, unpinned)
         if position is not None:
             # Discovery order is the tie-break, so two tables sharing a bare name come back in a
             # stable order rather than an arbitrary one.
@@ -89,21 +94,29 @@ def _add(value: str, found: dict[str, str]) -> None:
         found.setdefault(candidate.lower(), candidate)
 
 
-def _first_mention(candidate: str, lowered_answer: str) -> int | None:
+def _first_mention(candidate: str, lowered_answer: str, unpinned: str) -> int | None:
     """Where the answer first refers to this table, or None if it never does."""
     positions: list[int] = []
 
-    full = lowered_answer.find(candidate.lower())
-    if full != -1:
-        positions.append(full)
+    full = _full_id_pattern(candidate).search(lowered_answer)
+    if full is not None:
+        positions.append(full.start())
 
     _, _, bare = candidate.partition("/")
-    match = _bare_name_pattern(bare).search(lowered_answer)
+    match = _bare_name_pattern(bare).search(unpinned)
     if match is not None:
         positions.append(match.start())
 
     return min(positions) if positions else None
 
 
+def _full_id_pattern(candidate: str) -> re.Pattern[str]:
+    return re.compile(rf"(?<![0-9a-z_]){re.escape(candidate.lower())}(?![0-9a-z_])")
+
+
 def _bare_name_pattern(bare: str) -> re.Pattern[str]:
-    return re.compile(rf"(?<![0-9a-z_]){re.escape(bare.lower())}(?![0-9a-z_])")
+    name = re.escape(bare.lower())
+    # A plain lowercase word such as `film` is also prose, so only a code span counts as naming it.
+    if re.fullmatch(r"[a-z]+", bare):
+        return re.compile(rf"`{name}`")
+    return re.compile(rf"(?<![0-9a-z_]){name}(?![0-9a-z_])")
