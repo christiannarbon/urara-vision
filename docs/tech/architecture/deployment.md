@@ -84,7 +84,8 @@ the default port.
 
 ## Kubernetes
 
-Kustomize, with a `base` and two overlays. Everything enters through the
+Kustomize, with a `base`, `dev` and `prod` overlays, and a component for
+[leaving chat out](#running-without-chat). Everything enters through the
 frontend, which serves the SPA and proxies `/api` to the backend, so the
 browser stays on a single origin and CORS never applies.
 
@@ -138,6 +139,41 @@ single replica.
 
 Chat's memory limit is 512Mi, from measurement: four concurrent turns peaked at
 105Mi, and the rest is headroom for a larger corpus.
+
+## Running without chat
+
+Chat has two switches. `CHAT_ENABLED` decides at deploy time whether the chat
+service exists at all; the runtime setting turns a deployed chat off and on
+without a redeploy.
+
+**Compose.** `make up-without-chat` starts the stack with no chat container.
+The backend reports chat as unavailable, and nginx answers `/api/chat/` with
+`503 {"error":"chat is not deployed"}` instead of proxying. Plain `make up`
+still starts chat.
+
+**Kubernetes.** The `k8s/components/without-chat` component deletes every chat
+resource, including the NetworkPolicy peers that name it, and sets
+`CHAT_ENABLED=false` on the backend and frontend. Add it to any overlay:
+
+```yaml
+components:
+  - ../../components/without-chat
+```
+
+`k8s/overlays/dev-without-chat` is the dev overlay with it applied, and CI
+renders and validates it alongside `dev` and `prod`.
+
+**At runtime.** With chat deployed, an admin can switch it off without touching
+the deployment:
+
+```bash
+curl -X PATCH localhost:8080/api/v1/settings \
+  -H 'Content-Type: application/json' -d '{"chatEnabled": false}'
+```
+
+The chat service refuses turns with `503` within
+`FEATURES_CACHE_SECONDS` (15s by default). See
+[the API](api.md#features-and-settings).
 
 [`k8s/README.md`](../../../k8s/README.md) has the rest: creating the prod
 secrets, resizing a live volume, and the image-specific gotchas the live deploy
