@@ -31,6 +31,8 @@ const STATS = {
 
 const snapshot: Snapshot = {
   id: 's1',
+  projectId: 'p1',
+  projectSlug: 'snap',
   name: 'snap',
   sourceLabel: 'docs',
   createdAt: '2026-01-01T00:00:00Z',

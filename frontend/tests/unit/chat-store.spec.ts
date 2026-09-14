@@ -43,7 +43,7 @@ const STATS: Stats = {
 }
 
 function snapshotWithId(id: string): Snapshot {
-  return { id, name: id, sourceLabel: 'docs', createdAt: '2026-01-01T00:00:00Z', stats: STATS }
+  return { id, name: id, sourceLabel: 'docs', createdAt: '2026-01-01T00:00:00Z', stats: STATS, projectId: 'p1', projectSlug: 'snap' }
 }
 
 function conversation(id = 'c1'): Conversation {

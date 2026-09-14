@@ -196,6 +196,31 @@ export const useWorkspace = defineStore('workspace', () => {
     }
   }
 
+  /** Loads a project's newest snapshot. One already open from that project is
+   *  kept, so an older snapshot picked from the list survives the navigation. */
+  async function openProject(slug: string) {
+    if (snapshot.value?.projectSlug === slug) return
+    clearError()
+    try {
+      const project = await api.getProject(slug)
+      if (!project.latest) {
+        snapshot.value = null
+        errorKey.value = 'project.empty'
+        return
+      }
+      await loadSnapshot(project.latest.snapshotId)
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 404) {
+        snapshot.value = null
+        clearError()
+        errorKey.value = 'project.notFound'
+        errorParams.value = { slug }
+        return
+      }
+      setError(e)
+    }
+  }
+
   /** Stores a token and retries the first call the app makes. */
   async function submitApiToken(token: string): Promise<boolean> {
     setApiToken(token)
@@ -379,6 +404,7 @@ export const useWorkspace = defineStore('workspace', () => {
     ingest,
     loadSnapshot,
     authRequired,
+    openProject,
     submitApiToken,
     refreshSnapshots,
     refreshGraph,

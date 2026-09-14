@@ -13,6 +13,8 @@ import { messages as ja } from '../../src/i18n/messages/ja'
 function snap(over: Partial<Snapshot['stats']> = {}): Snapshot {
   return {
     id: 's1',
+    projectId: 'p1',
+    projectSlug: 'snap',
     name: 'snap',
     sourceLabel: 'docs',
     createdAt: '2026-01-01T00:00:00Z',

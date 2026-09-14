@@ -87,6 +87,8 @@ export const messages = {
   'status.parsing.other': 'Parsing {n} documents…',
   'status.loading': 'Loading model…',
   'error.unknown': 'Something went wrong.',
+  'project.notFound': 'There is no project called “{slug}”.',
+  'project.empty': 'This project has no ingests yet.',
   'error.unreachable': 'Cannot reach the backend. Check that the API is running and reachable.',
   'error.tokenRejected': 'This API needs a token, and the one supplied was not accepted.',
   'error.requestFailed': 'Request failed with status {status}.',

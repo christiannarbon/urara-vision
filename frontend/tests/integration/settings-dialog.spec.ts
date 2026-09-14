@@ -27,7 +27,7 @@ vi.mock('../../src/api/client', async () => {
   }
 })
 
-const App = (await import('../../src/App.vue')).default
+const { mountApp } = await import('../helpers/mountApp')
 const SettingsDialog = (await import('../../src/components/SettingsDialog.vue')).default
 const ApiTokenGate = (await import('../../src/components/ApiTokenGate.vue')).default
 const { useWorkspace } = await import('../../src/stores/workspace')
@@ -60,32 +60,35 @@ beforeEach(() => {
 
 afterEach(() => setLocale('en'))
 
-async function mountApp(f: Features) {
+// The snapshot already belongs to the routed project, so the view keeps it.
+async function mountWith(f: Features) {
   features.mockResolvedValue(f)
-  useWorkspace().snapshot = { id: 's1', name: 's1', sourceLabel: 'docs', createdAt: '', stats: STATS }
-  const w = mount(App, { global: { stubs: { GraphCanvas: true } }, attachTo: document.body })
+  useWorkspace().snapshot = {
+    id: 's1', name: 's1', sourceLabel: 'docs', createdAt: '', stats: STATS, projectId: 'p1', projectSlug: 's1',
+  }
+  const w = await mountApp('/projects/s1', { attachTo: document.body })
   await flushPromises()
   return w
 }
 
-const chatButton = (w: Awaited<ReturnType<typeof mountApp>>) =>
+const chatButton = (w: Awaited<ReturnType<typeof mountWith>>) =>
   w.findAll('.topbar button').find((b) => /chat/i.test(b.attributes('title') ?? ''))
 
 describe('the chat button', () => {
   it('is absent when chat is switched off', async () => {
-    const w = await mountApp(state(true, false))
+    const w = await mountWith(state(true, false))
     expect(chatButton(w)).toBeUndefined()
     w.unmount()
   })
 
   it('is present when chat is on', async () => {
-    const w = await mountApp(state(true, true))
+    const w = await mountWith(state(true, true))
     expect(chatButton(w)).toBeDefined()
     w.unmount()
   })
 
   it('closes an open panel when chat is switched off', async () => {
-    const w = await mountApp(state(true, true))
+    const w = await mountWith(state(true, true))
     const chat = useChat()
     chat.openPanel()
     await nextTick()
@@ -105,7 +108,7 @@ describe('after the token gate', () => {
   it('reloads features once the token is accepted', async () => {
     features.mockResolvedValue(state(true, true))
     useWorkspace().authRequired = true
-    const w = mount(App, { global: { stubs: { GraphCanvas: true } } })
+    const w = await mountApp()
     await flushPromises()
 
     w.findComponent(ApiTokenGate).vm.$emit('submit', 'x'.repeat(32))
@@ -195,7 +198,7 @@ describe('the dialog', () => {
 
 describe('opening from the topbar', () => {
   it('opens the dialog, and Escape closes it without closing chat', async () => {
-    const w = await mountApp(state(true, true))
+    const w = await mountWith(state(true, true))
     const chat = useChat()
     chat.openPanel()
 
