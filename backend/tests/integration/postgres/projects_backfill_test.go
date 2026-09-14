@@ -20,10 +20,11 @@ import (
 // backfill attaches to them. Other packages migrate the same database
 // concurrently, so assertions only look at these rows.
 type backfill struct {
-	t   *testing.T
-	ctx context.Context
-	pg  *postgres.Store
-	ids []string
+	t       *testing.T
+	ctx     context.Context
+	pg      *postgres.Store
+	ids     []string
+	pending [][]any
 }
 
 func newBackfill(t *testing.T) *backfill {
@@ -35,17 +36,49 @@ func newBackfill(t *testing.T) *backfill {
 	return b
 }
 
+// snapshot queues a snapshot with no project; migrate inserts the queue.
 func (b *backfill) snapshot(name, projectName string, createdAt time.Time) string {
-	b.t.Helper()
 	id := harness.SnapshotID()
 	b.ids = append(b.ids, id)
-	execSQL(b.t, `INSERT INTO snapshots (id, name, project_name, project_description, created_at)
-		VALUES ($1, $2, $3, $4, $5)`, id, name, projectName, "about "+name, createdAt)
+	b.pending = append(b.pending, []any{id, name, projectName, "about " + name, createdAt})
 	return id
+}
+
+// insertPending writes queued snapshots as they existed before project_id was
+// NOT NULL. Dropping the constraint in the same transaction holds snapshots
+// locked, so a concurrent Migrate backfills these rows before it restores it.
+func (b *backfill) insertPending() {
+	b.t.Helper()
+	if len(b.pending) == 0 {
+		return
+	}
+	conn, err := pgx.Connect(b.ctx, harness.PostgresDSN(b.t))
+	if err != nil {
+		b.t.Fatalf("connect postgres: %v", err)
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+
+	err = pgx.BeginFunc(b.ctx, conn, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(b.ctx, `ALTER TABLE snapshots ALTER COLUMN project_id DROP NOT NULL`); err != nil {
+			return err
+		}
+		for _, row := range b.pending {
+			if _, err := tx.Exec(b.ctx, `INSERT INTO snapshots (id, name, project_name, project_description, created_at)
+				VALUES ($1, $2, $3, $4, $5)`, row...); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		b.t.Fatalf("insert snapshots without a project: %v", err)
+	}
+	b.pending = nil
 }
 
 func (b *backfill) migrate() {
 	b.t.Helper()
+	b.insertPending()
 	if err := b.pg.Migrate(b.ctx); err != nil {
 		b.t.Fatalf("Migrate: %v", err)
 	}
@@ -91,7 +124,7 @@ func queryRow(t *testing.T, sql string, args []any, dest ...any) {
 func TestBackfillGroupsSnapshotsByName(t *testing.T) {
 	b := newBackfill(t)
 	suffix := uuid.NewString()[:8]
-	older := time.Now().Add(-2 * time.Hour).UTC().Truncate(time.Microsecond)
+	older := past(0)
 	newer := older.Add(time.Hour)
 
 	first := b.snapshot("old ingest", "Test Backfill "+suffix, older)
@@ -115,8 +148,8 @@ func TestBackfillGroupsSnapshotsByName(t *testing.T) {
 
 func TestBackfillGivesALegacySnapshotItsOwnProject(t *testing.T) {
 	b := newBackfill(t)
-	id := b.snapshot("pre-manifest ingest", "", time.Now())
-	nameless := b.snapshot("unslugged ingest", "日本語", time.Now())
+	id := b.snapshot("pre-manifest ingest", "", past(0))
+	nameless := b.snapshot("unslugged ingest", "日本語", past(0))
 	b.migrate()
 
 	p := b.projectOf(id)
@@ -149,7 +182,7 @@ func TestBackfillSlugMatchesGo(t *testing.T) {
 	}
 	ids := map[string]string{}
 	for _, name := range names {
-		ids[name] = b.snapshot("slug case", name, time.Now())
+		ids[name] = b.snapshot("slug case", name, past(0))
 	}
 	b.migrate()
 
@@ -170,9 +203,9 @@ func TestBackfillSlugMatchesGo(t *testing.T) {
 func TestBackfillDoesNothingOnReRun(t *testing.T) {
 	b := newBackfill(t)
 	suffix := uuid.NewString()[:8]
-	b.snapshot("one", "Rerun "+suffix, time.Now().Add(-time.Minute))
-	b.snapshot("two", "Rerun "+suffix, time.Now())
-	b.snapshot("legacy", "", time.Now())
+	b.snapshot("one", "Rerun "+suffix, past(0))
+	b.snapshot("two", "Rerun "+suffix, past(time.Minute))
+	b.snapshot("legacy", "", past(0))
 	b.migrate()
 
 	orphans, projects := b.counts()

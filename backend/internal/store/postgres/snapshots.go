@@ -13,9 +13,13 @@ import (
 
 // snapshotColumns is every field a snapshot is rebuilt from, shared by the two
 // reads below so a new one cannot be added to only half of them.
-const snapshotColumns = `id, name, source_label, created_at, stats,
-	project_name, project_version, project_description,
-	i18n_primary, i18n_supported, i18n_type`
+const snapshotColumns = `s.id, s.name, s.source_label, s.created_at, s.stats,
+	s.project_name, s.project_version, s.project_description,
+	s.i18n_primary, s.i18n_supported, s.i18n_type,
+	COALESCE(p.id, ''), COALESCE(p.slug, '')`
+
+// snapshotsFrom is the FROM clause snapshotColumns is read from.
+const snapshotsFrom = `FROM snapshots s LEFT JOIN projects p ON p.id = s.project_id`
 
 // scanSnapshot reads one row of snapshotColumns.
 func scanSnapshot(row pgx.Row) (model.Snapshot, error) {
@@ -27,7 +31,8 @@ func scanSnapshot(row pgx.Row) (model.Snapshot, error) {
 		&sn.Project.Project.Description,
 		&sn.Project.Internationalization.Primary,
 		&supported,
-		&sn.Project.Internationalization.Type); err != nil {
+		&sn.Project.Internationalization.Type,
+		&sn.ProjectID, &sn.ProjectSlug); err != nil {
 		return sn, err
 	}
 	if err := json.Unmarshal(stats, &sn.Stats); err != nil {
@@ -42,7 +47,7 @@ func scanSnapshot(row pgx.Row) (model.Snapshot, error) {
 // ListSnapshots returns every snapshot, newest first.
 func (s *Store) ListSnapshots(ctx context.Context) ([]model.Snapshot, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT `+snapshotColumns+` FROM snapshots ORDER BY created_at DESC`)
+		`SELECT `+snapshotColumns+` `+snapshotsFrom+` ORDER BY s.created_at DESC`)
 	if err != nil {
 		return nil, err
 	}
@@ -62,7 +67,7 @@ func (s *Store) ListSnapshots(ctx context.Context) ([]model.Snapshot, error) {
 // GetSnapshot returns one snapshot by ID.
 func (s *Store) GetSnapshot(ctx context.Context, id string) (*model.Snapshot, error) {
 	sn, err := scanSnapshot(s.pool.QueryRow(ctx,
-		`SELECT `+snapshotColumns+` FROM snapshots WHERE id = $1`, id))
+		`SELECT `+snapshotColumns+` `+snapshotsFrom+` WHERE s.id = $1`, id))
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, ErrNotFound

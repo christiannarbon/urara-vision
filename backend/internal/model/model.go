@@ -35,6 +35,27 @@ type Snapshot struct {
 	CreatedAt   time.Time   `json:"createdAt"`
 	Stats       Stats       `json:"stats"`
 	Project     ProjectMeta `json:"project"`
+	ProjectID   string      `json:"projectId"`
+	ProjectSlug string      `json:"projectSlug"`
+}
+
+// ProjectVersionRef points at one snapshot of a project.
+type ProjectVersionRef struct {
+	SnapshotID string    `json:"snapshotId"`
+	Version    string    `json:"version"`
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
+// ProjectSummary is a project with enough about its snapshots to list it.
+type ProjectSummary struct {
+	ID           string             `json:"id"`
+	Slug         string             `json:"slug"`
+	Name         string             `json:"name"`
+	Description  string             `json:"description"`
+	CreatedAt    time.Time          `json:"createdAt"`
+	UpdatedAt    time.Time          `json:"updatedAt"`
+	VersionCount int                `json:"versionCount"`
+	Latest       *ProjectVersionRef `json:"latest"`
 }
 
 // ProjectMeta is what a documentation directory declares about itself, read

@@ -104,12 +104,13 @@ test-integration: ## Backend integration tests against the compose stack (starts
 	@$(COMPOSE) exec -T neo4j sh -c \
 	  'until cypher-shell -u neo4j -p relviz-dev-password "RETURN 1" >/dev/null 2>&1; do sleep 2; done'
 	@echo "==> tests"
+	@# -p 1: the packages share one database, and "latest" is whichever wrote last.
 	docker run --rm --network $(COMPOSE_NET) -v "$(PWD)/backend":/src -w /src \
 	  -e TEST_POSTGRES_DSN="postgres://relviz:relviz@postgres:5432/$(TEST_DB)?sslmode=disable" \
 	  -e TEST_NEO4J_URI="bolt://neo4j:7687" \
 	  -e TEST_NEO4J_USER="neo4j" \
 	  -e TEST_NEO4J_PASSWORD="relviz-dev-password" \
-	  $(GO_IMAGE) go test -tags=integration -count=1 ./tests/integration/...
+	  $(GO_IMAGE) go test -tags=integration -count=1 -p 1 ./tests/integration/...
 
 .PHONY: test-all
 test-all: test test-integration test-chat-integration ## Everything: unit, frontend and integration
