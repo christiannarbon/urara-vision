@@ -27,6 +27,7 @@ vi.mock('../../src/api/chat', async () => {
 const { chatApi } = await import('../../src/api/chat')
 const { useChat } = await import('../../src/stores/chat')
 const { useWorkspace } = await import('../../src/stores/workspace')
+const { useFeatures } = await import('../../src/stores/features')
 
 const STATS: Stats = {
   domains: 1,
@@ -254,6 +255,18 @@ describe('failures', () => {
 
     expect(chat.errorDetail).toBe('the model store is unavailable')
     expect(chat.errorKey).toBeNull()
+  })
+
+  it('maps 503 to turned off and reloads features', async () => {
+    const { chat } = withSnapshot()
+    const load = vi.spyOn(useFeatures(), 'load').mockResolvedValue()
+    vi.mocked(chatApi.turn).mockRejectedValue(new ApiError('chat is turned off', 503))
+
+    await chat.ask('why?')
+
+    expect(chat.errorKey).toBe('chat.error.turnedOff')
+    expect(chat.errorDetail).toBeNull()
+    expect(load).toHaveBeenCalledTimes(1)
   })
 
   it('falls back to the generic key for a non-ApiError', async () => {
