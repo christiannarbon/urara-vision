@@ -89,6 +89,9 @@ FROM projects p
 WHERE snapshots.project_id IS NULL
   AND p.slug = 'legacy-' || left(md5(snapshots.id), 12);
 
+-- Every save writes project_id, and the backfill above leaves none empty.
+ALTER TABLE snapshots ALTER COLUMN project_id SET NOT NULL;
+
 CREATE TABLE IF NOT EXISTS domains (
     snapshot_id TEXT NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,
     id          TEXT NOT NULL,
