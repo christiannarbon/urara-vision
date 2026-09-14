@@ -9,6 +9,7 @@ import type {
   IngestResult,
   JoinPath,
   LineageEntry,
+  Project,
   SearchHit,
   Snapshot,
   SourceTable,
@@ -163,6 +164,18 @@ export const api = {
 
   deleteSnapshot(sid: string): Promise<void> {
     return request(`/snapshots/${encodeURIComponent(sid)}`, { method: 'DELETE' })
+  },
+
+  listProjects(): Promise<{ projects: Project[] }> {
+    return request('/projects')
+  },
+
+  getProject(slug: string): Promise<Project> {
+    return request(`/projects/${encodeURIComponent(slug)}`)
+  },
+
+  deleteProject(slug: string): Promise<void> {
+    return request(`/projects/${encodeURIComponent(slug)}`, { method: 'DELETE' })
   },
 
   domains(sid: string): Promise<{ domains: Domain[] }> {
