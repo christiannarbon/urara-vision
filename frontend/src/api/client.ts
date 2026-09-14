@@ -3,6 +3,7 @@
 import type {
   Diagnostic,
   Domain,
+  Features,
   GraphData,
   IngestFile,
   IngestResult,
@@ -132,6 +133,18 @@ function qs(params: Record<string, string | number | boolean | undefined>): stri
 }
 
 export const api = {
+  features(): Promise<Features> {
+    return request('/features')
+  },
+
+  patchSettings(body: { chatEnabled: boolean }): Promise<Features> {
+    return request('/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  },
+
   ingest(name: string, sourceLabel: string, files: IngestFile[]): Promise<IngestResult> {
     return request<IngestResult>('/ingest', {
       method: 'POST',
