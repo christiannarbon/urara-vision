@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from fastapi import Request
+from pydantic import ValidationError
 
 from urara_chat.backend.errors import BackendError
 
@@ -33,19 +35,23 @@ class FeatureGate:
         self._clock = clock
         self._enabled: bool | None = None
         self._expires = 0.0
+        self._lock = asyncio.Lock()
 
     async def require_chat(self) -> None:
-        if self._enabled is None or self._clock() >= self._expires:
-            try:
-                features = await self._client.features()
-            except BackendError as exc:
-                # A feature switch, not a security control: fail open, uncached.
-                log.warning("could not read backend features, allowing chat: %s", exc.message)
-                return
-            self._enabled = features.chat.enabled
-            self._expires = self._clock() + self._ttl
-        if not self._enabled:
+        if self._clock() >= self._expires:
+            async with self._lock:
+                if self._clock() >= self._expires:
+                    await self._refresh()
+        if self._enabled is False:
             raise ChatDisabled
+
+    async def _refresh(self) -> None:
+        try:
+            self._enabled = (await self._client.features()).chat.enabled
+        except (BackendError, ValidationError) as exc:
+            # Keep the last answer; with none yet, chat stays allowed.
+            log.warning("could not read backend features: %s", exc)
+        self._expires = self._clock() + self._ttl
 
 
 async def require_chat(request: Request) -> None:
