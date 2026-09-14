@@ -20,7 +20,7 @@ vi.mock('../../src/api/client', async () => {
         get: (_, prop) => {
           if (prop === 'features') return features
           if (prop === 'patchSettings') return patchSettings
-          return vi.fn().mockResolvedValue({ snapshots: [] })
+          return vi.fn().mockResolvedValue({ snapshots: [], projects: [] })
         },
       },
     ),
