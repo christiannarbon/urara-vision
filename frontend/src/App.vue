@@ -1,22 +1,17 @@
 <script setup lang="ts">
-/** Application shell: header, three-pane workspace, overlays. */
+/** Application shell: token gate, topbar, banners and the routed view. */
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch, watchEffect } from 'vue'
 import { storeToRefs } from 'pinia'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 
 import ApiTokenGate from './components/ApiTokenGate.vue'
-import ChatPanel from './components/ChatPanel.vue'
-import DiagnosticsPanel from './components/DiagnosticsPanel.vue'
-import FilterSidebar from './components/FilterSidebar.vue'
-import GraphCanvas from './components/GraphCanvas.vue'
 import LanguagePicker from './components/LanguagePicker.vue'
-import SearchOverlay from './components/SearchOverlay.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
-import TableDetail from './components/TableDetail.vue'
 import ThemePicker from './components/ThemePicker.vue'
-import WelcomeScreen from './components/WelcomeScreen.vue'
 import { useI18n } from './i18n'
 import { useChat } from './stores/chat'
 import { useFeatures } from './stores/features'
+import { useUi } from './stores/ui'
 import { useWorkspace } from './stores/workspace'
 
 const { t, tn } = useI18n()
@@ -27,26 +22,13 @@ watchEffect(() => {
   document.title = t('app.title')
 })
 
+const route = useRoute()
+const router = useRouter()
+
 const store = useWorkspace()
 const {
   snapshot,
-  snapshots,
-  domains,
-  tables,
-  diagnostics,
-  graph,
-  graphLoading,
-  viewMode,
-  layoutMode,
-  activeDomains,
-  activeKinds,
-  showSources,
-  crossDomainOnly,
-  focusDepth,
   selectedId,
-  detail,
-  detailLoading,
-  busy,
   statusMessage,
   error,
   hasSnapshot,
@@ -71,8 +53,8 @@ async function onTokenSubmit(token: string) {
   }
 }
 
-const searchOpen = ref(false)
-const diagnosticsOpen = ref(false)
+const ui = useUi()
+const { searchOpen, diagnosticsOpen } = storeToRefs(ui)
 
 const chat = useChat()
 const { open: chatOpen } = storeToRefs(chat)
@@ -91,20 +73,6 @@ watch(chatEnabled, (on) => {
   if (!on) chat.closePanel()
 })
 
-// One right-hand pane, so the two panels take turns rather than adding a third
-// column: a third would leave the canvas a sliver on a laptop. Symmetric, or the
-// hidden one's button reports itself open while nothing changes.
-function toggleChat() {
-  if (!chatOpen.value) diagnosticsOpen.value = false
-  chat.togglePanel()
-}
-
-function toggleDiagnostics() {
-  if (!diagnosticsOpen.value) chat.closePanel()
-  diagnosticsOpen.value = !diagnosticsOpen.value
-}
-const canvas = ref<InstanceType<typeof GraphCanvas> | null>(null)
-
 /** The Diagnostics button carries a marker rather than a count: the number of
  *  findings says nothing about whether any of them matter, and a big number
  *  reads as a failure when most findings are merely worth a look. */
@@ -122,13 +90,14 @@ const parseNoticeDetail = computed(() =>
 )
 
 function reviewParseFailures() {
-  chat.closePanel()
-  diagnosticsOpen.value = true
+  ui.showDiagnostics()
   store.acknowledgeParseFailures()
 }
 
+// Home, not "has a snapshot": a not-found project has none and still needs a way back.
+const atHome = computed(() => route.name === 'home')
+
 onMounted(() => {
-  void store.refreshSnapshots()
   void features.load()
   window.addEventListener('keydown', onKeydown)
 })
@@ -157,30 +126,8 @@ function onKeydown(e: KeyboardEvent) {
   }
 }
 
-async function onIngest(payload: {
-  name: string
-  sourceLabel: string
-  files: { path: string; content: string }[]
-}) {
-  await store.ingest(payload.name, payload.sourceLabel, payload.files)
-  await store.refreshSnapshots()
-  // The Diagnostics panel stays closed. Findings are advisory and the reader
-  // opens them when ready; only a dropped document interrupts, via the notice
-  // below the header.
-}
-
-async function navigate(id: string) {
-  await store.select(id)
-  canvas.value?.panTo(id)
-}
-
-async function focusOn(id: string) {
-  await store.focusOn(id)
-}
-
 function backToPicker() {
-  store.$patch({ snapshot: null, selectedId: null, detail: null })
-  void store.refreshSnapshots()
+  void router.push('/')
 }
 </script>
 
@@ -194,9 +141,9 @@ function backToPicker() {
       <button
         type="button"
         class="brand"
-        :class="{ 'brand--link': hasSnapshot }"
-        :disabled="!hasSnapshot"
-        :title="hasSnapshot ? t('topbar.home') : undefined"
+        :class="{ 'brand--link': !atHome }"
+        :disabled="atHome"
+        :title="atHome ? undefined : t('topbar.home')"
         @click="backToPicker"
       >
         <span class="mark" aria-hidden="true" />
@@ -218,7 +165,7 @@ function backToPicker() {
           class="btn btn--ghost btn--sm"
           :aria-expanded="diagnosticsOpen"
           :title="hasDiagnostics ? t('topbar.diagnostics.titleAttention') : t('topbar.diagnostics.title')"
-          @click="toggleDiagnostics"
+          @click="ui.toggleDiagnostics"
         >
           {{ t('topbar.diagnostics') }}
           <span
@@ -234,7 +181,7 @@ function backToPicker() {
           class="btn btn--ghost btn--sm"
           :aria-expanded="chatOpen"
           :title="chatOpen ? t('chat.close') : t('chat.open')"
-          @click="toggleChat"
+          @click="ui.toggleChat"
         >
           <span class="glyph" aria-hidden="true">◗</span>
           {{ chatOpen ? t('chat.close') : t('chat.open') }}
@@ -279,84 +226,7 @@ function backToPicker() {
       </span>
     </p>
 
-    <main v-if="!hasSnapshot" class="main">
-      <WelcomeScreen
-        :snapshots="snapshots"
-        :busy="busy"
-        :status-message="statusMessage"
-        @ingest="onIngest"
-        @open="store.loadSnapshot"
-        @delete="store.removeSnapshot"
-      />
-    </main>
-
-    <main v-else class="workspace" :class="{ 'workspace--wide': diagnosticsOpen || chatOpen }">
-      <FilterSidebar
-        class="pane pane--left"
-        :snapshot="snapshot"
-        :domains="domains"
-        :tables="tables"
-        :active-domains="activeDomains"
-        :active-kinds="activeKinds"
-        :show-sources="showSources"
-        :cross-domain-only="crossDomainOnly"
-        :view-mode="viewMode"
-        :layout-mode="layoutMode"
-        :focus-depth="focusDepth"
-        :selected-id="selectedId"
-        @toggle-domain="store.toggleDomain"
-        @toggle-kind="store.toggleKind"
-        @set-sources="store.setShowSources"
-        @set-cross-domain="store.setCrossDomainOnly"
-        @set-view-mode="store.setViewMode"
-        @set-layout-mode="store.setLayoutMode"
-        @set-focus-depth="store.setFocusDepth"
-        @clear="store.clearFilters"
-        @select="navigate"
-      />
-
-      <div class="pane pane--graph">
-        <GraphCanvas
-          ref="canvas"
-          :data="graph"
-          :domains="domains"
-          :selected-id="selectedId"
-          :loading="graphLoading"
-          :layout-mode="layoutMode"
-          @select="store.select"
-          @focus="focusOn"
-        />
-      </div>
-
-      <ChatPanel v-if="chatEnabled && chatOpen" class="pane pane--right" />
-
-      <DiagnosticsPanel
-        v-else-if="diagnosticsOpen"
-        class="pane pane--right"
-        :open="diagnosticsOpen"
-        :diagnostics="diagnostics"
-        @close="diagnosticsOpen = false"
-        @select="navigate"
-      />
-
-      <TableDetail
-        v-else
-        class="pane pane--right"
-        :detail="detail"
-        :loading="detailLoading"
-        :selected-id="selectedId"
-        @navigate="navigate"
-        @focus="focusOn"
-        @close="store.select(null)"
-      />
-    </main>
-
-    <SearchOverlay
-      :open="searchOpen"
-      :snapshot-id="snapshot?.id ?? null"
-      @close="searchOpen = false"
-      @select="navigate"
-    />
+    <RouterView />
 
     <SettingsDialog v-if="settingsOpen" @close="closeSettings" />
   </div>
@@ -486,29 +356,7 @@ kbd {
 }
 .banner-actions { display: flex; gap: 4px; flex: none; }
 
-.main { flex: 1; min-height: 0; overflow: hidden; }
-
-.workspace {
-  flex: 1;
-  display: grid;
-  grid-template-columns: 250px 1fr 372px;
-  min-height: 0;
-  overflow: hidden;
-}
-.workspace--wide { grid-template-columns: 250px 1fr 400px; }
-
-.pane { min-width: 0; min-height: 0; overflow: hidden; }
-
-@media (max-width: 1180px) {
-  .workspace, .workspace--wide { grid-template-columns: 210px 1fr 300px; }
-}
-
 @media (max-width: 900px) {
-  .workspace, .workspace--wide {
-    grid-template-columns: 1fr;
-    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
-  }
-  .pane--left { display: none; }
   .snap-label { display: none; }
 }
 </style>
