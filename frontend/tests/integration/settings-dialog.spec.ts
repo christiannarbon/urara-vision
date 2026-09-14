@@ -29,6 +29,7 @@ vi.mock('../../src/api/client', async () => {
 
 const App = (await import('../../src/App.vue')).default
 const SettingsDialog = (await import('../../src/components/SettingsDialog.vue')).default
+const ApiTokenGate = (await import('../../src/components/ApiTokenGate.vue')).default
 const { useWorkspace } = await import('../../src/stores/workspace')
 const { useChat } = await import('../../src/stores/chat')
 const { useFeatures } = await import('../../src/stores/features')
@@ -100,6 +101,22 @@ describe('the chat button', () => {
   })
 })
 
+describe('after the token gate', () => {
+  it('reloads features once the token is accepted', async () => {
+    features.mockResolvedValue(state(true, true))
+    useWorkspace().authRequired = true
+    const w = mount(App, { global: { stubs: { GraphCanvas: true } } })
+    await flushPromises()
+
+    w.findComponent(ApiTokenGate).vm.$emit('submit', 'x'.repeat(32))
+    await flushPromises()
+
+    expect(features).toHaveBeenCalledTimes(2)
+    expect(useFeatures().chatEnabled).toBe(true)
+    w.unmount()
+  })
+})
+
 describe('the dialog', () => {
   function mountDialog(f: Features) {
     const store = useFeatures()
@@ -152,6 +169,20 @@ describe('the dialog', () => {
     w.unmount()
   })
 
+  it('keeps Tab inside the dialog', async () => {
+    const w = mountDialog(state(true, true))
+    const dialog = w.find('[role="dialog"]')
+    const sw = w.find('[role="switch"]').element as HTMLElement
+    const close = w.find('.head button').element as HTMLElement
+
+    await dialog.trigger('keydown', { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(sw)
+
+    await w.find('[role="switch"]').trigger('keydown', { key: 'Tab' })
+    expect(document.activeElement).toBe(close)
+    w.unmount()
+  })
+
   it('is translated', async () => {
     setLocale('ja')
     const w = mountDialog(state(false, false))
@@ -175,6 +206,11 @@ describe('opening from the topbar', () => {
     await dialog.trigger('keydown', { key: 'Escape' })
     expect(w.find('[aria-labelledby="settings-title"]').exists()).toBe(false)
     expect(chat.open).toBe(true)
+
+    await nextTick()
+    const settingsButton = w.findAll('.topbar button').find((b) => b.attributes('title') === en['settings.open'])!
+    expect(document.activeElement).toBe(settingsButton.element)
+    expect(settingsButton.attributes('aria-haspopup')).toBe('dialog')
     w.unmount()
   })
 })
