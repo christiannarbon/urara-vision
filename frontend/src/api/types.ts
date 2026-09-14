@@ -247,3 +247,12 @@ export interface IngestResult {
   edges: number
   diagnostics: Diagnostic[]
 }
+
+export interface Features {
+  chat: {
+    /** Deployed: the server's CHAT_ENABLED. */
+    available: boolean
+    /** Deployed and switched on. */
+    enabled: boolean
+  }
+}
