@@ -59,13 +59,18 @@ export const messages = {
   'welcome.useFileInput': 'Use file input instead',
   'welcome.noPicker':
     'Your browser does not expose the directory picker, so the file input is used. It behaves the same way.',
-  'welcome.recent': 'Previous ingests',
-  'welcome.stats.tables.one': '{n} table',
-  'welcome.stats.tables.other': '{n} tables',
-  'welcome.stats.domains.one': '{n} domain',
-  'welcome.stats.domains.other': '{n} domains',
-  'welcome.delete.title': 'Delete this snapshot',
-  'welcome.delete.label': 'Delete snapshot',
+
+  // The project list on the entry screen
+  'projects.title': 'Projects',
+  'projects.versions.one': '{n} version',
+  'projects.versions.other': '{n} versions',
+  'projects.latest': 'latest {version}',
+  'projects.delete': 'Delete project',
+  'projects.delete.title': 'Delete project?',
+  'projects.delete.message': 'Delete project {name} and all of its versions? This cannot be undone.',
+
+  // Confirmation dialog
+  'confirm.cancel': 'Cancel',
 
   // Reading a directory
   'picker.scanning': 'Scanning directory…',
