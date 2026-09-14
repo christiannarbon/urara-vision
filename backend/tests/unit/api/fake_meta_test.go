@@ -71,6 +71,16 @@ type fakeMeta struct {
 	appendedTo    string
 	appendedMsg   model.Message
 
+	projects         []model.ProjectSummary
+	project          *model.ProjectSummary
+	projectSnapshots []string
+	errProject       error
+	// SaveSnapshot writes these onto the model, as the real store does.
+	savedProjectID   string
+	savedProjectSlug string
+	gotProjectSlug   string
+	deletedProjects  []string
+
 	// settings is keyed by setting name; a missing key returns the default.
 	settings      map[string]bool
 	errSetting    error
@@ -106,6 +116,9 @@ func (f *fakeMeta) SetBoolSetting(_ context.Context, key string, v bool) error {
 
 func (f *fakeMeta) SaveSnapshot(_ context.Context, m *model.Model) error {
 	f.saved = m
+	if f.errSave == nil {
+		m.Snapshot.ProjectID, m.Snapshot.ProjectSlug = f.savedProjectID, f.savedProjectSlug
+	}
 	return f.errSave
 }
 
@@ -242,4 +255,28 @@ func (f *fakeMeta) AppendMessage(_ context.Context, conversationID string, m mod
 func (f *fakeMeta) ListMessages(_ context.Context, conversationID string) ([]model.Message, error) {
 	f.convID = conversationID
 	return f.messages, f.errConversation
+}
+
+func (f *fakeMeta) ListProjects(context.Context) ([]model.ProjectSummary, error) {
+	return f.projects, f.errProject
+}
+
+// GetProject answers with project, or ErrNotFound when none was set.
+func (f *fakeMeta) GetProject(_ context.Context, slug string) (*model.ProjectSummary, error) {
+	f.gotProjectSlug = slug
+	if f.errProject != nil {
+		return nil, f.errProject
+	}
+	if f.project == nil {
+		return nil, postgres.ErrNotFound
+	}
+	return f.project, nil
+}
+
+func (f *fakeMeta) DeleteProject(_ context.Context, slug string) ([]string, error) {
+	f.deletedProjects = append(f.deletedProjects, slug)
+	if f.errProject != nil {
+		return nil, f.errProject
+	}
+	return f.projectSnapshots, nil
 }
