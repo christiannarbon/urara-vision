@@ -34,10 +34,28 @@ async function toggleChat() {
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.key !== 'Escape') return
-  // Stopped here so App's Escape handling does not also close a panel.
-  e.stopPropagation()
-  emit('close')
+  if (e.key === 'Escape') {
+    // Stopped here so App's Escape handling does not also close a panel.
+    e.stopPropagation()
+    emit('close')
+  } else if (e.key === 'Tab') {
+    trapTab(e)
+  }
+}
+
+function trapTab(e: KeyboardEvent) {
+  const buttons = dialog.value?.querySelectorAll<HTMLElement>('button:not([disabled])')
+  if (!buttons?.length) return
+  const first = buttons[0]
+  const last = buttons[buttons.length - 1]
+  const active = document.activeElement
+  if (e.shiftKey && (active === first || active === dialog.value)) {
+    e.preventDefault()
+    last.focus()
+  } else if (!e.shiftKey && active === last) {
+    e.preventDefault()
+    first.focus()
+  }
 }
 </script>
 
