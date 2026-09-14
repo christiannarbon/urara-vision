@@ -28,6 +28,15 @@ func (s *Store) SaveSnapshot(ctx context.Context, m *model.Model) error {
 		return fmt.Errorf("clear snapshot: %w", err)
 	}
 
+	// After the DELETE above, so snapshots is locked before projects, the same
+	// order Migrate takes them in.
+	slug, projectName := projectFor(m.Snapshot)
+	projectDescription := m.Snapshot.Project.Project.Description
+	projectID, err := ensureProject(ctx, tx, slug, projectName, projectDescription)
+	if err != nil {
+		return err
+	}
+
 	stats, err := json.Marshal(m.Snapshot.Stats)
 	if err != nil {
 		return err
@@ -43,17 +52,19 @@ func (s *Store) SaveSnapshot(ctx context.Context, m *model.Model) error {
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO snapshots (id, name, source_label, created_at, stats,
 		                        project_name, project_version, project_description,
-		                        i18n_primary, i18n_supported, i18n_type)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+		                        i18n_primary, i18n_supported, i18n_type, project_id)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
 		sid, m.Snapshot.Name, m.Snapshot.SourceLabel, created, stats,
 		m.Snapshot.Project.Project.Name,
 		m.Snapshot.Project.Project.Version,
 		m.Snapshot.Project.Project.Description,
 		m.Snapshot.Project.Internationalization.Primary,
 		supported,
-		m.Snapshot.Project.Internationalization.Type); err != nil {
+		m.Snapshot.Project.Internationalization.Type,
+		projectID); err != nil {
 		return fmt.Errorf("insert snapshot: %w", err)
 	}
+	m.Snapshot.ProjectID, m.Snapshot.ProjectSlug = projectID, slug
 
 	// Domains.
 	domainRows := make([][]any, 0, len(m.Domains))
@@ -166,6 +177,9 @@ func (s *Store) SaveSnapshot(ctx context.Context, m *model.Model) error {
 		return fmt.Errorf("build search index: %w", err)
 	}
 
+	if err := touchProject(ctx, tx, projectID, projectName, projectDescription); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
 }
 
