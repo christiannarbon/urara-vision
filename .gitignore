@@ -47,6 +47,7 @@ chat/.venv/
 # --- CI -------------------------------------------------------------------
 # Rendered manifests, written by the manifests workflow.
 /dev.yaml
+/dev-without-chat.yaml
 /prod.yaml
 # Test output tee'd by the backend workflow's integration step.
 backend/integration.log

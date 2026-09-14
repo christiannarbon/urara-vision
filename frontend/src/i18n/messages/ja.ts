@@ -28,6 +28,16 @@ export const messages: Messages = {
   'banner.parseFailuresDetail.one': 'そこに記載されている内容は、このモデルには含まれていません。',
   'banner.parseFailuresDetail.other': 'そこに記載されている内容は、このモデルには含まれていません。',
 
+  // Settings dialog
+  'settings.open': '設定',
+  'settings.title': '設定',
+  'settings.chat': 'チャットアシスタント',
+  'settings.chat.hint':
+    '読み込んだモデルについて質問できるようにします。このサーバーを使うすべての利用者に適用されます。',
+  'settings.chat.notDeployed': 'このサーバーにはチャットがデプロイされていません。',
+  'settings.chat.failed': '設定を保存できませんでした。もう一度お試しください。',
+  'settings.close': '閉じる',
+
   // Theme picker
   'theme.label': 'テーマ',
   'theme.current': 'テーマ：{name}',

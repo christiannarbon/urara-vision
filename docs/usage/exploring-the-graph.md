@@ -68,6 +68,15 @@ snapshot, so switching redraws what is already loaded.
 Names are never translated. A table is called what its document calls it in
 every language, or the graph would be a different graph per reader.
 
+## Turning chat off
+
+**Settings** in the top bar has a **Chat assistant** switch. Turning it off
+hides the chat button and closes an open chat panel, for everyone using the
+server rather than only this browser. The chat service stops answering within
+about 15 seconds. If the switch is greyed out with "Chat is not deployed on this
+server", the deployment left chat out and there is nothing to turn on; see
+[running without chat](../tech/architecture/deployment.md#running-without-chat).
+
 ## Reading the graph
 
 A documentation set where each domain keeps its own copy of the conformed
