@@ -12,6 +12,8 @@
 package projectmeta
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"regexp"
@@ -44,6 +46,28 @@ var ErrMissing = fmt.Errorf("%s is required at the root of the documentation dir
 // documents in, and this only checks the shape of a tag rather than asserting
 // it exists. "EN", "JP", "pt-BR" and "zh-Hans" all pass.
 var languageTag = regexp.MustCompile(`^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$`)
+
+// MaxSlugLen caps a project slug.
+const MaxSlugLen = 64
+
+var nonSlug = regexp.MustCompile(`[^a-z0-9]+`)
+
+// Slug derives a project's URL identity from its name. The backfill SQL
+// repeats these steps, so keep the two in step.
+func Slug(name string) string {
+	s := nonSlug.ReplaceAllString(strings.ToLower(name), "-")
+	s = strings.Trim(s, "-")
+	if len(s) > MaxSlugLen {
+		s = s[:MaxSlugLen]
+	}
+	return strings.Trim(s, "-")
+}
+
+// LegacySlug identifies a snapshot ingested before manifests named projects.
+func LegacySlug(snapshotID string) string {
+	sum := md5.Sum([]byte(snapshotID))
+	return "legacy-" + hex.EncodeToString(sum[:])[:12]
+}
 
 // Invalid carries every problem found in one manifest.
 type Invalid struct {
@@ -105,6 +129,8 @@ func Parse(content string) (model.ProjectMeta, error) {
 
 	if meta.Project.Name == "" {
 		problems = append(problems, "project.name is required")
+	} else if Slug(meta.Project.Name) == "" {
+		problems = append(problems, "project.name must contain at least one ASCII letter or digit")
 	}
 	if meta.Project.Version == "" {
 		problems = append(problems, "project.version is required")
