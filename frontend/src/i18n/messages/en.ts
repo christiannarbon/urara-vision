@@ -28,6 +28,15 @@ export const messages = {
   'banner.parseFailuresDetail.one': 'Anything it documents is missing from this model.',
   'banner.parseFailuresDetail.other': 'Anything they document is missing from this model.',
 
+  // Settings dialog
+  'settings.open': 'Settings',
+  'settings.title': 'Settings',
+  'settings.chat': 'Chat assistant',
+  'settings.chat.hint': 'Lets readers ask questions about a loaded model. Applies to everyone using this server.',
+  'settings.chat.notDeployed': 'Chat is not deployed on this server.',
+  'settings.chat.failed': 'The setting could not be saved. Try again.',
+  'settings.close': 'Close',
+
   // Theme picker
   'theme.label': 'Theme',
   'theme.current': 'Theme: {name}',
