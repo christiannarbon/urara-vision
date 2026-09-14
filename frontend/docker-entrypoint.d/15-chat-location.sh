@@ -4,8 +4,9 @@ set -eu
 
 out=/etc/nginx/conf.d/chat-location.inc
 
-case "$(printf '%s' "${CHAT_ENABLED:-true}" | tr '[:upper:]' '[:lower:]')" in
-    false | 0 | no)
+# Mirrors the backend's strconv.ParseBool: only these are false.
+case "${CHAT_ENABLED:-true}" in
+    0 | f | F | false | FALSE | False)
         cp /etc/nginx/chat/disabled.conf "$out"
         echo "$0: chat disabled, /api/chat/ answers 503"
         ;;
