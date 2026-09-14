@@ -28,7 +28,7 @@ ENV BACKEND_PORT=8080
 # The chat service, templated the same way and for the same reason.
 ENV CHAT_HOST=chat
 ENV CHAT_PORT=8090
-# false, 0 or no serves a 503 at /api/chat/ and needs no chat host.
+# false, f or 0 (as the backend parses it) serves a 503 at /api/chat/.
 ENV CHAT_ENABLED=true
 
 # The Authorization header nginx presents when proxying /api, whole: "Bearer
