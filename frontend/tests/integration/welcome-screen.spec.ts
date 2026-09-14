@@ -5,37 +5,27 @@ import { nextTick } from 'vue'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import WelcomeScreen from '../../src/components/WelcomeScreen.vue'
-import type { Snapshot } from '../../src/api/types'
+import type { Project } from '../../src/api/types'
 import { setLocale } from '../../src/i18n'
 import { messages as en } from '../../src/i18n/messages/en'
 import { messages as ja } from '../../src/i18n/messages/ja'
 
-function snap(over: Partial<Snapshot['stats']> = {}): Snapshot {
+function project(over: Partial<Project> = {}): Project {
   return {
-    id: 's1',
-    projectId: 'p1',
-    projectSlug: 'snap',
-    name: 'snap',
-    sourceLabel: 'docs',
+    id: 'p1',
+    slug: 'jaffle',
+    name: 'jaffle',
+    description: 'Jaffle shop model',
     createdAt: '2026-01-01T00:00:00Z',
-    stats: {
-      domains: 2,
-      tables: 3,
-      columns: 7,
-      relationships: 2,
-      lineageEdges: 1,
-      sourceTables: 1,
-      conformed: 1,
-      filesParsed: 5,
-      filesSkipped: 0,
-      diagnostics: 0,
-      ...over,
-    },
+    updatedAt: '2026-01-01T00:00:00Z',
+    versionCount: 2,
+    latest: { snapshotId: 's2', version: '0.2.0', createdAt: '2026-01-01T00:00:00Z' },
+    ...over,
   }
 }
 
-function screen(snapshots: Snapshot[] = []) {
-  return mount(WelcomeScreen, { props: { snapshots, busy: false, statusMessage: '' } })
+function screen(projects: Project[] = []) {
+  return mount(WelcomeScreen, { props: { projects, busy: false, statusMessage: '' } })
 }
 
 afterEach(() => setLocale('en'))
@@ -62,44 +52,39 @@ describe('the introduction', () => {
   })
 })
 
-describe('the previous-ingest list', () => {
+describe('the project list', () => {
   it('agrees in number in a language that marks plural', () => {
-    const one = screen([snap({ tables: 1, domains: 1 })])
-    expect(one.text()).toContain('1 table ·')
-    expect(one.text()).toContain('1 domain ·')
-
-    const many = screen([snap({ tables: 3, domains: 2 })])
-    expect(many.text()).toContain('3 tables')
-    expect(many.text()).toContain('2 domains')
+    expect(screen([project({ versionCount: 1 })]).text()).toContain('1 version ·')
+    expect(screen([project({ versionCount: 2 })]).text()).toContain('2 versions ·')
   })
 
   it('reads the same for one and many in a language that does not', async () => {
     setLocale('ja')
-    const one = screen([snap({ tables: 1, domains: 1 })])
+    const one = screen([project({ versionCount: 1 })])
     await nextTick()
-    expect(one.text()).toContain('テーブル 1 件')
-
-    const many = screen([snap({ tables: 3, domains: 2 })])
-    await nextTick()
-    expect(many.text()).toContain('テーブル 3 件')
+    expect(one.text()).toContain('バージョン 1 件')
   })
 
-  it('names the project an ingest documented, where it declared one', () => {
-    const withProject = snap()
-    withProject.project = {
-      project: { name: 'sample-project', version: '0.1.0', description: '' },
-      internationalization: { primary: 'EN', supported: ['EN'], type: 'inline' },
-    }
-    expect(screen([withProject]).text()).toContain('sample-project 0.1.0')
+  it('shows the description and the latest version', () => {
+    const text = screen([project()]).text()
+    expect(text).toContain('Jaffle shop model')
+    expect(text).toContain('latest 0.2.0')
   })
 
-  it('says nothing about a project for an ingest older than the manifest', () => {
-    const line = screen([snap()]).find('.snap .faint').text()
-    expect(line.startsWith('3 tables')).toBe(true)
+  it('leaves out the latest version for a project with none', () => {
+    expect(screen([project({ latest: null })]).text()).not.toContain('latest')
+  })
+
+  it('emits the slug on open and delete', async () => {
+    const w = screen([project()])
+    await w.find('.snap').trigger('click')
+    await w.find('button[aria-label="Delete project"]').trigger('click')
+    expect(w.emitted('open')).toEqual([['jaffle']])
+    expect(w.emitted('delete')).toEqual([['jaffle']])
   })
 
   it('formats the timestamp in the conventions of the active language', async () => {
-    const w = screen([snap()])
+    const w = screen([project()])
     const english = w.text()
     setLocale('ja')
     await nextTick()
