@@ -86,6 +86,8 @@ export const messages: Messages = {
   'status.parsing.other': '{n} 件のドキュメントを解析しています…',
   'status.loading': 'モデルを読み込んでいます…',
   'error.unknown': '問題が発生しました。',
+  'project.notFound': '「{slug}」というプロジェクトはありません。',
+  'project.empty': 'このプロジェクトにはまだ取り込みがありません。',
   'error.unreachable':
     'バックエンドに接続できません。API が起動していて到達可能か確認してください。',
   'error.tokenRejected': 'この API にはトークンが必要ですが、指定されたトークンは受け付けられませんでした。',
