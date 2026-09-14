@@ -14,6 +14,7 @@ import type {
   Domain,
   GraphData,
   IngestFile,
+  Project,
   Snapshot,
   TableResponse,
   TableSummary,
@@ -27,6 +28,7 @@ export const useWorkspace = defineStore('workspace', () => {
   // --- snapshot ----------------------------------------------------------
   const snapshot = ref<Snapshot | null>(null)
   const snapshots = ref<Snapshot[]>([])
+  const projects = ref<Project[]>([])
   const domains = ref<Domain[]>([])
   const tables = ref<TableSummary[]>([])
   const diagnostics = ref<Diagnostic[]>([])
@@ -244,6 +246,15 @@ export const useWorkspace = defineStore('workspace', () => {
     }
   }
 
+  async function refreshProjects() {
+    try {
+      const res = await api.listProjects()
+      projects.value = res.projects
+    } catch (e) {
+      setError(e)
+    }
+  }
+
   /** Rebuilds the graph from the current filters and view mode. */
   async function refreshGraph() {
     const sid = snapshot.value?.id
@@ -349,21 +360,33 @@ export const useWorkspace = defineStore('workspace', () => {
     await refreshGraph()
   }
 
+  function clearSnapshot() {
+    snapshot.value = null
+    setDocumentLanguages(null)
+    domains.value = []
+    tables.value = []
+    diagnostics.value = []
+    parseFailuresAcknowledged.value = false
+    graph.value = { nodes: [], links: [] }
+    selectedId.value = null
+    detail.value = null
+  }
+
   async function removeSnapshot(sid: string) {
     try {
       await api.deleteSnapshot(sid)
-      if (snapshot.value?.id === sid) {
-        snapshot.value = null
-        setDocumentLanguages(null)
-        domains.value = []
-        tables.value = []
-        diagnostics.value = []
-        parseFailuresAcknowledged.value = false
-        graph.value = { nodes: [], links: [] }
-        selectedId.value = null
-        detail.value = null
-      }
+      if (snapshot.value?.id === sid) clearSnapshot()
       await refreshSnapshots()
+    } catch (e) {
+      setError(e)
+    }
+  }
+
+  async function removeProject(slug: string) {
+    try {
+      await api.deleteProject(slug)
+      if (snapshot.value?.projectSlug === slug) clearSnapshot()
+      await refreshProjects()
     } catch (e) {
       setError(e)
     }
@@ -376,6 +399,7 @@ export const useWorkspace = defineStore('workspace', () => {
   return {
     snapshot,
     snapshots,
+    projects,
     domains,
     tables,
     diagnostics,
@@ -407,6 +431,7 @@ export const useWorkspace = defineStore('workspace', () => {
     openProject,
     submitApiToken,
     refreshSnapshots,
+    refreshProjects,
     refreshGraph,
     select,
     setViewMode,
@@ -419,6 +444,7 @@ export const useWorkspace = defineStore('workspace', () => {
     setFocusDepth,
     focusOn,
     removeSnapshot,
+    removeProject,
     acknowledgeParseFailures,
     dismissError,
   }

@@ -58,13 +58,18 @@ export const messages: Messages = {
   'welcome.useFileInput': 'ファイル入力を使う',
   'welcome.noPicker':
     'お使いのブラウザはディレクトリピッカーに対応していないため、ファイル入力を使用します。動作は同じです。',
-  'welcome.recent': 'これまでの取り込み',
-  'welcome.stats.tables.one': 'テーブル {n} 件',
-  'welcome.stats.tables.other': 'テーブル {n} 件',
-  'welcome.stats.domains.one': 'ドメイン {n} 件',
-  'welcome.stats.domains.other': 'ドメイン {n} 件',
-  'welcome.delete.title': 'このスナップショットを削除',
-  'welcome.delete.label': 'スナップショットを削除',
+
+  // The project list on the entry screen
+  'projects.title': 'プロジェクト',
+  'projects.versions.one': 'バージョン {n} 件',
+  'projects.versions.other': 'バージョン {n} 件',
+  'projects.latest': '最新 {version}',
+  'projects.delete': 'プロジェクトを削除',
+  'projects.delete.title': 'プロジェクトを削除しますか？',
+  'projects.delete.message': 'プロジェクト {name} とそのすべてのバージョンを削除しますか？この操作は取り消せません。',
+
+  // Confirmation dialog
+  'confirm.cancel': 'キャンセル',
 
   // Reading a directory
   'picker.scanning': 'ディレクトリを走査しています…',

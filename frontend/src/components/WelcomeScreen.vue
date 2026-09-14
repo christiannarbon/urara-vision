@@ -1,7 +1,7 @@
 <script setup lang="ts">
-/** First-run screen: pick a documentation directory, or reopen a past ingest. */
+/** First-run screen: pick a documentation directory, or open a project. */
 import { computed, ref } from 'vue'
-import type { Snapshot } from '../api/types'
+import type { Project } from '../api/types'
 import type { PickedDirectory } from '../composables/useDirectoryPicker'
 import { supportsNativePicker, useDirectoryPicker } from '../composables/useDirectoryPicker'
 import { useI18n } from '../i18n'
@@ -9,15 +9,15 @@ import { useI18n } from '../i18n'
 const { t, tn, locale } = useI18n()
 
 const props = defineProps<{
-  snapshots: Snapshot[]
+  projects: Project[]
   busy: boolean
   statusMessage: string
 }>()
 
 const emit = defineEmits<{
   (e: 'ingest', payload: { name: string; sourceLabel: string; files: { path: string; content: string }[] }): void
-  (e: 'open', sid: string): void
-  (e: 'delete', sid: string): void
+  (e: 'open', slug: string): void
+  (e: 'delete', slug: string): void
 }>()
 
 const picker = useDirectoryPicker()
@@ -57,7 +57,7 @@ function submit(picked: PickedDirectory) {
   })
 }
 
-/** An ingest's timestamp, in the conventions of the language on screen. */
+/** A timestamp, in the conventions of the language on screen. */
 function formatDate(iso: string): string {
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(locale.value)
@@ -120,27 +120,25 @@ function formatDate(iso: string): string {
 
       <p v-if="picker.error.value" class="error" role="alert">{{ picker.error.value }}</p>
 
-      <section v-if="snapshots.length" class="recent">
-        <h2 class="section-label">{{ t('welcome.recent') }}</h2>
+      <section v-if="projects.length" class="recent">
+        <h2 class="section-label">{{ t('projects.title') }}</h2>
         <ul>
-          <li v-for="s in snapshots" :key="s.id">
-            <button class="snap" :disabled="disabled" @click="emit('open', s.id)">
-              <span class="snap-name">{{ s.name }}</span>
+          <li v-for="p in projects" :key="p.slug">
+            <button class="snap" :disabled="disabled" @click="emit('open', p.slug)">
+              <span class="snap-name">{{ p.name }}</span>
+              <span v-if="p.description" class="muted tiny snap-desc">{{ p.description }}</span>
               <span class="faint tiny">
-                <template v-if="s.project?.project.name">
-                  {{ s.project.project.name }} {{ s.project.project.version }} ·
-                </template>
-                {{ tn('welcome.stats.tables', s.stats.tables) }} ·
-                {{ tn('welcome.stats.domains', s.stats.domains) }} ·
-                {{ formatDate(s.createdAt) }}
+                {{ tn('projects.versions', p.versionCount) }} ·
+                <template v-if="p.latest">{{ t('projects.latest', { version: p.latest.version }) }} ·</template>
+                {{ formatDate(p.updatedAt) }}
               </span>
             </button>
             <button
               class="btn btn--ghost btn--sm"
               :disabled="disabled"
-              :title="t('welcome.delete.title')"
-              :aria-label="t('welcome.delete.label')"
-              @click="emit('delete', s.id)"
+              :title="t('projects.delete')"
+              :aria-label="t('projects.delete')"
+              @click="emit('delete', p.slug)"
             >
               ✕
             </button>
@@ -238,11 +236,14 @@ function formatDate(iso: string): string {
 }
 .snap:hover:not(:disabled) { background: var(--bg-sunken); }
 .snap:disabled { opacity: 0.5; cursor: not-allowed; }
-.snap-name {
-  font-size: 13px;
-  font-weight: 500;
+.snap-name,
+.snap-desc {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.snap-name {
+  font-size: 13px;
+  font-weight: 500;
 }
 </style>
