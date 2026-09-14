@@ -67,6 +67,10 @@ type MetaStore interface {
 	AppendMessage(ctx context.Context, conversationID string, m model.Message) (*model.Message, error)
 	ListMessages(ctx context.Context, conversationID string) ([]model.Message, error)
 
+	ListProjects(ctx context.Context) ([]model.ProjectSummary, error)
+	GetProject(ctx context.Context, slug string) (*model.ProjectSummary, error)
+	DeleteProject(ctx context.Context, slug string) ([]string, error)
+
 	GetBoolSetting(ctx context.Context, key string, def bool) (bool, error)
 	SetBoolSetting(ctx context.Context, key string, v bool) error
 
@@ -122,6 +126,12 @@ func (s *Server) Routes() http.Handler {
 
 		r.Post("/ingest", s.handleIngest)
 		r.Get("/snapshots", s.handleListSnapshots)
+
+		r.Get("/projects", s.handleListProjects)
+		r.Route("/projects/{project}", func(r chi.Router) {
+			r.Get("/", s.handleGetProject)
+			r.Delete("/", s.handleDeleteProject)
+		})
 
 		r.Route("/snapshots/{sid}", func(r chi.Router) {
 			r.Get("/", s.handleGetSnapshot)
