@@ -19,6 +19,8 @@ type fakeGraphs struct {
 
 	errProject error
 	errPing    error
+	// errDelete fails DeleteSnapshot for the listed snapshot IDs only.
+	errDelete map[string]error
 
 	// Recorded calls.
 	projected  *model.Model
@@ -42,7 +44,7 @@ func (f *fakeGraphs) Project(_ context.Context, m *model.Model, edges []graph.Ed
 
 func (f *fakeGraphs) DeleteSnapshot(_ context.Context, sid string) error {
 	f.deleted = append(f.deleted, sid)
-	return nil
+	return f.errDelete[sid]
 }
 
 func (f *fakeGraphs) GetGraph(_ context.Context, _ string, opt neostore.GraphOptions) (*neostore.Graph, error) {

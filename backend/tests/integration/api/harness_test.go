@@ -66,6 +66,14 @@ func get(t *testing.T, base, path string) map[string]any {
 // nothing behind.
 func ingest(t *testing.T, base string) string {
 	t.Helper()
+	sid, _ := ingestAs(t, base, fixtures.ProjectMetaTOML)
+	return sid
+}
+
+// ingestAs is ingest with its own manifest, and also returns the project slug
+// the response reports.
+func ingestAs(t *testing.T, base, manifest string) (sid, projectSlug string) {
+	t.Helper()
 
 	type file struct {
 		Path    string `json:"path"`
@@ -80,7 +88,7 @@ func ingest(t *testing.T, base string) string {
 		req.Files = append(req.Files, file{Path: f.Path, Content: f.Content})
 	}
 	// Without the manifest the upload is refused before anything is parsed.
-	req.Files = append(req.Files, file{Path: projectmeta.FileName, Content: fixtures.ProjectMetaTOML})
+	req.Files = append(req.Files, file{Path: projectmeta.FileName, Content: manifest})
 	body, err := json.Marshal(req)
 	if err != nil {
 		t.Fatal(err)
@@ -104,6 +112,9 @@ func ingest(t *testing.T, base string) string {
 				Relationships int `json:"relationships"`
 			} `json:"stats"`
 		} `json:"snapshot"`
+		Project struct {
+			Slug string `json:"slug"`
+		} `json:"project"`
 		Edges int `json:"edges"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
@@ -119,9 +130,13 @@ func ingest(t *testing.T, base string) string {
 		t.Error("ingest projected no edges")
 	}
 
-	sid := out.Snapshot.ID
+	if out.Project.Slug == "" {
+		t.Errorf("ingest returned no project slug: %s", raw)
+	}
+
+	sid = out.Snapshot.ID
 	t.Cleanup(func() { deleteSnapshot(t, base, sid) })
-	return sid
+	return sid, out.Project.Slug
 }
 
 func deleteSnapshot(t *testing.T, base, sid string) {

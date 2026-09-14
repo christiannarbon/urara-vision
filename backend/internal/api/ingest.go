@@ -113,6 +113,7 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusCreated, map[string]any{
 		"snapshot":    m.Snapshot,
+		"project":     map[string]string{"id": m.Snapshot.ProjectID, "slug": m.Snapshot.ProjectSlug},
 		"edges":       len(edges),
 		"diagnostics": m.Diagnostics,
 	})

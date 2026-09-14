@@ -7,7 +7,15 @@ package api_test
 import (
 	"io"
 	"net/http"
+	"strings"
 	"testing"
+
+	"github.com/google/uuid"
+
+	"urara-vision/backend/internal/projectmeta"
+	neostore "urara-vision/backend/internal/store/neo4j"
+	"urara-vision/backend/tests/fixtures"
+	"urara-vision/backend/tests/integration/harness"
 )
 
 func TestReadyzWithRealStores(t *testing.T) {
@@ -145,4 +153,60 @@ func TestIngestThenReadEverything(t *testing.T) {
 			t.Errorf("sources = %d, want 1", len(sources))
 		}
 	})
+}
+
+// TestDeleteProjectRemovesItFromBothStores: a project delete reaches every
+// snapshot it held, in Postgres and in the graph.
+func TestDeleteProjectRemovesItFromBothStores(t *testing.T) {
+	base := stack(t)
+	gs := harness.Neo4j(t)
+	ctx := harness.Context(t)
+
+	name := "api-project-" + uuid.NewString()[:8]
+	manifest := strings.Replace(fixtures.ProjectMetaTOML,
+		`name = "sample-data-modelling-project"`, `name = "`+name+`"`, 1)
+	sid, slug := ingestAs(t, base, manifest)
+	if slug != projectmeta.Slug(name) {
+		t.Fatalf("project slug = %q, want %q", slug, projectmeta.Slug(name))
+	}
+
+	project := get(t, base, "/api/v1/projects/"+slug)
+	if project["slug"] != slug || project["versionCount"] != float64(1) {
+		t.Errorf("project = %v", project)
+	}
+	if g, err := gs.GetGraph(ctx, sid, neostore.GraphOptions{}); err != nil || len(g.Nodes) == 0 {
+		t.Fatalf("graph before delete: %v nodes, err %v", g, err)
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, base+"/api/v1/projects/"+slug, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE project: %v", err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("DELETE project = %d, want 204", res.StatusCode)
+	}
+
+	for _, path := range []string{"/api/v1/projects/" + slug, "/api/v1/snapshots/" + sid} {
+		res, err := http.Get(base + path)
+		if err != nil {
+			t.Fatalf("GET %s: %v", path, err)
+		}
+		_ = res.Body.Close()
+		if res.StatusCode != http.StatusNotFound {
+			t.Errorf("GET %s after delete = %d, want 404", path, res.StatusCode)
+		}
+	}
+	// Read from Neo4j directly: the API would answer 404 from Postgres alone.
+	g, err := gs.GetGraph(ctx, sid, neostore.GraphOptions{})
+	if err != nil {
+		t.Fatalf("GetGraph after delete: %v", err)
+	}
+	if len(g.Nodes) != 0 {
+		t.Errorf("graph still has %d nodes after the project was deleted", len(g.Nodes))
+	}
 }
