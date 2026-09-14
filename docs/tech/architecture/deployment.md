@@ -153,12 +153,18 @@ still starts chat.
 
 **Kubernetes.** The `k8s/components/without-chat` component deletes every chat
 resource, including the NetworkPolicy peers that name it, and sets
-`CHAT_ENABLED=false` on the backend and frontend. Add it to any overlay:
+`CHAT_ENABLED=false` on the backend and frontend. Apply it as a thin overlay on
+top of the one you deploy:
 
 ```yaml
+resources:
+  - ../prod
 components:
   - ../../components/without-chat
 ```
+
+Listing the component inside an overlay that patches chat by file, such as
+`dev`, fails to render: the component removes chat before that patch runs.
 
 `k8s/overlays/dev-without-chat` is the dev overlay with it applied, and CI
 renders and validates it alongside `dev` and `prod`.
