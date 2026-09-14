@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** Application shell: header, three-pane workspace, overlays. */
-import { computed, onMounted, onBeforeUnmount, ref, watch, watchEffect } from 'vue'
+import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch, watchEffect } from 'vue'
 import { storeToRefs } from 'pinia'
 
 import ApiTokenGate from './components/ApiTokenGate.vue'
@@ -64,7 +64,8 @@ const tokenChecking = ref(false)
 async function onTokenSubmit(token: string) {
   tokenChecking.value = true
   try {
-    if (!(await store.submitApiToken(token))) tokenGate.value?.markRejected()
+    if (await store.submitApiToken(token)) void features.load()
+    else tokenGate.value?.markRejected()
   } finally {
     tokenChecking.value = false
   }
@@ -79,6 +80,12 @@ const { open: chatOpen } = storeToRefs(chat)
 const features = useFeatures()
 const { chatEnabled } = storeToRefs(features)
 const settingsOpen = ref(false)
+const settingsButton = ref<HTMLButtonElement | null>(null)
+
+function closeSettings() {
+  settingsOpen.value = false
+  void nextTick(() => settingsButton.value?.focus())
+}
 
 watch(chatEnabled, (on) => {
   if (!on) chat.closePanel()
@@ -240,8 +247,9 @@ function backToPicker() {
       <LanguagePicker />
       <ThemePicker />
       <button
+        ref="settingsButton"
         class="btn btn--ghost btn--sm"
-        :aria-expanded="settingsOpen"
+        aria-haspopup="dialog"
         :title="t('settings.open')"
         @click="settingsOpen = true"
       >
@@ -350,7 +358,7 @@ function backToPicker() {
       @select="navigate"
     />
 
-    <SettingsDialog v-if="settingsOpen" @close="settingsOpen = false" />
+    <SettingsDialog v-if="settingsOpen" @close="closeSettings" />
   </div>
 </template>
 
