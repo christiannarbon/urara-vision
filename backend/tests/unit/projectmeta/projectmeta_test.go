@@ -160,6 +160,21 @@ func TestParseReportsEveryProblemAtOnce(t *testing.T) {
 	}
 }
 
+func TestParseRefusesANameWithNoSlug(t *testing.T) {
+	_, err := projectmeta.Parse("[project]\nname = \"日本語\"\n")
+	if err == nil {
+		t.Fatal("a name with no ASCII letters or digits was accepted")
+	}
+	for _, want := range []string{
+		"project.name must contain at least one ASCII letter or digit",
+		"project.version is required",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %q, want it to mention %q", err, want)
+		}
+	}
+}
+
 // TestDescriptionIsOptional: it is the one field a project can reasonably not
 // have decided on yet.
 func TestDescriptionIsOptional(t *testing.T) {
