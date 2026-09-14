@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /** Application shell: header, three-pane workspace, overlays. */
-import { computed, onMounted, onBeforeUnmount, ref, watchEffect } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watch, watchEffect } from 'vue'
 import { storeToRefs } from 'pinia'
 
 import ApiTokenGate from './components/ApiTokenGate.vue'
@@ -10,11 +10,13 @@ import FilterSidebar from './components/FilterSidebar.vue'
 import GraphCanvas from './components/GraphCanvas.vue'
 import LanguagePicker from './components/LanguagePicker.vue'
 import SearchOverlay from './components/SearchOverlay.vue'
+import SettingsDialog from './components/SettingsDialog.vue'
 import TableDetail from './components/TableDetail.vue'
 import ThemePicker from './components/ThemePicker.vue'
 import WelcomeScreen from './components/WelcomeScreen.vue'
 import { useI18n } from './i18n'
 import { useChat } from './stores/chat'
+import { useFeatures } from './stores/features'
 import { useWorkspace } from './stores/workspace'
 
 const { t, tn } = useI18n()
@@ -74,6 +76,14 @@ const diagnosticsOpen = ref(false)
 const chat = useChat()
 const { open: chatOpen } = storeToRefs(chat)
 
+const features = useFeatures()
+const { chatEnabled } = storeToRefs(features)
+const settingsOpen = ref(false)
+
+watch(chatEnabled, (on) => {
+  if (!on) chat.closePanel()
+})
+
 // One right-hand pane, so the two panels take turns rather than adding a third
 // column: a third would leave the canvas a sliver on a laptop. Symmetric, or the
 // hidden one's button reports itself open while nothing changes.
@@ -112,6 +122,7 @@ function reviewParseFailures() {
 
 onMounted(() => {
   void store.refreshSnapshots()
+  void features.load()
   window.addEventListener('keydown', onKeydown)
 })
 
@@ -132,7 +143,7 @@ function onKeydown(e: KeyboardEvent) {
     searchOpen.value = true
     return
   }
-  if (e.key === 'Escape' && !searchOpen.value) {
+  if (e.key === 'Escape' && !searchOpen.value && !settingsOpen.value) {
     if (chatOpen.value) chat.closePanel()
     else if (diagnosticsOpen.value) diagnosticsOpen.value = false
     else if (selectedId.value) void store.select(null)
@@ -212,6 +223,7 @@ function backToPicker() {
           >
         </button>
         <button
+          v-if="chatEnabled"
           class="btn btn--ghost btn--sm"
           :aria-expanded="chatOpen"
           :title="chatOpen ? t('chat.close') : t('chat.open')"
@@ -227,6 +239,14 @@ function backToPicker() {
 
       <LanguagePicker />
       <ThemePicker />
+      <button
+        class="btn btn--ghost btn--sm"
+        :aria-expanded="settingsOpen"
+        :title="t('settings.open')"
+        @click="settingsOpen = true"
+      >
+        {{ t('settings.open') }}
+      </button>
     </header>
 
     <p v-if="error" class="banner" role="alert">
@@ -300,7 +320,7 @@ function backToPicker() {
         />
       </div>
 
-      <ChatPanel v-if="chatOpen" class="pane pane--right" />
+      <ChatPanel v-if="chatEnabled && chatOpen" class="pane pane--right" />
 
       <DiagnosticsPanel
         v-else-if="diagnosticsOpen"
@@ -329,6 +349,8 @@ function backToPicker() {
       @close="searchOpen = false"
       @select="navigate"
     />
+
+    <SettingsDialog v-if="settingsOpen" @close="settingsOpen = false" />
   </div>
 </template>
 
