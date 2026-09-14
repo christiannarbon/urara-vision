@@ -3,6 +3,8 @@ package api
 import (
 	"net/http"
 
+	"github.com/go-chi/chi/v5/middleware"
+
 	"urara-vision/backend/internal/store/postgres"
 )
 
@@ -53,5 +55,9 @@ func (s *Server) handlePatchSettings(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	s.log.Info("setting changed",
+		"key", postgres.SettingChatEnabled,
+		"value", *req.ChatEnabled,
+		"request_id", middleware.GetReqID(r.Context()))
 	s.handleFeatures(w, r)
 }

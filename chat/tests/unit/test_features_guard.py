@@ -1,9 +1,11 @@
 """The chat feature gate, with the backend client faked and a fake clock."""
 
+import asyncio
 from typing import Any
 
 import pytest
 from fastapi import FastAPI
+from fastapi.routing import APIRoute
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
@@ -28,21 +30,31 @@ class Clock:
 
 
 class FakeClient:
-    def __init__(self, enabled: bool = True, raises: BackendError | None = None) -> None:
+    def __init__(
+        self, enabled: bool = True, raises: BackendError | None = None, malformed: bool = False
+    ) -> None:
         self.enabled = enabled
         self.raises = raises
+        self.malformed = malformed
         self.feature_calls = 0
         self.listed = 0
 
     async def features(self) -> Features:
         self.feature_calls += 1
+        # Yields, so concurrent callers overlap as they would against a real backend.
+        await asyncio.sleep(0)
         if self.raises:
             raise self.raises
+        if self.malformed:
+            return Features.model_validate({})
         return Features(chat=ChatFeature(available=True, enabled=self.enabled))
 
     async def list_conversations(self, snapshot_id: str, limit: int | None = None) -> list[Any]:
         self.listed += 1
         return [Conversation(id="conv-1", snapshot_id=snapshot_id)]
+
+    async def aclose(self) -> None:
+        pass
 
 
 def client_for(fake: FakeClient, clock: Clock | None = None) -> TestClient:
@@ -124,6 +136,37 @@ def test_backend_error_response_allows_the_request() -> None:
     assert list_conversations(client_for(fake)).status_code == 200
 
 
+def test_a_known_off_survives_a_backend_error() -> None:
+    fake = FakeClient(enabled=False)
+    clock = Clock()
+    client = client_for(fake, clock)
+    assert list_conversations(client).status_code == 503
+
+    fake.raises = BackendUnavailable(502, "backend unreachable")
+    clock.now += TTL
+    assert list_conversations(client).status_code == 503
+
+
+def test_a_failure_is_cached_for_the_ttl() -> None:
+    fake = FakeClient(raises=BackendUnavailable(502, "backend unreachable"))
+    client = client_for(fake)
+    list_conversations(client)
+    list_conversations(client)
+    assert fake.feature_calls == 1
+
+
+def test_malformed_features_allow_the_request() -> None:
+    fake = FakeClient(malformed=True)
+    assert list_conversations(client_for(fake)).status_code == 200
+
+
+async def test_concurrent_requests_refresh_once() -> None:
+    fake = FakeClient()
+    gate = FeatureGate(fake, TTL, Clock())  # type: ignore[arg-type]
+    await asyncio.gather(*(gate.require_chat() for _ in range(10)))
+    assert fake.feature_calls == 1
+
+
 def test_cache_seconds_below_one_is_refused() -> None:
     with pytest.raises(ValidationError):
         Settings(google_api_key="k", features_cache_seconds=0.5)  # type: ignore[arg-type]
@@ -134,3 +177,26 @@ def test_healthz_is_not_gated() -> None:
     response = client_for(fake).get("/healthz")
     assert response.status_code == 200
     assert fake.feature_calls == 0
+
+
+def test_the_lifespan_gates_the_real_app(monkeypatch: pytest.MonkeyPatch) -> None:
+    import urara_chat.main as main
+    from urara_chat.config import get_settings
+
+    monkeypatch.setenv("GOOGLE_API_KEY", "test-key-not-real")
+    get_settings.cache_clear()
+    monkeypatch.setattr(main, "BackendClient", lambda settings: FakeClient(enabled=False))
+    monkeypatch.setattr(main, "build_chat_model", lambda settings: object())
+
+    routes = [r for r in chat_router.routes if isinstance(r, APIRoute)]
+    assert routes
+    try:
+        with TestClient(main.app) as c:
+            # The gate runs before params and body are validated, so no route needs real input.
+            for route in routes:
+                path = route.path.replace("{cid}", "conv-1")
+                for method in route.methods:
+                    assert c.request(method, path).status_code == 503, f"{method} {path}"
+            assert c.get("/healthz").status_code == 200
+    finally:
+        get_settings.cache_clear()

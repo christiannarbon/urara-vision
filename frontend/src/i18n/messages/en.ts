@@ -235,6 +235,7 @@ export const messages = {
   'chat.error.busy': 'Too many questions at once. Try again in a moment.',
   'chat.error.tooLong': 'That question is too long.',
   'chat.error.generic': 'Something went wrong answering that.',
+  'chat.error.turnedOff': 'Chat has been turned off on this server.',
 
   // Search overlay
   'search.label': 'Search tables',

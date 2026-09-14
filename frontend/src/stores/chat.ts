@@ -6,6 +6,7 @@ import { ref, watch } from 'vue'
 import { ApiError } from '../api/client'
 import { chatApi } from '../api/chat'
 import { activeLocale } from '../i18n'
+import { useFeatures } from './features'
 import { useWorkspace } from './workspace'
 import type { ChatMessage } from '../api/chat'
 import type { MessageKey } from '../i18n'
@@ -85,7 +86,11 @@ export const useChat = defineStore('chat', () => {
       if (e.status === 429) errorKey.value = 'chat.error.busy'
       else if (e.status === 0) errorKey.value = 'chat.error.unavailable'
       else if (e.status === 400) errorKey.value = 'chat.error.tooLong'
-      else if (!e.key && e.message) errorDetail.value = e.message
+      else if (e.status === 503) {
+        errorKey.value = 'chat.error.turnedOff'
+        // Picks up the switch, so the button hides and App closes the panel.
+        void useFeatures().load()
+      } else if (!e.key && e.message) errorDetail.value = e.message
       else errorKey.value = 'chat.error.generic'
       return
     }

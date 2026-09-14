@@ -235,6 +235,7 @@ export const messages: Messages = {
   'chat.error.busy': '同時に処理できる質問数を超えました。少し待ってからもう一度お試しください。',
   'chat.error.tooLong': 'この質問は長すぎます。',
   'chat.error.generic': '回答の生成中に問題が発生しました。',
+  'chat.error.turnedOff': 'このサーバーではチャットがオフになっています。',
 
   // Search overlay
   'search.label': 'テーブルを検索',
