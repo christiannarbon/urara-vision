@@ -35,7 +35,7 @@ export default defineConfig({
         // app chunk small enough to cache independently of library upgrades.
         manualChunks: {
           cytoscape: ['cytoscape', 'cytoscape-fcose'],
-          vue: ['vue', 'pinia'],
+          vue: ['vue', 'pinia', 'vue-router'],
         },
       },
     },
