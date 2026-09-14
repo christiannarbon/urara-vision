@@ -11,6 +11,9 @@ Every read route accepts `latest` in place of a snapshot ID.
 | `GET` | `/api/v1/snapshots` | List snapshots |
 | `GET` | `/api/v1/snapshots/{sid}` | Snapshot metadata and stats |
 | `DELETE` | `/api/v1/snapshots/{sid}` | Delete a snapshot from both stores |
+| `GET` | `/api/v1/projects` | List projects, most recently updated first |
+| `GET` | `/api/v1/projects/{project}` | One project by slug, with its version count and latest snapshot |
+| `DELETE` | `/api/v1/projects/{project}` | Delete a project and every snapshot in it from both stores |
 | `GET` | `/api/v1/snapshots/{sid}/context` | Compact catalogue of a whole snapshot |
 | `GET` | `/api/v1/snapshots/{sid}/domains` | Domains, with descriptions and mermaid |
 | `GET` | `/api/v1/snapshots/{sid}/tables` | Table summaries (`?domain=`) |
@@ -73,9 +76,38 @@ stored with the snapshot and comes back on it as `project`, so a caller reading
 It returns `201` with the snapshot, its stats, the normalised edge count and
 every diagnostic — so a caller knows what its documentation resolved to without
 a second request. `MAX_FILES` and `MAX_UPLOAD_BYTES` bound what it will accept.
+The response also carries `"project": {"id", "slug"}`, the project the snapshot
+was saved under.
 
 Paths arrive from the browser and are the one piece of genuinely untrusted
 input the server takes; they are normalised before anything else looks at them.
+
+## Projects
+
+A project groups the snapshots of one documentation set. Its slug comes from
+`project.name` in the manifest: lower-cased, every run of characters other than
+`a–z` and `0–9` turned into one `-`, trimmed, and cut to 64 characters. Every
+ingest with the same slug joins the same project and takes over its name and
+description. A snapshot from before manifests named projects has a project of
+its own, slugged `legacy-` plus 12 hex characters.
+
+Snapshots carry `projectId` and `projectSlug`. A project summary looks like:
+
+```json
+{
+  "id": "…", "slug": "jaffle-shop-ddd", "name": "jaffle-shop-ddd", "description": "…",
+  "createdAt": "…", "updatedAt": "…",
+  "versionCount": 3,
+  "latest": {"snapshotId": "…", "version": "0.1.0", "createdAt": "…"}
+}
+```
+
+`GET /api/v1/projects` returns `{"projects": [...]}` and `GET
+/api/v1/projects/{project}` one summary; an unknown slug is `404 {"error":
+"project not found"}`. `DELETE /api/v1/projects/{project}` removes the project
+and every snapshot in it, then clears each snapshot's graph projection, and
+answers `204`. As with a snapshot delete, Postgres is the record of truth: a
+graph projection that fails to clear is logged, not reported as a failure.
 
 ## The graph response
 
@@ -173,6 +205,6 @@ Failures are JSON with an `error` field and the status the outcome maps to:
 |---|---|
 | `400` | A parameter the handler can see is wrong, a body that will not decode, a missing or invalid `projectmeta.toml`, no `.md` files, too many files, or an upload past `MAX_UPLOAD_BYTES` |
 | `401` | `API_TOKEN` is set and the request did not carry it as `Authorization: Bearer <token>` |
-| `404` | No such snapshot or table — including `latest` when nothing has been ingested yet, which says so rather than returning an empty graph |
+| `404` | No such snapshot, table or project — including `latest` when nothing has been ingested yet, which says so rather than returning an empty graph |
 | `409` | Turning chat on while `CHAT_ENABLED=false` |
 | `500` | Anything the stores report; the detail is logged with the request ID rather than returned |
