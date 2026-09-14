@@ -59,6 +59,25 @@ export interface Snapshot {
   createdAt: string
   stats: Stats
   project?: ProjectMeta
+  projectId: string
+  projectSlug: string
+}
+
+export interface ProjectVersionRef {
+  snapshotId: string
+  version: string
+  createdAt: string
+}
+
+export interface Project {
+  id: string
+  slug: string
+  name: string
+  description: string
+  createdAt: string
+  updatedAt: string
+  versionCount: number
+  latest: ProjectVersionRef | null
 }
 
 export interface DomainLineage {
@@ -244,6 +263,7 @@ export interface IngestFile {
 
 export interface IngestResult {
   snapshot: Snapshot
+  project: { id: string; slug: string }
   edges: number
   diagnostics: Diagnostic[]
 }
