@@ -139,7 +139,8 @@ jobs:
           # this the pipe into tee reports success for a failing test run --
           # green here and red on GitHub, which is the worse way round.
           set -o pipefail
-          go test -tags=integration -count=1 -v ./tests/integration/... | tee integration.log
+          # -p 1: the packages share one database, and "latest" is whichever wrote last.
+          go test -tags=integration -count=1 -p 1 -v ./tests/integration/... | tee integration.log
 
       - name: fail if the suites skipped
         run: |
