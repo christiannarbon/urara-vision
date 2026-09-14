@@ -9,13 +9,22 @@ vi.mock('../../src/api/client', async () => {
   const actual = await vi.importActual<typeof import('../../src/api/client')>('../../src/api/client')
   return {
     ...actual,
-    api: new Proxy({}, { get: () => vi.fn().mockResolvedValue({ snapshots: [] }) }),
+    api: new Proxy(
+      {},
+      {
+        get: (_, prop) =>
+          prop === 'features'
+            ? vi.fn().mockResolvedValue({ chat: { available: true, enabled: true } })
+            : vi.fn().mockResolvedValue({ snapshots: [] }),
+      },
+    ),
   }
 })
 
 const App = (await import('../../src/App.vue')).default
 const { useWorkspace } = await import('../../src/stores/workspace')
 const { useChat } = await import('../../src/stores/chat')
+const { useFeatures } = await import('../../src/stores/features')
 
 const STATS = {
   domains: 1,
@@ -36,6 +45,8 @@ function app() {
   const workspace = useWorkspace()
   workspace.snapshot = { id: 's1', name: 's1', sourceLabel: 'docs', createdAt: '', stats: STATS }
   const chat = useChat()
+  // Set up front: the load on mount resolves after these synchronous specs click.
+  useFeatures().chatEnabled = true
   return { workspace, chat, w: mount(App, { global: { stubs: { GraphCanvas: true } } }) }
 }
 
