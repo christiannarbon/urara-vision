@@ -6,14 +6,19 @@ whatever was previously stored under the same ID. That is what makes ingest
 idempotent, deletion exact, and the integration suites able to share one
 instance without isolating by database.
 
+Snapshots group under projects: a project is the thing with a name and a URL,
+a snapshot is one version of it.
+
 ## Postgres — the system of record
 
-Ten tables, all cascading from `snapshots` — directly, or by way of
-`conversations` — so deleting a snapshot is one `DELETE` and the rest follows:
+Eleven tables, all cascading from `projects` — by way of `snapshots`, and for
+messages by way of `conversations` — so deleting either end is one `DELETE` and
+the rest follows:
 
 | Table | Holds | Key |
 |---|---|---|
-| `snapshots` | Name, source label, creation time, stats JSON, and the `projectmeta.toml` the directory declared | `id` |
+| `projects` | Slug, name, description, creation and last-touched times | `id` |
+| `snapshots` | `project_id`, name, source label, creation time, stats JSON, and the `projectmeta.toml` the directory declared | `id` |
 | `domains` | Title, description, mermaid diagram, lineage JSON, table count | `(snapshot_id, id)` |
 | `tables` | Every Overview property, notes, conformed flags, and the `tsvector` | `(snapshot_id, id)` |
 | `columns` | Name, type, description, PK/FK flags, in document order | `(snapshot_id, table_id, ordinal)` |
@@ -40,6 +45,28 @@ rollout has them arriving together.
 An ingest is one transaction: the snapshot row is deleted and rewritten, and
 every child table is bulk-loaded with `COPY`. A snapshot is therefore wholly
 present or wholly absent, never half-written.
+
+### Projects
+
+A project's `slug` is derived from its name, not stored separately from it:
+lower-case, every run of characters outside `[a-z0-9]` replaced by `-`, trimmed
+of leading and trailing `-`, cut to 64 characters and trimmed again. Two
+directories whose `projectmeta.toml` declares the same name are therefore the
+same project, and its snapshots are its versions.
+
+The ingest looks the slug up and inserts it `ON CONFLICT (slug) DO NOTHING`
+rather than upserting: an update would hold the project row for the length of
+the ingest and queue every concurrent save to the same project behind it. The
+name and description are taken from the newest save instead, in a single
+`UPDATE` run last, so that lock is held only until commit.
+
+`snapshots.project_id` is `NOT NULL`, which snapshots ingested before projects
+existed could not satisfy. The schema backfills them in two passes, both
+touching only `project_id IS NULL` rows and so a no-op once nothing is left:
+first by slugging `project_name`, in SQL that repeats `projectmeta.Slug`
+step for step (`projects_backfill_test.go` checks the two agree); then whatever
+is left has no usable name and gets a project each, slugged
+`legacy-<first 12 hex of md5(snapshot id)>`, matching `projectmeta.LegacySlug`.
 
 ### The search index
 
