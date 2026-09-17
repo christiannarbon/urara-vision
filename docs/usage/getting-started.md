@@ -18,6 +18,21 @@ along with the `projectmeta.toml` the directory must carry — see [the
 documentation format](documentation-format.md#the-manifest). Nothing is written
 back to disk.
 
+## Projects and versions
+
+An import belongs to the project its manifest names, and importing the same
+project again adds a version rather than replacing what was there. The home
+screen lists your projects with how many versions each has; opening one shows
+its newest, at a URL naming the project:
+
+```
+http://localhost:8081/projects/jaffle-shop-ddd
+```
+
+That link keeps meaning the newest version, so it stays worth sharing after the
+next import. Deleting a project from the list deletes all of its versions, which
+is why it asks first.
+
 | Service | URL |
 |---|---|
 | Frontend | http://localhost:8081 |
