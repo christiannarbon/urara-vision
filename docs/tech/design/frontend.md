@@ -6,8 +6,14 @@ is the app; everything else is a panel around it.
 ```
 src/
   api/client.ts        thin fetch wrapper, one method per route
+  api/chat.ts          the chat service, which is a separate origin
   api/types.ts         the response shapes, mirroring the Go structs
-  stores/workspace.ts  the single Pinia store: snapshot, filters, selection
+  router.ts            two routes: home, and one project
+  views/               HomeView (the project list), ProjectView (the workspace)
+  stores/workspace.ts  snapshot, projects, filters, selection
+  stores/chat.ts       the transcript and the turn in flight
+  stores/ui.ts         which of the two right-hand panels is showing
+  stores/features.ts   whether chat is deployed and switched on
   graph/layout.ts      the three layout engines and what each is for
   graph/hull.ts        convex hulls for the domain outlines
   graph/petal-overlap.ts  keeping the sakura petals off each other
@@ -18,6 +24,35 @@ src/
   composables/         directory picker, theme, role palette
   styles/              tokens, base CSS, generated art themes
 ```
+
+## Routes
+
+Two: `/` lists the projects, `/projects/:project` is the workspace for one, and
+anything else redirects home. The URL names the project by slug, so a view of a
+model can be linked to and reloaded; snapshot IDs stay out of it, since the
+project's newest version is what a link should keep meaning.
+
+`ProjectView` watches the route parameter and calls `openProject(slug)`, which
+loads that project's latest snapshot — unless the one already open belongs to
+the same project, so an older version picked from the list survives the
+navigation. An unknown slug leaves the workspace empty and raises the banner in
+`App`; so does a project with no versions yet.
+
+## The right-hand pane
+
+`stores/ui.ts` owns the one right-hand column, which chat and diagnostics take
+turns in — a third would leave the canvas a sliver on a laptop. Opening either
+closes the other, symmetrically, or the hidden one's button reports itself open
+while nothing on screen changes.
+
+The chat's context is always the version on screen. A thread is created on the
+first question, against the loaded snapshot's concrete ID and never the `latest`
+alias, and `stores/chat.ts` watches that ID: when it changes the transcript is
+cleared and the reader is told why, because the service pins a thread to its
+snapshot and continuing one against a different model would answer about the
+wrong thing. Leaving the workspace clears it silently — the reader did that
+themselves — and a turn whose answer arrives after the change is dropped rather
+than shown under the new project.
 
 ## Reading a directory
 
@@ -84,11 +119,11 @@ dimensions round, and a shape per family beyond that.
 
 ## State
 
-One Pinia store holds the workspace: the current snapshot, the filters, the
-selection and the layout mode. Filters are derived state over the graph the API
-returned rather than refetches, so toggling a domain is instant; the queries
-that genuinely need the server — neighbourhood, paths, lineage, search — go
-through the client.
+`stores/workspace.ts` holds the workspace: the current snapshot, the project
+list, the filters, the selection and the layout mode. Filters are derived state
+over the graph the API returned rather than refetches, so toggling a domain is
+instant; the queries that genuinely need the server — neighbourhood, paths,
+lineage, search — go through the client.
 
 The API base is `/api/v1` by default and the frontend needs no runtime config,
 because nginx proxies `/api` to the backend and the browser stays on one

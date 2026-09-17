@@ -29,6 +29,7 @@ Every read route accepts `latest` in place of a snapshot ID.
 | `POST` | `/api/v1/conversations` | Start a conversation about a snapshot |
 | `GET` | `/api/v1/conversations?snapshot=` | Conversations for a snapshot |
 | `GET` | `/api/v1/conversations/{cid}` | One conversation with its messages |
+| `PATCH` | `/api/v1/conversations/{cid}` | Retitle a conversation |
 | `DELETE` | `/api/v1/conversations/{cid}` | Delete a conversation |
 | `POST` | `/api/v1/conversations/{cid}/messages` | Append a turn |
 | `GET` | `/api/v1/features` | Whether chat is deployed and switched on |
