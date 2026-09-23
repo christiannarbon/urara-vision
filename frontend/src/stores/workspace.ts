@@ -160,8 +160,9 @@ export const useWorkspace = defineStore('workspace', () => {
     }
   }
 
-  /** Loads a snapshot's domains, tables, diagnostics and graph. */
-  async function loadSnapshot(sid: string) {
+  /** Loads a snapshot's domains, tables, diagnostics and graph. `stale` lets a
+   *  caller drop a load the reader has already navigated away from. */
+  async function loadSnapshot(sid: string, stale?: () => boolean) {
     busy.value = true
     clearError()
     status.value = { key: 'status.loading' }
@@ -172,6 +173,7 @@ export const useWorkspace = defineStore('workspace', () => {
         api.tables(sid),
         api.diagnostics(sid),
       ])
+      if (stale?.()) return
       snapshot.value = snap
       // The documents' own languages, which decide what is a translation tag
       // and what is an ordinary bracket in the prose about to be rendered.
@@ -198,22 +200,30 @@ export const useWorkspace = defineStore('workspace', () => {
     }
   }
 
+  // Bumped by each project load. A response from an older one is about a
+  // project the reader has left, so it is dropped.
+  let opening = 0
+
   /** Loads a project's newest snapshot. One already open from that project is
    *  kept, so an older snapshot picked from the list survives the navigation. */
   async function openProject(slug: string) {
     if (snapshot.value?.projectSlug === slug) return
     clearError()
+    const started = ++opening
+    const stale = () => started !== opening
     try {
       const project = await api.getProject(slug)
+      if (stale()) return
       if (!project.latest) {
-        snapshot.value = null
+        clearSnapshot()
         errorKey.value = 'project.empty'
         return
       }
-      await loadSnapshot(project.latest.snapshotId)
+      await loadSnapshot(project.latest.snapshotId, stale)
     } catch (e) {
+      if (stale()) return
       if (e instanceof ApiError && e.status === 404) {
-        snapshot.value = null
+        clearSnapshot()
         clearError()
         errorKey.value = 'project.notFound'
         errorParams.value = { slug }
@@ -361,6 +371,8 @@ export const useWorkspace = defineStore('workspace', () => {
   }
 
   function clearSnapshot() {
+    // No project is open, so a load still in flight is about a stale one.
+    opening += 1
     snapshot.value = null
     setDocumentLanguages(null)
     domains.value = []
@@ -394,6 +406,14 @@ export const useWorkspace = defineStore('workspace', () => {
 
   function dismissError() {
     clearError()
+  }
+
+  /** Drops a not-found or empty-project banner once the route leaves it. The
+   *  ingest and token errors share this banner and belong on the home screen. */
+  function clearProjectError() {
+    if (errorKey.value === 'project.notFound' || errorKey.value === 'project.empty') {
+      clearError()
+    }
   }
 
   return {
@@ -443,9 +463,11 @@ export const useWorkspace = defineStore('workspace', () => {
     setCrossDomainOnly,
     setFocusDepth,
     focusOn,
+    clearSnapshot,
     removeSnapshot,
     removeProject,
     acknowledgeParseFailures,
     dismissError,
+    clearProjectError,
   }
 })
