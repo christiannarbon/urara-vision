@@ -18,6 +18,7 @@ vi.mock('../../src/api/client', async () => {
     api: {
       ingest: vi.fn(),
       listSnapshots: vi.fn(),
+      getProject: vi.fn(),
       getSnapshot: vi.fn(),
       deleteSnapshot: vi.fn(),
       domains: vi.fn(),
@@ -484,6 +485,38 @@ describe('lookups', () => {
 
     expect(ws.tableById.get('domain_one/fact_primary')?.name).toBe('fact_primary')
     expect(ws.tableById.has('nope')).toBe(false)
+  })
+})
+
+describe('openProject', () => {
+  it('leaves nothing of the last project behind when the slug is unknown', async () => {
+    stubHappyPath()
+    const ws = useWorkspace()
+    await ws.loadSnapshot('s1')
+    expect(ws.tables).toHaveLength(2)
+
+    vi.mocked(api.getProject).mockRejectedValue(new ApiError('nope', 404))
+    await ws.openProject('gone')
+
+    expect(ws.hasSnapshot).toBe(false)
+    expect(ws.tables).toEqual([])
+    expect(ws.domains).toEqual([])
+    expect(ws.diagnostics).toEqual([])
+    expect(ws.graph.nodes).toEqual([])
+    expect(ws.error).toBe(en['project.notFound'].replace('{slug}', 'gone'))
+  })
+
+  it('clears a project banner but keeps one the home screen needs', async () => {
+    const ws = useWorkspace()
+    vi.mocked(api.getProject).mockRejectedValue(new ApiError('nope', 404))
+    await ws.openProject('gone')
+    ws.clearProjectError()
+    expect(ws.error).toBeNull()
+
+    vi.mocked(api.getSnapshot).mockRejectedValue(new ApiError('boom', 500))
+    await ws.loadSnapshot('s1')
+    ws.clearProjectError()
+    expect(ws.error).toBe('boom')
   })
 })
 
