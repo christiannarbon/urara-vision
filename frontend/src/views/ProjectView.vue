@@ -53,7 +53,9 @@ watch(
 )
 
 onBeforeUnmount(() => {
-  store.$patch({ snapshot: null, selectedId: null, detail: null })
+  store.clearSnapshot()
+  store.clearProjectError()
+  ui.searchOpen = false
 })
 
 async function navigate(id: string) {
