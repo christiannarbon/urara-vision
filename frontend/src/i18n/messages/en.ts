@@ -66,6 +66,7 @@ export const messages = {
   'projects.versions.other': '{n} versions',
   'projects.latest': 'latest {version}',
   'projects.delete': 'Delete project',
+  'projects.delete.named': 'Delete project {name}',
   'projects.delete.title': 'Delete project?',
   'projects.delete.message': 'Delete project {name} and all of its versions? This cannot be undone.',
 
