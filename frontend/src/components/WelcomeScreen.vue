@@ -136,8 +136,8 @@ function formatDate(iso: string): string {
             <button
               class="btn btn--ghost btn--sm"
               :disabled="disabled"
-              :title="t('projects.delete')"
-              :aria-label="t('projects.delete')"
+              :title="t('projects.delete.named', { name: p.name })"
+              :aria-label="t('projects.delete.named', { name: p.name })"
               @click="emit('delete', p.slug)"
             >
               ✕

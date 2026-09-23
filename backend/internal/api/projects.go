@@ -2,6 +2,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -35,10 +36,13 @@ func (s *Server) handleDeleteProject(w http.ResponseWriter, r *http.Request) {
 		s.failProject(w, r, err)
 		return
 	}
+	// The rows are already gone, so finish clearing the projection even if the
+	// client has hung up: what is left behind is unreachable by any other means.
+	ctx := context.WithoutCancel(r.Context())
 	for _, sid := range ids {
 		// As for a snapshot: Postgres is the record of truth, so a stale graph
 		// projection is logged rather than failing the request.
-		if err := s.graphs.DeleteSnapshot(r.Context(), sid); err != nil {
+		if err := s.graphs.DeleteSnapshot(ctx, sid); err != nil {
 			s.log.Error("failed to delete graph projection", "project", slug, "snapshot", sid, "error", err)
 		}
 	}

@@ -78,7 +78,7 @@ describe('the project list', () => {
   it('emits the slug on open and delete', async () => {
     const w = screen([project()])
     await w.find('.snap').trigger('click')
-    await w.find('button[aria-label="Delete project"]').trigger('click')
+    await w.find('button[aria-label="Delete project jaffle"]').trigger('click')
     expect(w.emitted('open')).toEqual([['jaffle']])
     expect(w.emitted('delete')).toEqual([['jaffle']])
   })

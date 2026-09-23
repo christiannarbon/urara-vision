@@ -65,6 +65,7 @@ export const messages: Messages = {
   'projects.versions.other': 'バージョン {n} 件',
   'projects.latest': '最新 {version}',
   'projects.delete': 'プロジェクトを削除',
+  'projects.delete.named': 'プロジェクト {name} を削除',
   'projects.delete.title': 'プロジェクトを削除しますか？',
   'projects.delete.message': 'プロジェクト {name} とそのすべてのバージョンを削除しますか？この操作は取り消せません。',
 

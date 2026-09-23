@@ -20,11 +20,21 @@ const emit = defineEmits<{ (e: 'confirm'): void; (e: 'cancel'): void }>()
 const dialog = ref<HTMLElement | null>(null)
 const cancelButton = ref<HTMLButtonElement | null>(null)
 
-// Cancel takes focus so Enter never confirms by accident.
+let opener: HTMLElement | null = null
+
+// Cancel takes focus so Enter never confirms by accident, and the caller gets
+// its focus back on close -- unless what opened the dialog was the row the
+// confirmed action just removed.
 watch(
   () => props.open,
   (open) => {
-    if (open) void nextTick(() => cancelButton.value?.focus())
+    if (open) {
+      opener = document.activeElement as HTMLElement | null
+      void nextTick(() => cancelButton.value?.focus())
+    } else {
+      if (opener?.isConnected) opener.focus()
+      opener = null
+    }
   },
   { immediate: true },
 )
@@ -45,7 +55,13 @@ function onKeydown(e: KeyboardEvent) {
 
 function trapTab(e: KeyboardEvent) {
   const buttons = dialog.value?.querySelectorAll<HTMLElement>('button:not([disabled])')
-  if (!buttons?.length) return
+  if (!buttons?.length) {
+    // Busy: both buttons are disabled, and this is the one state the dialog
+    // must not be tabbed out of.
+    e.preventDefault()
+    dialog.value?.focus()
+    return
+  }
   const first = buttons[0]
   const last = buttons[buttons.length - 1]
   const active = document.activeElement

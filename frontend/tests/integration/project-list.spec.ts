@@ -68,6 +68,13 @@ describe('the project list', () => {
     expect(rowOf(w, 'sakila').text()).toContain('1 version')
   })
 
+  it('names the project in every delete button', async () => {
+    // One "Delete project" per row tells a screen reader nothing about which.
+    const { w } = await home()
+    const labels = w.findAll('li button[aria-label]').map((b) => b.attributes('aria-label'))
+    expect(labels).toEqual(['Delete project jaffle', 'Delete project sakila'])
+  })
+
   it('navigates to the project when a row is clicked', async () => {
     const { w, router } = await home()
     await rowOf(w, 'jaffle').find('.snap').trigger('click')
@@ -79,7 +86,7 @@ describe('the project list', () => {
 describe('deleting a project', () => {
   it('opens the dialog with focus on Cancel', async () => {
     const { w } = await home()
-    await rowOf(w, 'sakila').find('button[aria-label="Delete project"]').trigger('click')
+    await rowOf(w, 'sakila').find('button[aria-label="Delete project sakila"]').trigger('click')
     await flushPromises()
 
     const dialog = w.find('[role="alertdialog"]')
@@ -89,7 +96,7 @@ describe('deleting a project', () => {
 
   it('calls nothing when cancelled', async () => {
     const { w } = await home()
-    await rowOf(w, 'sakila').find('button[aria-label="Delete project"]').trigger('click')
+    await rowOf(w, 'sakila').find('button[aria-label="Delete project sakila"]').trigger('click')
     await flushPromises()
 
     const cancel = w.findAll('[role="alertdialog"] button').find((b) => b.text() === 'Cancel')!
@@ -98,9 +105,46 @@ describe('deleting a project', () => {
     expect(api.deleteProject).not.toHaveBeenCalled()
   })
 
+  it('gives focus back to the button that opened it', async () => {
+    const { w } = await home()
+    const button = rowOf(w, 'sakila').find('button[aria-label="Delete project sakila"]')
+    // jsdom does not focus a clicked button; a browser does.
+    ;(button.element as HTMLButtonElement).focus()
+    await button.trigger('click')
+    await flushPromises()
+
+    await w.find('[role="alertdialog"]').trigger('keydown', { key: 'Escape' })
+    await flushPromises()
+
+    expect(document.activeElement).toBe(button.element)
+  })
+
+  it('keeps focus inside while the delete is in flight', async () => {
+    const { w } = await home()
+    let finish: (() => void) | undefined
+    vi.mocked(api.deleteProject).mockImplementation(
+      () => new Promise<void>((r) => (finish = () => r())),
+    )
+    await rowOf(w, 'sakila').find('button[aria-label="Delete project sakila"]').trigger('click')
+    await flushPromises()
+
+    const confirm = w
+      .findAll('[role="alertdialog"] button')
+      .find((b) => b.text() === 'Delete project')!
+    await confirm.trigger('click')
+    await flushPromises()
+
+    const dialog = w.find('[role="alertdialog"]')
+    await dialog.trigger('keydown', { key: 'Tab' })
+    expect(dialog.element.contains(document.activeElement)).toBe(true)
+
+    finish?.()
+    await flushPromises()
+  })
+
   it('cancels on Escape', async () => {
     const { w } = await home()
-    await rowOf(w, 'sakila').find('button[aria-label="Delete project"]').trigger('click')
+    await rowOf(w, 'sakila').find('button[aria-label="Delete project sakila"]').trigger('click')
     await flushPromises()
 
     await w.find('[role="alertdialog"]').trigger('keydown', { key: 'Escape' })
@@ -110,7 +154,7 @@ describe('deleting a project', () => {
 
   it('deletes once and refreshes when confirmed', async () => {
     const { w } = await home()
-    await rowOf(w, 'sakila').find('button[aria-label="Delete project"]').trigger('click')
+    await rowOf(w, 'sakila').find('button[aria-label="Delete project sakila"]').trigger('click')
     await flushPromises()
     vi.mocked(api.listProjects).mockResolvedValue({ projects: [PROJECTS[0]] })
 
