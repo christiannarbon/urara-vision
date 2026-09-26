@@ -31,13 +31,6 @@ ENV CHAT_PORT=8090
 # false, f or 0 (as the backend parses it) serves a 503 at /api/chat/.
 ENV CHAT_ENABLED=true
 
-# The Authorization header nginx presents when proxying /api, whole: "Bearer
-# <token>". Empty means the browser supplies its own, which is what the token
-# gate is for. It has to be declared even when empty -- the entrypoint only
-# substitutes variables that already exist, and an undeclared one would
-# survive into the rendered config as literal text.
-ENV API_AUTHORIZATION=""
-
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/templates/default.conf.template
 COPY nginx-security-headers.conf /etc/nginx/snippets/security-headers.conf

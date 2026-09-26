@@ -1,9 +1,6 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
-// The compose backend's token, which the dev proxy presents the way nginx does in a built image.
-const apiToken = process.env.VITE_PROXY_TOKEN ?? 'relviz-dev-token-not-for-production'
-
 export default defineConfig({
   plugins: [vue()],
   server: {
@@ -11,18 +8,15 @@ export default defineConfig({
     // In dev the app talks to the backend on its own port; proxying keeps the
     // API same-origin so the client can use a relative base everywhere.
     proxy: {
+      // Listed before /api so it wins. No auth_request here: chat gets no
+      // identity headers from the dev server.
+      '/api/chat': {
+        target: process.env.VITE_CHAT_PROXY_TARGET ?? 'http://localhost:8090',
+        changeOrigin: true,
+      },
       '/api': {
         target: process.env.VITE_PROXY_TARGET ?? 'http://localhost:8080',
         changeOrigin: true,
-        // Same rule the built image's nginx follows: fill in the credential
-        // only when the browser sent none of its own.
-        configure: (proxy) => {
-          proxy.on('proxyReq', (req) => {
-            if (apiToken && !req.getHeader('authorization')) {
-              req.setHeader('Authorization', `Bearer ${apiToken}`)
-            }
-          })
-        },
       },
     },
   },

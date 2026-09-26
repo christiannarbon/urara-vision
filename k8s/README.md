@@ -44,12 +44,11 @@ kubectl -n urara-vision port-forward svc/frontend 8081:80
 Those dev credentials are committed deliberately and are safe only because
 they are dev credentials. Do not reuse them anywhere real.
 
-The dev overlay also hands the frontend the API token, as `API_AUTHORIZATION`
-on its Deployment, so nginx presents it when it proxies `/api` and nobody has
-to paste a key in to open the app. The token stays in the cluster: it is read
-from the same `relviz-api` secret the backend checks against and never reaches
-the browser. The backend is still authenticated, so anything talking to it
-directly still needs the token:
+The dev overlay also creates the first admin (`admin` /
+`relviz-dev-admin-password`, secret `relviz-bootstrap-admin`) and sets
+`COOKIE_SECURE=false`, since port-forward is plain HTTP. Sign in with it in the
+browser. The API token is for the service and scripts talking to the backend
+directly:
 
 ```bash
 make k8s-token
@@ -76,17 +75,16 @@ kubectl -n urara-vision create secret generic relviz-api \
 ```
 
 `relviz-api` is not optional: the backend Deployment references it, so the pod
-stays in `CreateContainerConfigError` until it exists. That is deliberate --
-forgetting it should stop a rollout rather than quietly publish an open API.
-To run without authentication on purpose, delete the `API_TOKEN` block from
-`base/backend.yaml`; the server logs a warning on every start when it is unset.
+stays in `CreateContainerConfigError` until it exists. Chat and CI imports use
+it as a bearer token against the backend; browsers never do.
 
-Prod leaves `API_AUTHORIZATION` empty, which is what the dev overlay overrides.
-The frontend adds no credential of its own there and the app prompts for one,
-so hand the token to whoever needs it:
+Create the first admin once. The backend creates it on start only while the
+users table is empty, so the secret can be deleted afterwards:
 
 ```bash
-kubectl -n urara-vision get secret relviz-api -o jsonpath='{.data.token}' | base64 -d
+kubectl -n urara-vision create secret generic relviz-bootstrap-admin \
+  --from-literal=username=admin \
+  --from-literal=password="$(openssl rand -base64 24)"
 ```
 
 Fill it in for a prod deployment only if the ingress in front already decides

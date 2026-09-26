@@ -17,8 +17,18 @@ replicas:
 
 patches:
   - path: dev-resources.yaml
-  - path: dev-frontend-auth.yaml
   - path: dev-chat-adc.yaml
+  # Port-forward is plain HTTP, so the session cookie cannot be Secure.
+  - target:
+      kind: ConfigMap
+      name: relviz-backend-config
+    patch: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: relviz-backend-config
+      data:
+        COOKIE_SECURE: "false"
   # Set before applying: empty stops the pod at startup, not at the first
   # question.
   - target:
@@ -96,6 +106,10 @@ secretGenerator:
   - name: relviz-api
     literals:
       - token=relviz-dev-token-not-for-production
+  - name: relviz-bootstrap-admin
+    literals:
+      - username=admin
+      - password=relviz-dev-admin-password
   # No model credential: Vertex uses ADC. See dev-chat-adc.yaml.
 
 generatorOptions:

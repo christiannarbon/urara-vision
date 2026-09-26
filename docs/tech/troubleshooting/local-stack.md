@@ -17,16 +17,13 @@ A short token looks like a control while being trivially guessable, so it is
 refused rather than accepted. Unset it to run without authentication — the
 server logs a warning on every start to say so.
 
-## The app asks for an API token
+## The app shows a login page
 
-The compose stack runs authenticated, and the frontend presents the token for
-you, so this only happens when the two disagree. `API_TOKEN` on the backend and
-`API_AUTHORIZATION` on the frontend both live in `docker-compose.yml` and have
-to name the same token; the second is the whole header, `Bearer <token>`.
-
-Running `npm run dev` instead, the vite proxy does the same job and carries the
-compose token by default. Point it at a backend using a different one with
-`VITE_PROXY_TOKEN`, or set that empty for a backend running without any.
+That is expected: the app signs in with a session cookie. The compose stack
+creates `admin` / `relviz-dev-admin-password` on first start, when the users
+table is empty. Override it with `BOOTSTRAP_ADMIN_USERNAME` and
+`BOOTSTRAP_ADMIN_PASSWORD` before the first start; later changes have no effect
+while any user exists.
 
 ## The backend starts but never becomes ready
 
