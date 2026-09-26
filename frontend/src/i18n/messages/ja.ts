@@ -108,7 +108,7 @@ export const messages: Messages = {
   'version.notFound': 'このプロジェクトにはバージョン「{version}」がありません。',
   'import.version': 'バージョンを取り込む',
   'import.version.title': 'ディレクトリからこのプロジェクトの新しいバージョンを取り込みます',
-  'import.conflict': 'バージョン {version} はすでに存在します。',
+  'import.conflict': '{project} のバージョン {version} はすでに存在します。',
   'import.conflict.open': '開く',
   'error.unreachable':
     'バックエンドに接続できません。API が起動していて到達可能か確認してください。',
