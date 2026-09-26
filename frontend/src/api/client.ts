@@ -70,6 +70,8 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly key?: MessageKey,
+    /** The parsed JSON error body, when there was one. */
+    readonly body?: Record<string, unknown>,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -104,9 +106,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     let detail = res.statusText
+    let body: Record<string, unknown> | undefined
     try {
-      const body = await res.json()
-      if (body && typeof body.error === 'string') detail = body.error
+      const parsed = await res.json()
+      if (parsed && typeof parsed === 'object') body = parsed
+      if (typeof body?.error === 'string') detail = body.error
     } catch {
       // Response was not JSON; the status text is the best available message.
     }
@@ -116,6 +120,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       detail || `Request failed with status ${res.status}.`,
       res.status,
       detail ? undefined : 'error.requestFailed',
+      body,
     )
   }
 
@@ -146,11 +151,12 @@ export const api = {
     })
   },
 
-  ingest(name: string, sourceLabel: string, files: IngestFile[]): Promise<IngestResult> {
+  /** `project` makes the server refuse a directory whose manifest names another project. */
+  ingest(name: string, sourceLabel: string, files: IngestFile[], project?: string): Promise<IngestResult> {
     return request<IngestResult>('/ingest', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, sourceLabel, files }),
+      body: JSON.stringify({ name, sourceLabel, files, ...(project ? { project } : {}) }),
     })
   },
 
