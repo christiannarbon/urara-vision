@@ -20,6 +20,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"urara-vision/backend/internal/auth"
 	"urara-vision/backend/internal/graph"
 	"urara-vision/backend/internal/parser"
 	"urara-vision/backend/internal/projectmeta"
@@ -70,6 +71,18 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	slug := projectmeta.Slug(meta.Project.Name)
 	if want := strings.TrimSpace(up.project); want != "" && want != slug {
 		s.badRequest(w, fmt.Sprintf("this directory is project %s, not %s", slug, want))
+		return
+	}
+
+	perm := auth.PermVersionImport
+	switch _, err := s.pg.GetProject(ctx, slug); {
+	case errors.Is(err, postgres.ErrNotFound):
+		perm = auth.PermProjectImport
+	case err != nil:
+		s.fail(w, r, fmt.Errorf("check project: %w", err))
+		return
+	}
+	if !s.allowed(w, r, ingestRoute, perm) {
 		return
 	}
 
