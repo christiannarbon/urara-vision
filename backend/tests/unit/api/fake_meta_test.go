@@ -341,9 +341,10 @@ func (f *fakeMeta) DeleteVersion(_ context.Context, slug, version string) (strin
 // fakeUsers backs the session and identity methods. Expiry is the real store's
 // job, so an expired session is simply one missing from sessions.
 type fakeUsers struct {
-	users     map[string]*model.User // by ID
-	sessions  map[string]string      // token hash → user ID
-	passwords map[string]string      // user ID → hash
+	users        map[string]*model.User // by ID
+	sessions     map[string]string      // token hash → user ID
+	passwords    map[string]string      // user ID → hash
+	getUserCalls int
 }
 
 func (f *fakeMeta) addUser(u model.User) {
@@ -360,15 +361,20 @@ func (f *fakeMeta) addSession(tokenHash, userID string) {
 	f.sessions[tokenHash] = userID
 }
 
-func (f *fakeMeta) SessionUser(ctx context.Context, tokenHash string) (*model.User, error) {
+func (f *fakeMeta) SessionUser(_ context.Context, tokenHash string) (*model.User, error) {
 	id, ok := f.sessions[tokenHash]
 	if !ok {
 		return nil, postgres.ErrNotFound
 	}
-	return f.GetUser(ctx, id)
+	return f.user(id)
 }
 
 func (f *fakeMeta) GetUser(_ context.Context, id string) (*model.User, error) {
+	f.getUserCalls++
+	return f.user(id)
+}
+
+func (f *fakeMeta) user(id string) (*model.User, error) {
 	u, ok := f.users[id]
 	if !ok {
 		return nil, postgres.ErrNotFound
