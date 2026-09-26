@@ -264,6 +264,12 @@ ingest does not change what an existing conversation is about — a thread pinne
 to whatever was ingested most recently would silently change subject, and its
 earlier answers would then cite tables from a different model.
 
+A conversation belongs to the user who created it, and every conversation
+route only sees the caller's own. Another user's is `404 conversation not
+found`, never `403`. The service token without `X-Acting-User`, and
+`AUTH_DISABLED`, see all of them. Conversations from before Phase 14 have no owner and are listed only for
+the service.
+
 Turns are appended one at a time and their order is the database's to decide:
 `POST /api/v1/conversations/{cid}/messages` returns the stored message with the
 `ordinal` it was given. A turn's `role` must be `user`, `assistant` or `system`,
@@ -350,7 +356,7 @@ changed.
 | `GET /users` | — | `{"users": [...]}` in username order |
 | `POST /users` | `{username, displayName, password, role}` | `201` with the user. Invalid username, unknown role, weak password or a display name over 100 characters `400`; taken username `409 {"error":"username already exists"}` |
 | `PATCH /users/{id}` | `{role?, displayName?}` | `200` with the user. Neither field `400`; unknown user `404`; demoting the last admin `409 {"error":"at least one admin must remain"}` |
-| `POST /users/{id}/password` | `{password}` | `204`, ending all that user's sessions. Weak password `400`; unknown user `404` |
+| `POST /users/{id}/password` | `{password}` | `204`, ending all that user's sessions (except the caller's own, when resetting yourself). Weak password `400`; unknown user `404` |
 | `DELETE /users/{id}` | — | `204`; sessions and identities go with the user. Yourself `409 {"error":"you cannot delete your own account"}`; the last admin `409 {"error":"at least one admin must remain"}`; unknown user `404` |
 
 ## Errors
