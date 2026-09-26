@@ -4,6 +4,7 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { api, ApiError } from '../api/client'
+import type { Perm } from '../auth/permissions'
 import { useChat } from './chat'
 import { useDiff } from './diff'
 import { useWorkspace } from './workspace'
@@ -59,7 +60,7 @@ export const useAuth = defineStore('auth', () => {
     }
   }
 
-  function can(p: string): boolean {
+  function can(p: Perm): boolean {
     return permissions.value.includes(p)
   }
 
