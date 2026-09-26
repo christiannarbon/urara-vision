@@ -8,7 +8,7 @@ import DiffChangeList from '../components/DiffChangeList.vue'
 import DiffSummary from '../components/DiffSummary.vue'
 import { api, ApiError } from '../api/client'
 import type { Snapshot } from '../api/types'
-import { useI18n } from '../i18n'
+import { useI18n, type MessageKey } from '../i18n'
 import { useDiff } from '../stores/diff'
 import { useWorkspace } from '../stores/workspace'
 
@@ -24,6 +24,8 @@ const to = computed(() => (typeof route.query.to === 'string' ? route.query.to :
 
 const versions = ref<Snapshot[] | null>(null)
 const versionsError = ref<ApiError | null>(null)
+// A not-found this page can name itself, translated rather than the server's text.
+const problem = ref<{ key: MessageKey; params: Record<string, string> } | null>(null)
 const label = (v: Snapshot) => v.project?.project.version ?? ''
 const projectName = computed(() => versions.value?.[0]?.project?.project.name || project.value)
 const onlyOne = computed(() => versions.value !== null && versions.value.length < 2)
@@ -33,12 +35,15 @@ watch(
   async (slug) => {
     versions.value = null
     versionsError.value = null
+    problem.value = null
     store.reset()
     try {
       const res = await api.listVersions(slug)
       if (slug === project.value) versions.value = res.versions
     } catch (e) {
-      if (slug === project.value) versionsError.value = e instanceof ApiError ? e : new ApiError(String(e), 0, 'error.unknown')
+      if (slug !== project.value) return
+      if (e instanceof ApiError && e.status === 404) problem.value = { key: 'project.notFound', params: { slug } }
+      else versionsError.value = e instanceof ApiError ? e : new ApiError(String(e), 0, 'error.unknown')
     }
   },
   { immediate: true },
@@ -53,6 +58,14 @@ watch(
       void router.replace({ query: { ...route.query, from: f || label(vs[1]), to: tv || label(vs[0]) } })
       return
     }
+    const labels = vs.map(label)
+    const missing = [f, tv].find((v) => !labels.includes(v))
+    if (missing) {
+      problem.value = { key: 'version.notFound', params: { version: missing } }
+      store.reset()
+      return
+    }
+    problem.value = null
     void store.load(project.value, f, tv)
   },
   { immediate: true },
@@ -73,11 +86,12 @@ function showOnGraph() {
 }
 
 function openTable(id: string) {
-  useWorkspace().selectAfterOpen(id)
+  useWorkspace().selectAfterOpen(project.value, to.value, id)
   showOnGraph()
 }
 
 const shownError = computed(() => {
+  if (problem.value) return t(problem.value.key, problem.value.params)
   const e = versionsError.value ?? error.value
   if (!e) return ''
   return e.key ? t(e.key, { status: e.status }) : e.message
