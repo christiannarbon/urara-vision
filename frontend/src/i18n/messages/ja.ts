@@ -96,6 +96,10 @@ export const messages: Messages = {
   'version.label': 'バージョン',
   'version.latest': '{version}（最新）',
   'version.notFound': 'このプロジェクトにはバージョン「{version}」がありません。',
+  'import.version': 'バージョンを取り込む',
+  'import.version.title': 'ディレクトリからこのプロジェクトの新しいバージョンを取り込みます',
+  'import.conflict': 'バージョン {version} はすでに存在します。',
+  'import.conflict.open': '開く',
   'error.unreachable':
     'バックエンドに接続できません。API が起動していて到達可能か確認してください。',
   'error.tokenRejected': 'この API にはトークンが必要ですが、指定されたトークンは受け付けられませんでした。',
