@@ -9,6 +9,8 @@ import type {
   IngestFile,
   IngestResult,
   JoinPath,
+  NewUser,
+  Role,
   LineageEntry,
   Me,
   Project,
@@ -153,6 +155,30 @@ export const api = {
       headers: json,
       body: JSON.stringify({ current, new: next }),
     })
+  },
+
+  listUsers(): Promise<{ users: User[] }> {
+    return request('/users')
+  },
+
+  createUser(body: NewUser): Promise<User> {
+    return request('/users', { method: 'POST', headers: json, body: JSON.stringify(body) })
+  },
+
+  updateUser(id: string, body: { role?: Role; displayName?: string }): Promise<User> {
+    return request(`/users/${encodeURIComponent(id)}`, { method: 'PATCH', headers: json, body: JSON.stringify(body) })
+  },
+
+  resetPassword(id: string, password: string): Promise<void> {
+    return request(`/users/${encodeURIComponent(id)}/password`, {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ password }),
+    })
+  },
+
+  deleteUser(id: string): Promise<void> {
+    return request(`/users/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
 
   features(): Promise<Features> {
