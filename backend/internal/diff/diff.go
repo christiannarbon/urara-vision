@@ -128,13 +128,15 @@ func Compare(from, to *model.Model) Result {
 			return true
 		})
 
-	walk(index(relationships(from), relationshipKey), index(relationships(to), relationshipKey), &r.Summary.Relationships,
+	relFrom, relTo := pairIndex(relationships(from), relationships(to), relationshipKey, sameRelationship)
+	walk(relFrom, relTo, &r.Summary.Relationships,
 		func(a, b *model.Relationship, c Change) bool {
 			rel := pick(a, b)
 			var fs []FieldChange
 			if c == Changed {
 				fs = field(fs, "cardinality", a.Cardinality, b.Cardinality)
 				fs = field(fs, "resolution", string(a.Resolution), string(b.Resolution))
+				fs = field(fs, "toTableId", a.ToTableID, b.ToTableID)
 				if len(fs) == 0 {
 					return false
 				}
@@ -147,7 +149,8 @@ func Compare(from, to *model.Model) Result {
 		})
 
 	lkey := func(l tableLineage) string { return lineageKey(l.tableID, l.ColumnLineage) }
-	walk(index(lineage(from), lkey), index(lineage(to), lkey), &r.Summary.Lineage,
+	linFrom, linTo := pairIndex(lineage(from), lineage(to), lkey, sameLineage)
+	walk(linFrom, linTo, &r.Summary.Lineage,
 		func(a, b *tableLineage, c Change) bool {
 			l := pick(a, b)
 			var fs []FieldChange
@@ -204,6 +207,14 @@ func tableFields(a, b model.Table) []FieldChange {
 	fs = field(fs, "description", a.Description, b.Description)
 	fs = field(fs, "conformed", a.Conformed, b.Conformed)
 	return fs
+}
+
+func sameRelationship(a, b model.Relationship) bool {
+	return a.Cardinality == b.Cardinality && a.Resolution == b.Resolution && a.ToTableID == b.ToTableID
+}
+
+func sameLineage(a, b tableLineage) bool {
+	return a.Notes == b.Notes && a.Derived == b.Derived
 }
 
 func relationships(m *model.Model) []model.Relationship {

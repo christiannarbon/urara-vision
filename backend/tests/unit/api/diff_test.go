@@ -120,3 +120,14 @@ func TestDiffBodyShape(t *testing.T) {
 		t.Errorf("diff = %+v", body)
 	}
 }
+
+func TestDiffSameSnapshotLoadsOnce(t *testing.T) {
+	meta := diffMeta()
+	rec := do(t, newServer(t, meta, &fakeGraphs{}), http.MethodGet, "/api/v1/projects/shop/diff?from=latest&to=2.0.0", nil, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body %s", rec.Code, rec.Body)
+	}
+	if meta.loadModelCalls != 1 {
+		t.Errorf("LoadModel called %d times, want 1", meta.loadModelCalls)
+	}
+}

@@ -14,7 +14,17 @@ import (
 
 // ListDomains returns the domains of a snapshot.
 func (s *Store) ListDomains(ctx context.Context, sid string) ([]model.Domain, error) {
-	rows, err := s.pool.Query(ctx,
+	return listDomains(ctx, s.pool, sid)
+}
+
+// querier is satisfied by both the pool and a transaction.
+type querier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+func listDomains(ctx context.Context, q querier, sid string) ([]model.Domain, error) {
+	rows, err := q.Query(ctx,
 		`SELECT id, name, title, description, mermaid, lineage, doc_path, table_count
 		 FROM domains WHERE snapshot_id = $1 ORDER BY id`, sid)
 	if err != nil {

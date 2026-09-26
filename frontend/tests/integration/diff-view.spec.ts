@@ -19,7 +19,7 @@ vi.mock('../../src/api/client', async () => {
   }
 })
 
-const { api } = await import('../../src/api/client')
+const { api, ApiError } = await import('../../src/api/client')
 const { mountApp } = await import('../helpers/mountApp')
 
 function snap(version: string): Snapshot {
@@ -139,6 +139,42 @@ describe('the diff page', () => {
     expect(w.text()).toContain('sales/dim_promotions')
     expect(w.text()).not.toContain('catalog/fact_restocks')
     expect(group('catalog').exists()).toBe(false)
+  })
+
+  it('an unknown project shows a translated message', async () => {
+    vi.mocked(api.listVersions).mockRejectedValue(new ApiError('project not found', 404))
+    const w = await mountApp('/projects/p/diff')
+    await flushPromises()
+    expect(w.text()).toContain('There is no project called “p”.')
+  })
+
+  it('an unknown version shows a translated message without a request', async () => {
+    const w = await mountApp('/projects/p/diff?from=1.0.0&to=9.9.9')
+    await flushPromises()
+    expect(w.text()).toContain('This project has no version “9.9.9”.')
+    expect(api.diff).not.toHaveBeenCalled()
+  })
+
+  it('shows booleans as yes/no and expands descriptions by button', async () => {
+    vi.mocked(api.diff).mockImplementation(async (_s, from, to) => ({
+      ...emptyResult(from, to),
+      summary: { ...emptyResult(from, to).summary, tables: { added: 0, removed: 0, changed: 1 } },
+      tables: [{
+        id: 'sales/dim_x', domainId: 'sales', change: 'changed', columns: [],
+        fields: [
+          { field: 'description', from: 'Old text.', to: 'New text.' },
+          { field: 'conformed', from: false, to: true },
+        ],
+      }],
+    }))
+    const w = await mountApp('/projects/p/diff?from=1.0.0&to=2.0.0')
+    await flushPromises()
+    expect(w.text()).toContain('conformed: no → yes')
+
+    const toggle = w.find('button.prose-toggle')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
   })
 
   it('swap reverses the query', async () => {

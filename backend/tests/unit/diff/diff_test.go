@@ -213,6 +213,26 @@ func TestUnresolvedRelationshipMatchedByTargetRef(t *testing.T) {
 	}
 }
 
+func TestRelationshipResolutionChanged(t *testing.T) {
+	a := base()
+	b := clone(t, a)
+	r := &table(b, "ordering/fact_orders").Relationships[0]
+	r.ToTableID, r.Resolution = "", model.ResolvedUnresolved
+
+	res := diff.Compare(a, b)
+	want := []diff.FieldChange{
+		{Field: "resolution", From: "local", To: "unresolved"},
+		{Field: "toTableId", From: "customer/dim_customer", To: ""},
+	}
+	if len(res.Relationships) != 1 || res.Relationships[0].Change != diff.Changed ||
+		!reflect.DeepEqual(res.Relationships[0].Fields, want) {
+		t.Errorf("relationships = %+v", res.Relationships)
+	}
+	if res.Summary.Relationships != (diff.Counts{Changed: 1}) {
+		t.Errorf("counts = %+v", res.Summary.Relationships)
+	}
+}
+
 func TestDuplicateJoinRemovedOnce(t *testing.T) {
 	a := base()
 	ft := table(a, "ordering/fact_orders")
@@ -223,6 +243,25 @@ func TestDuplicateJoinRemovedOnce(t *testing.T) {
 
 	r := diff.Compare(a, b)
 	if len(r.Relationships) != 1 || r.Relationships[0].Change != diff.Removed {
+		t.Errorf("relationships = %+v", r.Relationships)
+	}
+	if r.Summary.Relationships != (diff.Counts{Removed: 1}) {
+		t.Errorf("counts = %+v", r.Summary.Relationships)
+	}
+}
+
+func TestDuplicateJoinFirstCopyRemoved(t *testing.T) {
+	a := base()
+	ft := table(a, "ordering/fact_orders")
+	dup := ft.Relationships[0]
+	dup.ID, dup.Cardinality = "r2", "one-to-one"
+	ft.Relationships = append(ft.Relationships, dup)
+	b := clone(t, a)
+	bt := table(b, "ordering/fact_orders")
+	bt.Relationships = bt.Relationships[1:]
+
+	r := diff.Compare(a, b)
+	if len(r.Relationships) != 1 || r.Relationships[0].Change != diff.Removed || len(r.Relationships[0].Fields) != 0 {
 		t.Errorf("relationships = %+v", r.Relationships)
 	}
 	if r.Summary.Relationships != (diff.Counts{Removed: 1}) {

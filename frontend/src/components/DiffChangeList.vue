@@ -51,6 +51,7 @@ const groups = computed(() => {
 
 function show(v: unknown): string {
   if (v === '' || v === null || v === undefined) return t('diff.value.empty')
+  if (typeof v === 'boolean') return t(v ? 'diff.value.true' : 'diff.value.false')
   return String(v)
 }
 
@@ -94,14 +95,19 @@ const source = (l: LineageDiff) => [l.sourceTable, l.sourceColumn].filter(Boolea
         <div class="entry">
           <span :class="tagClass(g.domain.change)">{{ t(`diff.change.${g.domain.change}`) }}</span>
           <ul class="fields">
-            <li
-              v-for="f in g.domain.fields"
-              :key="f.field"
-              :class="{ prose: isProse(f), 'prose--open': expanded.has(`d:${g.id}:${f.field}`) }"
-              :title="isProse(f) ? t('diff.expand') : undefined"
-              @click="isProse(f) && toggle(`d:${g.id}:${f.field}`)"
-            >
-              <span class="fname">{{ f.field }}:</span> {{ show(f.from) }} → {{ show(f.to) }}
+            <li v-for="f in g.domain.fields" :key="f.field">
+              <button
+                v-if="isProse(f)"
+                type="button"
+                class="prose-toggle"
+                :class="{ 'prose--open': expanded.has(`d:${g.id}:${f.field}`) }"
+                :aria-expanded="expanded.has(`d:${g.id}:${f.field}`)"
+                :title="t('diff.expand')"
+                @click="toggle(`d:${g.id}:${f.field}`)"
+              >
+                <span class="fname">{{ f.field }}:</span> {{ show(f.from) }} → {{ show(f.to) }}
+              </button>
+              <template v-else><span class="fname">{{ f.field }}:</span> {{ show(f.from) }} → {{ show(f.to) }}</template>
             </li>
           </ul>
         </div>
@@ -119,14 +125,19 @@ const source = (l: LineageDiff) => [l.sourceTable, l.sourceColumn].filter(Boolea
               <span v-else class="id mono">{{ tb.id }}</span>
             </div>
             <ul v-if="tb.fields.length" class="fields">
-              <li
-                v-for="f in tb.fields"
-                :key="f.field"
-                :class="{ prose: isProse(f), 'prose--open': expanded.has(`t:${tb.id}:${f.field}`) }"
-                :title="isProse(f) ? t('diff.expand') : undefined"
-                @click="isProse(f) && toggle(`t:${tb.id}:${f.field}`)"
-              >
-                <span class="fname">{{ f.field }}:</span> {{ show(f.from) }} → {{ show(f.to) }}
+              <li v-for="f in tb.fields" :key="f.field">
+                <button
+                  v-if="isProse(f)"
+                  type="button"
+                  class="prose-toggle"
+                  :class="{ 'prose--open': expanded.has(`t:${tb.id}:${f.field}`) }"
+                  :aria-expanded="expanded.has(`t:${tb.id}:${f.field}`)"
+                  :title="t('diff.expand')"
+                  @click="toggle(`t:${tb.id}:${f.field}`)"
+                >
+                  <span class="fname">{{ f.field }}:</span> {{ show(f.from) }} → {{ show(f.to) }}
+                </button>
+                <template v-else><span class="fname">{{ f.field }}:</span> {{ show(f.from) }} → {{ show(f.to) }}</template>
               </li>
             </ul>
             <ul v-if="tb.columns.length" class="columns">
@@ -136,14 +147,19 @@ const source = (l: LineageDiff) => [l.sourceTable, l.sourceColumn].filter(Boolea
                   <span class="mono">{{ c.name }}</span>
                 </div>
                 <ul v-if="c.fields.length" class="fields">
-                  <li
-                    v-for="f in c.fields"
-                    :key="f.field"
-                    :class="{ prose: isProse(f), 'prose--open': expanded.has(`c:${tb.id}:${c.name}:${f.field}`) }"
-                    :title="isProse(f) ? t('diff.expand') : undefined"
-                    @click="isProse(f) && toggle(`c:${tb.id}:${c.name}:${f.field}`)"
-                  >
-                    <span class="fname">{{ f.field }}:</span> {{ show(f.from) }} → {{ show(f.to) }}
+                  <li v-for="f in c.fields" :key="f.field">
+                    <button
+                      v-if="isProse(f)"
+                      type="button"
+                      class="prose-toggle"
+                      :class="{ 'prose--open': expanded.has(`c:${tb.id}:${c.name}:${f.field}`) }"
+                      :aria-expanded="expanded.has(`c:${tb.id}:${c.name}:${f.field}`)"
+                      :title="t('diff.expand')"
+                      @click="toggle(`c:${tb.id}:${c.name}:${f.field}`)"
+                    >
+                      <span class="fname">{{ f.field }}:</span> {{ show(f.from) }} → {{ show(f.to) }}
+                    </button>
+                    <template v-else><span class="fname">{{ f.field }}:</span> {{ show(f.from) }} → {{ show(f.to) }}</template>
                   </li>
                 </ul>
               </li>
@@ -225,7 +241,19 @@ ul { list-style: none; margin: 0; padding: 0; }
 .columns { padding: 4px 0 0 16px; }
 .columns > li { padding: 2px 0; }
 
-.prose { cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prose-toggle {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .prose--open { white-space: normal; }
 
 .linkish { border: none; background: none; padding: 0; color: var(--text); text-align: left; }

@@ -45,7 +45,7 @@ func (s *Server) handleGetVersion(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "project")
 	sn, err := s.pg.GetVersion(r.Context(), slug, version)
 	if err != nil {
-		s.failVersion(w, r, slug, err)
+		s.failVersion(w, r, slug, "version not found", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, sn)
@@ -65,7 +65,7 @@ func (s *Server) handleDeleteVersion(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "project")
 	sid, _, err := s.pg.DeleteVersion(r.Context(), slug, version)
 	if err != nil {
-		s.failVersion(w, r, slug, err)
+		s.failVersion(w, r, slug, "version not found", err)
 		return
 	}
 	// As for a project: the rows are gone, so the projection is cleared even if
@@ -76,8 +76,9 @@ func (s *Server) handleDeleteVersion(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// failVersion tells a missing project apart from a missing version.
-func (s *Server) failVersion(w http.ResponseWriter, r *http.Request, slug string, err error) {
+// failVersion tells a missing project apart from a missing version; msg is the
+// latter's 404 message.
+func (s *Server) failVersion(w http.ResponseWriter, r *http.Request, slug, msg string, err error) {
 	if !errors.Is(err, postgres.ErrNotFound) {
 		s.fail(w, r, err)
 		return
@@ -86,5 +87,5 @@ func (s *Server) failVersion(w http.ResponseWriter, r *http.Request, slug string
 		s.failProject(w, r, perr)
 		return
 	}
-	writeJSON(w, http.StatusNotFound, map[string]string{"error": "version not found"})
+	writeJSON(w, http.StatusNotFound, map[string]string{"error": msg})
 }

@@ -113,6 +113,8 @@ export const messages: Messages = {
   'diff.section.relationships': '結合',
   'diff.section.lineage': 'カラムリネージ',
   'diff.value.empty': '（空）',
+  'diff.value.true': 'はい',
+  'diff.value.false': 'いいえ',
   'diff.expand': 'クリックして全文を表示',
   'diff.showOnGraph': 'グラフで表示',
   'diff.legend.label': 'グラフ上の変更',
