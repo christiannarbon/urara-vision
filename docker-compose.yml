@@ -57,6 +57,11 @@ services:
       CORS_ORIGINS: "http://localhost:5173,http://localhost:8081"
       LOG_LEVEL: "info"
       CHAT_ENABLED: "${CHAT_ENABLED:-true}"
+      # Plain HTTP on localhost, so the session cookie cannot be Secure.
+      COOKIE_SECURE: "false"
+      # Committed dev values like the token above; created only on an empty users table.
+      BOOTSTRAP_ADMIN_USERNAME: "${BOOTSTRAP_ADMIN_USERNAME:-admin}"
+      BOOTSTRAP_ADMIN_PASSWORD: "${BOOTSTRAP_ADMIN_PASSWORD:-relviz-dev-admin-password}"
     ports:
       - "8080:8080"
     depends_on:
@@ -86,8 +91,8 @@ services:
       APP_ADDR: ":8090"
 
       BACKEND_BASE_URL: "${BACKEND_BASE_URL:-http://backend:8080}"
-      # The same committed dev token the frontend presents. The chat service
-      # is an API client like any other.
+      # The same committed dev token the backend checks. The chat service is
+      # an API client like any other.
       BACKEND_API_TOKEN: "${BACKEND_API_TOKEN:-relviz-dev-token-not-for-production}"
       BACKEND_TIMEOUT_SECONDS: "${BACKEND_TIMEOUT_SECONDS:-30}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
@@ -129,8 +134,10 @@ services:
       GOOGLE_API_KEY: "${GOOGLE_API_KEY:-}"
       VERTEX_PROJECT: "${VERTEX_PROJECT:-}"
       VERTEX_LOCATION: "${VERTEX_LOCATION:-us-central1}"
+    # Localhost only: chat trusts the identity headers nginx sets, so it must
+    # not be reachable except through the frontend.
     ports:
-      - "8090:8090"
+      - "127.0.0.1:8090:8090"
     depends_on:
       # service_started rather than service_healthy: the backend declares no
       # compose healthcheck, and this service's own readiness probe already
@@ -160,9 +167,6 @@ services:
         # backend so a same-origin relative base works out of the box.
         VITE_API_BASE: "/api/v1"
     environment:
-      # nginx presents the backend's token on the browser's behalf, so
-      # localhost:8081 opens without anyone being asked for a key.
-      API_AUTHORIZATION: "Bearer relviz-dev-token-not-for-production"
       # The /api/chat/ upstream, substituted into the nginx config at start.
       CHAT_HOST: "chat"
       CHAT_PORT: "8090"
