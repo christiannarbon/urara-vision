@@ -51,6 +51,9 @@ def _guard(spec: ToolSpec) -> Callable[..., Awaitable[Any]]:
             failed_with = _not_found_message(kwargs)
             return failed_with
         except BackendError as exc:
+            # Forbidden ends the turn with a 403; it is not something the model can work around.
+            if exc.status == 403:
+                raise
             # Covers BackendUnavailable too, which subclasses it: an unreachable backend is as
             # recoverable from the model's point of view as a rejected query -- neither is fixed
             # by ending the turn.

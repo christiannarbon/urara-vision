@@ -91,8 +91,9 @@ async def list_conversations(
     return {"conversations": await get_client(request).list_conversations(snapshot, limit)}
 
 
-# Fetches every conversation for the snapshot: fine at this scale, not at ten thousand. The fix
-# then is a GET /api/v1/conversations/stats aggregate in the Go backend.
+# Per user: the backend lists only the caller's conversations. Fetches each one: fine at this
+# scale, not at ten thousand. The fix then is a GET /api/v1/conversations/stats aggregate in the Go
+# backend.
 STATS_CONVERSATION_LIMIT = 200  # the backend's own list cap
 STATS_FETCH_CONCURRENCY = 8
 # Nearest-rank p95 over fewer samples than this is not a percentile.

@@ -158,7 +158,7 @@ class TurnResponse(BaseModel):
 
 
 class StatsResponse(BaseModel):
-    """Usage over a snapshot's conversations. None means nothing was recorded."""
+    """Usage over the caller's conversations about a snapshot. None means nothing was recorded."""
 
     model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
 
