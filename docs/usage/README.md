@@ -7,6 +7,7 @@ comes back. Nothing here assumes you intend to work on the tool itself; that is
 | Guide | Read it for |
 |---|---|
 | [Getting started](getting-started.md) | Running the stack and loading your first directory |
+| [Users and roles](users-and-roles.md) | What viewers, creators and admins can do, and how admins manage users |
 | [The documentation format](documentation-format.md) | What the parser expects your markdown to look like |
 | [Exploring the graph](exploring-the-graph.md) | Layouts, filters, neighbourhoods, search, and the detail pane |
 | [Diagnostics](diagnostics.md) | Every check, what it means, and what to do about it |
