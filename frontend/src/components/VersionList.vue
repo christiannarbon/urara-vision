@@ -17,6 +17,14 @@ function open(v: Snapshot) {
   void router.push({ name: 'version', params: { project: props.project, version: label(v) } })
 }
 
+function compare(v: Snapshot) {
+  void router.push({
+    name: 'diff',
+    params: { project: props.project },
+    query: { from: label(v), to: label(props.versions[0]) },
+  })
+}
+
 function formatDate(iso: string): string {
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(locale.value)
@@ -32,6 +40,15 @@ function formatDate(iso: string): string {
         <span class="faint tiny">
           {{ formatDate(v.createdAt) }} · {{ tn('versions.tables', v.stats.tables) }}
         </span>
+      </button>
+      <button
+        v-if="i > 0"
+        class="btn btn--ghost btn--sm compare"
+        :disabled="disabled"
+        :title="t('versions.compare.named', { version: label(v) })"
+        @click="compare(v)"
+      >
+        {{ t('versions.compare') }}
       </button>
       <button
         class="btn btn--ghost btn--sm"
