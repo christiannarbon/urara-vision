@@ -338,3 +338,16 @@ func TestIngestPermissionProjectCheckErrorIs500(t *testing.T) {
 		t.Fatalf("status = %d, want 500: %s", rec.Code, rec.Body)
 	}
 }
+
+// The body is not read for a caller who can import nothing.
+func TestIngestPermissionCheckedBeforeReadingTheBody(t *testing.T) {
+	h := roleServer(t, &fakeMeta{})
+
+	rec := asRole(t, h, auth.RoleViewer, http.MethodPost, "/api/v1/ingest", strings.NewReader(`{not json`))
+	if rec.Code != http.StatusForbidden || !strings.Contains(rec.Body.String(), "not allowed") {
+		t.Errorf("viewer: status = %d, want 403: %s", rec.Code, rec.Body)
+	}
+	if rec := asRole(t, h, auth.RoleCreator, http.MethodPost, "/api/v1/ingest", strings.NewReader(`{not json`)); rec.Code != http.StatusBadRequest {
+		t.Errorf("creator: status = %d, want 400: %s", rec.Code, rec.Body)
+	}
+}
