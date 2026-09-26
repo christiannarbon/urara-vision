@@ -248,3 +248,51 @@ func TestIngestWrongProjectIs400(t *testing.T) {
 		t.Errorf("error should name both slugs: %s", raw)
 	}
 }
+
+func TestVersionRoutes(t *testing.T) {
+	base := stack(t)
+	gs := harness.Neo4j(t)
+	ctx := harness.Context(t)
+
+	name := "api-versions-" + uuid.NewString()[:8]
+	manifest := strings.Replace(fixtures.ProjectMetaTOML,
+		`name = "sample-data-modelling-project"`, `name = "`+name+`"`, 1)
+	older, slug := ingestAs(t, base, manifest)
+	newer, _ := ingestAs(t, base, strings.Replace(manifest, `version = "0.1.0"`, `version = "0.2.0+build.7"`, 1))
+
+	list := get(t, base, "/api/v1/projects/"+slug+"/versions")
+	versions, _ := list["versions"].([]any)
+	if len(versions) != 2 || versions[0].(map[string]any)["id"] != newer || versions[1].(map[string]any)["id"] != older {
+		t.Fatalf("versions = %v, want %s then %s", list["versions"], newer, older)
+	}
+	if got := get(t, base, "/api/v1/projects/"+slug+"/versions/latest")["id"]; got != newer {
+		t.Errorf("latest = %v, want %s", got, newer)
+	}
+	if got := get(t, base, "/api/v1/projects/"+slug+"/versions/0.2.0%2Bbuild.7")["id"]; got != newer {
+		t.Errorf("0.2.0+build.7 = %v, want %s", got, newer)
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, base+"/api/v1/projects/"+slug+"/versions/0.1.0", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("DELETE version: %v", err)
+	}
+	_ = res.Body.Close()
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("DELETE version = %d, want 204", res.StatusCode)
+	}
+
+	g, err := gs.GetGraph(ctx, older, neostore.GraphOptions{})
+	if err != nil {
+		t.Fatalf("GetGraph after delete: %v", err)
+	}
+	if len(g.Nodes) != 0 {
+		t.Errorf("graph still has %d nodes after the version was deleted", len(g.Nodes))
+	}
+	if project := get(t, base, "/api/v1/projects/"+slug); project["versionCount"] != float64(1) {
+		t.Errorf("versionCount = %v after deleting one of two, want 1", project["versionCount"])
+	}
+}
