@@ -71,6 +71,18 @@ caller's list. Enforced from Phase 14.
 | `user.manage` | | | ✓ | |
 | `user.delete` | | | ✓ | |
 
+## Chat and permissions
+
+nginx establishes who the caller is, chat forwards it as `X-Acting-User`, and
+the backend decides. Chat never checks roles or permissions and never calls
+`/auth/me`.
+
+- A backend `403` becomes chat's `403 {"error":"not allowed","requestId":...}`,
+  including a `403` from a tool read mid-turn: the turn ends, and the model
+  never sees the refusal.
+- Conversations are the acting user's own. Another user's is a `404`, and
+  `/api/chat/stats` counts only the caller's conversations.
+
 ## Adding Google login
 
 A person (`users`) is separate from how they log in (`user_identities`). Google
