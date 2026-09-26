@@ -20,6 +20,8 @@ func newFeaturesServer(t *testing.T, meta *fakeMeta, chatEnabled bool, token str
 		CORSOrigins: []string{"http://localhost:5173"},
 		ChatEnabled: chatEnabled,
 		APIToken:    token,
+		// No token means the test is not about authentication.
+		AuthDisabled: token == "",
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return api.New(cfg, meta, &fakeGraphs{}, log).Routes()
