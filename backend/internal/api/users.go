@@ -16,7 +16,7 @@ import (
 
 const maxDisplayName = 100
 
-var errLastAdmin = map[string]string{"error": "at least one admin must remain"}
+var lastAdminBody = map[string]string{"error": "at least one admin must remain"}
 
 func checkDisplayName(name string) error {
 	if utf8.RuneCountInString(name) > maxDisplayName {
@@ -107,7 +107,7 @@ func (s *Server) handlePatchUser(w http.ResponseWriter, r *http.Request) {
 	}
 	u, err := s.pg.UpdateUser(r.Context(), chi.URLParam(r, "id"), req.Role, req.DisplayName)
 	if errors.Is(err, postgres.ErrLastAdmin) {
-		writeJSON(w, http.StatusConflict, errLastAdmin)
+		writeJSON(w, http.StatusConflict, lastAdminBody)
 		return
 	}
 	if err != nil {
@@ -139,7 +139,12 @@ func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	if err := s.pg.DeleteUserSessions(r.Context(), id, ""); err != nil {
+	// Resetting your own password keeps the session making the request.
+	keep := ""
+	if p, _ := auth.PrincipalFrom(r.Context()); p.UserID == id {
+		keep, _ = sessionHash(r)
+	}
+	if err := s.pg.DeleteUserSessions(r.Context(), id, keep); err != nil {
 		s.fail(w, r, err)
 		return
 	}
@@ -154,7 +159,7 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 	err := s.pg.DeleteUser(r.Context(), id)
 	if errors.Is(err, postgres.ErrLastAdmin) {
-		writeJSON(w, http.StatusConflict, errLastAdmin)
+		writeJSON(w, http.StatusConflict, lastAdminBody)
 		return
 	}
 	if err != nil {
