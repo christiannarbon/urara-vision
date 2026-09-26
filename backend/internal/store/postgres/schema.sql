@@ -92,6 +92,26 @@ WHERE snapshots.project_id IS NULL
 -- Every save writes project_id, and the backfill above leaves none empty.
 ALTER TABLE snapshots ALTER COLUMN project_id SET NOT NULL;
 
+-- Older duplicates are renamed, not deleted, so the unique index can exist.
+-- Unlabelled snapshots rank as 'legacy', and are renamed only after the
+-- duplicates, so no row collides while the index exists.
+WITH ranked AS (
+    SELECT id, v, row_number() OVER (
+        PARTITION BY project_id, v ORDER BY created_at DESC, id) AS rn
+    FROM (SELECT id, project_id, created_at,
+                 CASE WHEN project_version = '' THEN 'legacy' ELSE project_version END AS v
+          FROM snapshots) s)
+UPDATE snapshots s
+   SET project_version = r.v || '+legacy.' || (r.rn - 1)
+  FROM ranked r
+ WHERE s.id = r.id AND r.rn > 1;
+
+-- Unlabelled snapshots predate projectmeta.toml.
+UPDATE snapshots SET project_version = 'legacy' WHERE project_version = '';
+
+CREATE UNIQUE INDEX IF NOT EXISTS snapshots_project_version_key
+    ON snapshots (project_id, project_version);
+
 CREATE TABLE IF NOT EXISTS domains (
     snapshot_id TEXT NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,
     id          TEXT NOT NULL,

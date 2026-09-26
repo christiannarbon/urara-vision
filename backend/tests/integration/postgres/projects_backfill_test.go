@@ -63,8 +63,9 @@ func (b *backfill) insertPending() {
 			return err
 		}
 		for _, row := range b.pending {
-			if _, err := tx.Exec(b.ctx, `INSERT INTO snapshots (id, name, project_name, project_description, created_at)
-				VALUES ($1, $2, $3, $4, $5)`, row...); err != nil {
+			// Own version per row: the unique index already exists here.
+			if _, err := tx.Exec(b.ctx, `INSERT INTO snapshots (id, name, project_name, project_description, created_at, project_version)
+				VALUES ($1, $2, $3, $4, $5, $1)`, row...); err != nil {
 				return err
 			}
 		}
