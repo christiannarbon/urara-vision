@@ -20,18 +20,28 @@ back to disk.
 
 ## Projects and versions
 
-An import belongs to the project its manifest names, and importing the same
-project again adds a version rather than replacing what was there. The home
-screen lists your projects with how many versions each has; opening one shows
-its newest, at a URL naming the project:
+An import belongs to the project its manifest names, and each `version` in the
+manifest is a separate version of it. The home screen lists your projects with
+how many versions each has; opening one shows its newest, and the URL names the
+version:
 
 ```
-http://localhost:8081/projects/jaffle-shop-ddd
+http://localhost:8081/projects/jaffle-shop-ddd/versions/0.1.0
 ```
 
-That link keeps meaning the newest version, so it stays worth sharing after the
-next import. Deleting a project from the list deletes all of its versions, which
-is why it asks first.
+That link keeps opening 0.1.0 after newer versions arrive. The bare
+`/projects/jaffle-shop-ddd` always opens the newest. Inside a project, the
+version menu in the top bar switches between versions.
+
+To add a version, bump `version` in `projectmeta.toml` and use *Import version*
+in the top bar, or import from the home screen. *Import version* refuses a
+directory whose manifest names a different project. Importing a version that
+already exists is refused too, with a link to the one that is there: delete it
+first if you mean to replace it.
+
+On the home screen, *Versions* on a project lists them; each can be opened or
+deleted from there. Deleting a project's only version deletes the project, and
+deleting a project deletes all of its versions, which is why both ask first.
 
 | Service | URL |
 |---|---|
