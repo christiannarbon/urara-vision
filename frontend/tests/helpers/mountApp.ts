@@ -14,7 +14,7 @@ export const ADMIN_PERMISSIONS = [
 ]
 
 /** Seeds the auth store as `/me` would, so specs need not mock it. */
-export function seedAuth(signedIn: boolean) {
+export function seedAuth(signedIn: boolean, permissions: string[] = ADMIN_PERMISSIONS) {
   const auth = useAuth()
   auth.loaded = true
   if (!signedIn) {
@@ -26,19 +26,19 @@ export function seedAuth(signedIn: boolean) {
     id: 'u-admin', username: 'admin', displayName: 'Admin', role: 'admin',
     createdAt: '2026-01-01T00:00:00Z', updatedAt: '2026-01-01T00:00:00Z',
   }
-  auth.permissions = ADMIN_PERMISSIONS
+  auth.permissions = permissions
 }
 
 export async function mountApp(
   path = '/',
-  options: { attachTo?: Element | string; signedIn?: boolean } = {},
+  options: { attachTo?: Element | string; signedIn?: boolean; permissions?: string[] } = {},
 ) {
   let pinia = getActivePinia()
   if (!pinia) {
     pinia = createPinia()
     setActivePinia(pinia)
   }
-  seedAuth(options.signedIn ?? true)
+  seedAuth(options.signedIn ?? true, options.permissions)
   const router = createAppRouter(createMemoryHistory())
   installAuthGuard(router)
   await router.push(path)
