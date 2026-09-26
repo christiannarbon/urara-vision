@@ -28,12 +28,15 @@ const uniqueViolation = "23505"
 
 // conversationColumns is every field a conversation is rebuilt from, shared by
 // the reads below so a new one cannot be added to only some of them.
-const conversationColumns = `id, snapshot_id, title, created_at, updated_at`
+const conversationColumns = `id, snapshot_id, title, created_at, updated_at, COALESCE(user_id, '')`
+
+// Each conversation method takes an owner: "" (the service) sees every thread,
+// a user ID only that user's. Not owned reads as ErrNotFound.
 
 // scanConversation reads one row of conversationColumns.
 func scanConversation(row pgx.Row) (model.Conversation, error) {
 	var c model.Conversation
-	err := row.Scan(&c.ID, &c.SnapshotID, &c.Title, &c.CreatedAt, &c.UpdatedAt)
+	err := row.Scan(&c.ID, &c.SnapshotID, &c.Title, &c.CreatedAt, &c.UpdatedAt, &c.UserID)
 	return c, err
 }
 
@@ -49,7 +52,7 @@ func scanConversation(row pgx.Row) (model.Conversation, error) {
 // while another replica migrates deadlocks. FOR KEY SHARE is the same lock the
 // foreign key would take by itself; taking it first is what costs nothing and
 // removes the cycle.
-func (s *Store) CreateConversation(ctx context.Context, snapshotID, title string) (*model.Conversation, error) {
+func (s *Store) CreateConversation(ctx context.Context, owner, snapshotID, title string) (*model.Conversation, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin: %w", err)
@@ -69,10 +72,10 @@ func (s *Store) CreateConversation(ctx context.Context, snapshotID, title string
 	}
 
 	c, err := scanConversation(tx.QueryRow(ctx,
-		`INSERT INTO conversations (id, snapshot_id, title)
-		 VALUES ($1, $2, $3)
+		`INSERT INTO conversations (id, snapshot_id, title, user_id)
+		 VALUES ($1, $2, $3, NULLIF($4, ''))
 		 RETURNING `+conversationColumns,
-		uuid.NewString(), snapshotID, title))
+		uuid.NewString(), snapshotID, title, owner))
 	if err != nil {
 		return nil, err
 	}
@@ -89,12 +92,12 @@ func (s *Store) CreateConversation(ctx context.Context, snapshotID, title string
 // The row count is bounded for the same reason the transcripts are. A snapshot
 // in use for a month accumulates threads without limit, and every one of them
 // was being returned in a single response to a sidebar that shows twenty.
-func (s *Store) ListConversations(ctx context.Context, snapshotID string, limit int) ([]model.Conversation, error) {
+func (s *Store) ListConversations(ctx context.Context, owner, snapshotID string, limit int) ([]model.Conversation, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT `+conversationColumns+`
-		   FROM conversations WHERE snapshot_id = $1
+		   FROM conversations WHERE snapshot_id = $1 AND ($3 = '' OR user_id = $3)
 		  ORDER BY created_at DESC
-		  LIMIT $2`, snapshotID, limit)
+		  LIMIT $2`, snapshotID, limit, owner)
 	if err != nil {
 		return nil, err
 	}
@@ -112,16 +115,17 @@ func (s *Store) ListConversations(ctx context.Context, snapshotID string, limit 
 }
 
 // GetConversation returns one thread with its full transcript.
-func (s *Store) GetConversation(ctx context.Context, id string) (*model.Conversation, error) {
+func (s *Store) GetConversation(ctx context.Context, owner, id string) (*model.Conversation, error) {
 	c, err := scanConversation(s.pool.QueryRow(ctx,
-		`SELECT `+conversationColumns+` FROM conversations WHERE id = $1`, id))
+		`SELECT `+conversationColumns+` FROM conversations
+		  WHERE id = $1 AND ($2 = '' OR user_id = $2)`, id, owner))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
 		}
 		return nil, err
 	}
-	msgs, err := s.ListMessages(ctx, id)
+	msgs, err := s.listMessages(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -136,11 +140,11 @@ func (s *Store) GetConversation(ctx context.Context, id string) (*model.Conversa
 // The title is the only mutable field a conversation has. The snapshot it was
 // started on is deliberately not updatable here: resolving it once at creation
 // is what stops a transcript changing subject under a later ingest.
-func (s *Store) UpdateConversationTitle(ctx context.Context, id, title string) (*model.Conversation, error) {
+func (s *Store) UpdateConversationTitle(ctx context.Context, owner, id, title string) (*model.Conversation, error) {
 	c, err := scanConversation(s.pool.QueryRow(ctx,
 		`UPDATE conversations SET title = $2, updated_at = now()
-		  WHERE id = $1
-		 RETURNING `+conversationColumns, id, title))
+		  WHERE id = $1 AND ($3 = '' OR user_id = $3)
+		 RETURNING `+conversationColumns, id, title, owner))
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, ErrNotFound
@@ -151,8 +155,9 @@ func (s *Store) UpdateConversationTitle(ctx context.Context, id, title string) (
 }
 
 // DeleteConversation removes a thread and its messages.
-func (s *Store) DeleteConversation(ctx context.Context, id string) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM conversations WHERE id = $1`, id)
+func (s *Store) DeleteConversation(ctx context.Context, owner, id string) error {
+	tag, err := s.pool.Exec(ctx,
+		`DELETE FROM conversations WHERE id = $1 AND ($2 = '' OR user_id = $2)`, id, owner)
 	if err != nil {
 		return err
 	}
@@ -171,10 +176,10 @@ func (s *Store) DeleteConversation(ctx context.Context, id string) error {
 // loser succeeds on a retry because by then the winner's row is visible. One
 // retry is enough for two writers; a conversation with more than two
 // simultaneous writers is not a case this API can produce.
-func (s *Store) AppendMessage(ctx context.Context, conversationID string, m model.Message) (*model.Message, error) {
+func (s *Store) AppendMessage(ctx context.Context, owner, conversationID string, m model.Message) (*model.Message, error) {
 	const attempts = 2
 	for attempt := 1; ; attempt++ {
-		stored, err := s.appendMessageOnce(ctx, conversationID, m)
+		stored, err := s.appendMessageOnce(ctx, owner, conversationID, m)
 		if err == nil {
 			return stored, nil
 		}
@@ -189,7 +194,7 @@ func (s *Store) AppendMessage(ctx context.Context, conversationID string, m mode
 // appendMessageOnce is one attempt at AppendMessage: the insert and the parent
 // row's updated_at in a single transaction, so a stored turn always leaves the
 // conversation looking touched.
-func (s *Store) appendMessageOnce(ctx context.Context, conversationID string, m model.Message) (*model.Message, error) {
+func (s *Store) appendMessageOnce(ctx context.Context, owner, conversationID string, m model.Message) (*model.Message, error) {
 	citations, err := json.Marshal(orEmptyStrings(m.Citations))
 	if err != nil {
 		return nil, err
@@ -208,7 +213,9 @@ func (s *Store) appendMessageOnce(ctx context.Context, conversationID string, m 
 	// The parent is touched first: if it is not there, the transaction rolls
 	// back before a message can be written under a conversation that does not
 	// exist.
-	tag, err := tx.Exec(ctx, `UPDATE conversations SET updated_at = now() WHERE id = $1`, conversationID)
+	tag, err := tx.Exec(ctx,
+		`UPDATE conversations SET updated_at = now() WHERE id = $1 AND ($2 = '' OR user_id = $2)`,
+		conversationID, owner)
 	if err != nil {
 		return nil, err
 	}
@@ -254,7 +261,21 @@ func scanMessage(row pgx.Row) (model.Message, error) {
 }
 
 // ListMessages returns a conversation's turns in the order they were written.
-func (s *Store) ListMessages(ctx context.Context, conversationID string) ([]model.Message, error) {
+func (s *Store) ListMessages(ctx context.Context, owner, conversationID string) ([]model.Message, error) {
+	var one int
+	err := s.pool.QueryRow(ctx,
+		`SELECT 1 FROM conversations WHERE id = $1 AND ($2 = '' OR user_id = $2)`,
+		conversationID, owner).Scan(&one)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return s.listMessages(ctx, conversationID)
+}
+
+func (s *Store) listMessages(ctx context.Context, conversationID string) ([]model.Message, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT `+messageColumns+`
 		   FROM conversation_messages WHERE conversation_id = $1 ORDER BY ordinal ASC`,
