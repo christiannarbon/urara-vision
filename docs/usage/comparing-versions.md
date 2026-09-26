@@ -37,7 +37,7 @@ columns appear in, diagnostics) is ignored.
 | Domain | title, description |
 | Table | kind, grain, update frequency, layer, description, conformed |
 | Column | type, description, primary key, foreign key |
-| Join | cardinality, resolution |
+| Join | cardinality, resolution, target table |
 | Column lineage | notes, derived |
 
 Prose is compared exactly as written, language tags included, so a changed
@@ -52,7 +52,7 @@ Two versions are lined up by name, never by position:
 | Domain | it has the same domain name |
 | Table | it has the same domain and table name |
 | Column | it is in the same table and has the same name |
-| Join | it runs from the same table, to the same table (or the same written reference, if the target could not be found), on the same two columns |
+| Join | it runs from the same table, to the same written table reference, on the same two columns |
 | Column lineage | it is on the same table and column, from the same source table and column |
 
 This is why inserting a column in the middle of a table shows as one added
@@ -61,7 +61,11 @@ two lineage entries, so losing one source shows as one removal.
 
 **A renamed table shows as one removed and one added.** Nothing tries to guess
 that the two are the same table. The same goes for a table moved to another
-domain, and for a renamed column.
+domain, and for a renamed column. Rewriting a join's table reference (adding a
+domain prefix, say) likewise shows as one removed and one added join.
+
+A join whose target table disappears is still the same join: it shows as
+changed, its resolution going to unresolved.
 
 If a document declares the same join twice, both copies are kept and compared,
 so removing the duplicate shows as one removed join.
