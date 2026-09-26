@@ -16,7 +16,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"urara-vision/backend/internal/api"
 	"urara-vision/backend/internal/config"
@@ -66,7 +69,10 @@ func get(t *testing.T, base, path string) map[string]any {
 // nothing behind.
 func ingest(t *testing.T, base string) string {
 	t.Helper()
-	sid, _ := ingestAs(t, base, fixtures.ProjectMetaTOML)
+	// Versions are unique per project, so each ingest gets its own.
+	manifest := strings.Replace(fixtures.ProjectMetaTOML,
+		`version = "0.1.0"`, `version = "`+uuid.NewString()+`"`, 1)
+	sid, _ := ingestAs(t, base, manifest)
 	return sid
 }
 
