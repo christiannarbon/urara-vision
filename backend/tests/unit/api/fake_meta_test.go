@@ -86,6 +86,13 @@ type fakeMeta struct {
 	errVersion     error
 	gotVersionArgs [2]string
 
+	versions        []model.Snapshot
+	errVersions     error
+	deletedSID      string
+	projectDeleted  bool
+	errDelVersion   error
+	deletedVersions [][2]string
+
 	// settings is keyed by setting name; a missing key returns the default.
 	settings      map[string]bool
 	errSetting    error
@@ -295,4 +302,17 @@ func (f *fakeMeta) GetVersion(_ context.Context, slug, version string) (*model.S
 		return nil, postgres.ErrNotFound
 	}
 	return f.version, nil
+}
+
+func (f *fakeMeta) ListVersions(_ context.Context, slug string) ([]model.Snapshot, error) {
+	f.gotProjectSlug = slug
+	return f.versions, f.errVersions
+}
+
+func (f *fakeMeta) DeleteVersion(_ context.Context, slug, version string) (string, bool, error) {
+	f.deletedVersions = append(f.deletedVersions, [2]string{slug, version})
+	if f.errDelVersion != nil {
+		return "", false, f.errDelVersion
+	}
+	return f.deletedSID, f.projectDeleted, nil
 }
