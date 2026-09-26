@@ -8,7 +8,7 @@ src/
   api/client.ts        thin fetch wrapper, one method per route
   api/chat.ts          the chat service, which is a separate origin
   api/types.ts         the response shapes, mirroring the Go structs
-  router.ts            two routes: home, and one project
+  router.ts            home, a project, and one version of it
   views/               HomeView (the project list), ProjectView (the workspace)
   stores/workspace.ts  snapshot, projects, filters, selection
   stores/chat.ts       the transcript and the turn in flight
@@ -27,16 +27,27 @@ src/
 
 ## Routes
 
-Two: `/` lists the projects, `/projects/:project` is the workspace for one, and
-anything else redirects home. The URL names the project by slug, so a view of a
-model can be linked to and reloaded; snapshot IDs stay out of it, since the
-project's newest version is what a link should keep meaning.
+`/` lists the projects, `/projects/:project/versions/:version` is the
+workspace for one version, and anything else redirects home. The URL names the
+project by slug and the version by its label, so a link keeps opening the same
+model after a newer one is imported; snapshot IDs stay out of it.
 
-`ProjectView` watches the route parameter and calls `openProject(slug)`, which
-loads that project's latest snapshot — unless the one already open belongs to
-the same project, so an older version picked from the list survives the
-navigation. An unknown slug leaves the workspace empty and raises the banner in
-`App`; so does a project with no versions yet.
+`/projects/:project` alone opens the latest version and then *replaces* the URL
+with that version's, so Back does not return to the bare link. `ProjectView`
+watches both params and calls `openVersion(slug, version)`, skipping the load
+when the route names the snapshot already on screen, which is what the replace
+does. An unknown project or version leaves the workspace empty and raises its
+own banner in `App`.
+
+The `VersionSwitcher` in the topbar lists the project's versions, newest first
+and marked latest, and pushes the chosen one's route; it is hidden when there is
+only one. The chat thread follows the snapshot, so switching versions starts a
+new one. Next to it, *Import version* uploads a directory as a new version of
+the open project; the server refuses one whose manifest names another project,
+and a version that already exists raises a banner linking to it.
+
+On the home screen each project expands to its `VersionList`, from which a
+version opens or is deleted.
 
 ## The right-hand pane
 
