@@ -3,6 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { api, ApiError } from '../api/client'
+import { Perm } from '../auth/permissions'
 import { useI18n } from '../i18n'
 import { useAuth } from '../stores/auth'
 
@@ -38,6 +39,11 @@ function onKey(e: KeyboardEvent) {
     e.stopPropagation()
     open.value = false
   }
+}
+
+function openUsers() {
+  open.value = false
+  void router.push('/admin/users')
 }
 
 async function logout() {
@@ -129,6 +135,9 @@ async function changePassword() {
     </button>
 
     <div v-if="open" ref="menu" class="menu" role="menu">
+      <button v-if="auth.can(Perm.UserManage)" class="opt" role="menuitem" @click="openUsers">
+        {{ t('auth.users') }}
+      </button>
       <button class="opt" role="menuitem" @click="openDialog">{{ t('auth.password.change') }}</button>
       <button class="opt" role="menuitem" @click="logout">{{ t('auth.logout') }}</button>
     </div>
