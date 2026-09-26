@@ -4,7 +4,7 @@ import { flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { Project, Snapshot } from '../../src/api/types'
+import type { Snapshot } from '../../src/api/types'
 
 vi.mock('../../src/api/client', async () => {
   const actual = await vi.importActual<typeof import('../../src/api/client')>('../../src/api/client')
@@ -12,7 +12,8 @@ vi.mock('../../src/api/client', async () => {
     ...actual,
     api: {
       features: vi.fn(),
-      getProject: vi.fn(),
+      listVersions: vi.fn(),
+      getVersion: vi.fn(),
       getSnapshot: vi.fn(),
       domains: vi.fn(),
       tables: vi.fn(),
@@ -40,19 +41,6 @@ const STATS = {
   diagnostics: 0,
 }
 
-function project(slug: string): Project {
-  return {
-    id: `${slug}-id`,
-    slug,
-    name: slug,
-    description: '',
-    createdAt: '2026-01-01T00:00:00Z',
-    updatedAt: '2026-01-01T00:00:00Z',
-    versionCount: 1,
-    latest: { snapshotId: `${slug}-v1`, version: '0.1.0', createdAt: '2026-01-01T00:00:00Z' },
-  }
-}
-
 function snapshot(sid: string): Snapshot {
   const slug = sid.replace(/-v\d+$/, '')
   return {
@@ -69,9 +57,9 @@ function snapshot(sid: string): Snapshot {
 /** Holds project `slug`'s load open until the returned function is called. */
 function hold(slug: string) {
   const held: { release?: () => void } = {}
-  vi.mocked(api.getProject).mockImplementation(async (s: string) => {
+  vi.mocked(api.getVersion).mockImplementation(async (s: string) => {
     if (s === slug) await new Promise<void>((r) => (held.release = r))
-    return project(s)
+    return snapshot(`${s}-v1`)
   })
   return held
 }
@@ -80,7 +68,10 @@ beforeEach(() => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
   vi.mocked(api.features).mockResolvedValue({ chat: { available: false, enabled: false } })
-  vi.mocked(api.getProject).mockImplementation(async (slug: string) => project(slug))
+  vi.mocked(api.listVersions).mockImplementation(async (slug: string) => ({
+    versions: [snapshot(`${slug}-v1`)],
+  }))
+  vi.mocked(api.getVersion).mockImplementation(async (slug: string) => snapshot(`${slug}-v1`))
   vi.mocked(api.getSnapshot).mockImplementation(async (sid: string) => snapshot(sid))
   vi.mocked(api.domains).mockResolvedValue({ domains: [] })
   vi.mocked(api.tables).mockResolvedValue({ tables: [] })
