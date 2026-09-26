@@ -223,17 +223,23 @@ export const useWorkspace = defineStore('workspace', () => {
     clearError()
     const started = ++opening
     const stale = () => started !== opening
+    // Already on screen (e.g. after an import or the bare-URL replace): only
+    // the list is refreshed, but the bump above still drops older loads.
+    const open =
+      version !== 'latest' &&
+      snapshot.value?.projectSlug === slug &&
+      snapshot.value.project?.project.version === version
     // Settled separately, so an unknown project and an unknown version get
     // their own banners.
     const [list, snap] = await Promise.allSettled([
       api.listVersions(slug),
-      api.getVersion(slug, version),
+      open ? Promise.resolve(snapshot.value!) : api.getVersion(slug, version),
     ])
     if (stale()) return
     if (list.status === 'rejected') return failOpen(list.reason, 'project.notFound', { slug })
     versions.value = list.value.versions
     if (snap.status === 'rejected') return failOpen(snap.reason, 'version.notFound', { version })
-    await loadSnapshot(snap.value.id, stale)
+    if (!open) await loadSnapshot(snap.value.id, stale)
   }
 
   function failOpen(e: unknown, key: MessageKey, params: Record<string, string>) {
