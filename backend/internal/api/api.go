@@ -70,6 +70,7 @@ type MetaStore interface {
 	ListProjects(ctx context.Context) ([]model.ProjectSummary, error)
 	GetProject(ctx context.Context, slug string) (*model.ProjectSummary, error)
 	DeleteProject(ctx context.Context, slug string) ([]string, error)
+	GetVersion(ctx context.Context, slug, version string) (*model.Snapshot, error)
 
 	GetBoolSetting(ctx context.Context, key string, def bool) (bool, error)
 	SetBoolSetting(ctx context.Context, key string, v bool) error
