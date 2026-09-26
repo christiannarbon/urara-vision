@@ -369,6 +369,15 @@ export interface User {
   updatedAt: string
 }
 
+export type Role = 'viewer' | 'creator' | 'admin'
+
+export interface NewUser {
+  username: string
+  displayName: string
+  password: string
+  role: Role
+}
+
 export interface Me {
   user: User | null
   kind: 'user' | 'service' | 'anonymous'

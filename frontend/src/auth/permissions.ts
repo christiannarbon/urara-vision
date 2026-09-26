@@ -7,6 +7,7 @@ export const Perm = {
   VersionDelete: 'version.delete',
   SettingsManage: 'settings.manage',
   UserManage: 'user.manage',
+  UserDelete: 'user.delete',
   ChatUse: 'chat.use',
 } as const
 export type Perm = (typeof Perm)[keyof typeof Perm]
