@@ -9,7 +9,11 @@ import type {
   IngestFile,
   IngestResult,
   JoinPath,
+  AnchorKind,
+  NewNote,
   NewUser,
+  Note,
+  NoteCount,
   Role,
   LineageEntry,
   Me,
@@ -296,5 +300,30 @@ export const api = {
 
   sources(sid: string): Promise<{ sources: SourceTable[] }> {
     return request(`/snapshots/${encodeURIComponent(sid)}/sources`)
+  },
+
+  listNotes(sid: string, anchorKind: AnchorKind, anchorId: string): Promise<{ notes: Note[] }> {
+    return request(`/snapshots/${encodeURIComponent(sid)}/notes${qs({ anchorKind, anchorId })}`)
+  },
+
+  noteCounts(sid: string): Promise<{ counts: NoteCount[] }> {
+    return request(`/snapshots/${encodeURIComponent(sid)}/notes/counts`)
+  },
+
+  createNote(sid: string, body: NewNote): Promise<Note> {
+    return request(`/snapshots/${encodeURIComponent(sid)}/notes`, {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify(body),
+    })
+  },
+
+  /** The server takes exactly one of the two fields. */
+  updateNote(id: string, body: { body: string } | { resolved: boolean }): Promise<Note> {
+    return request(`/notes/${encodeURIComponent(id)}`, { method: 'PATCH', headers: json, body: JSON.stringify(body) })
+  },
+
+  deleteNote(id: string): Promise<void> {
+    return request(`/notes/${encodeURIComponent(id)}`, { method: 'DELETE' })
   },
 }

@@ -383,3 +383,35 @@ export interface Me {
   kind: 'user' | 'service' | 'anonymous'
   permissions: string[]
 }
+
+export type AnchorKind = 'domain' | 'table' | 'column' | 'relationship' | 'lineage'
+
+export interface Note {
+  id: string
+  snapshotId: string
+  parentId?: string
+  anchorKind: AnchorKind
+  anchorId: string
+  body: string
+  authorId?: string
+  authorName: string
+  resolvedAt?: string
+  resolvedByName?: string
+  createdAt: string
+  updatedAt: string
+  replies?: Note[]
+}
+
+export interface NoteCount {
+  anchorKind: AnchorKind
+  anchorId: string
+  open: number
+  resolved: number
+}
+
+export interface NewNote {
+  anchorKind: AnchorKind
+  anchorId: string
+  body: string
+  parentId?: string
+}
