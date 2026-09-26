@@ -184,6 +184,24 @@ class TestEmptyAndErrors:
         fake = FakeClient({f"c{i}": [] for i in range(STATS_CONVERSATION_LIMIT)})
         assert get_stats(fake).json()["conversationsCapped"] is True
 
+    def test_it_counts_only_what_the_backend_lists(self) -> None:
+        # The backend lists only the caller's conversations; another user's is never fetched.
+        class ListsOnlyMine(FakeClient):
+            async def list_conversations(
+                self, snapshot_id: str, limit: int | None = None
+            ) -> list[Conversation]:
+                return [
+                    c
+                    for c in await super().list_conversations(snapshot_id, limit)
+                    if c.id == "mine"
+                ]
+
+        fake = ListsOnlyMine({"mine": turn(meta()), "theirs": turn(meta()) + turn(meta())})
+        body = get_stats(fake).json()
+
+        assert body["conversations"] == 1
+        assert body["turns"] == 1
+
     def test_a_conversation_deleted_mid_read_is_skipped(self) -> None:
         fake = FakeClient({"c1": turn(meta()), "gone": turn(meta())})
         fake.deleted = {"gone"}
