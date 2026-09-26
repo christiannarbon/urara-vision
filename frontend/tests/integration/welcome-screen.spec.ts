@@ -25,7 +25,7 @@ function project(over: Partial<Project> = {}): Project {
 }
 
 function screen(projects: Project[] = []) {
-  return mount(WelcomeScreen, { props: { projects, busy: false, statusMessage: '' } })
+  return mount(WelcomeScreen, { props: { projects, busy: false, statusMessage: '', loadVersions: async () => [] } })
 }
 
 afterEach(() => setLocale('en'))

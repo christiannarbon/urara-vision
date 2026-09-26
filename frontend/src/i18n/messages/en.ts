@@ -69,6 +69,16 @@ export const messages = {
   'projects.delete.named': 'Delete project {name}',
   'projects.delete.title': 'Delete project?',
   'projects.delete.message': 'Delete project {name} and all of its versions? This cannot be undone.',
+  'versions.show': 'Versions',
+  'versions.hide': 'Hide versions',
+  'versions.latest': 'latest',
+  'versions.tables.one': '{n} table',
+  'versions.tables.other': '{n} tables',
+  'versions.delete': 'Delete version',
+  'versions.delete.named': 'Delete version {version}',
+  'versions.delete.title': 'Delete version?',
+  'versions.delete.message': 'Delete version {version} of {name}? This cannot be undone.',
+  'versions.delete.last': 'It is the only version, so the project will be deleted too.',
 
   // Confirmation dialog
   'confirm.cancel': 'Cancel',

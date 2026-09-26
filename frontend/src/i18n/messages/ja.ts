@@ -68,6 +68,16 @@ export const messages: Messages = {
   'projects.delete.named': 'プロジェクト {name} を削除',
   'projects.delete.title': 'プロジェクトを削除しますか？',
   'projects.delete.message': 'プロジェクト {name} とそのすべてのバージョンを削除しますか？この操作は取り消せません。',
+  'versions.show': 'バージョン',
+  'versions.hide': 'バージョンを隠す',
+  'versions.latest': '最新',
+  'versions.tables.one': 'テーブル {n} 件',
+  'versions.tables.other': 'テーブル {n} 件',
+  'versions.delete': 'バージョンを削除',
+  'versions.delete.named': 'バージョン {version} を削除',
+  'versions.delete.title': 'バージョンを削除しますか？',
+  'versions.delete.message': '{name} のバージョン {version} を削除しますか？この操作は取り消せません。',
+  'versions.delete.last': 'これが唯一のバージョンのため、プロジェクトも削除されます。',
 
   // Confirmation dialog
   'confirm.cancel': 'キャンセル',

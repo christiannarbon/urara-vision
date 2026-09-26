@@ -419,6 +419,28 @@ export const useWorkspace = defineStore('workspace', () => {
     }
   }
 
+  /** A project's versions for the home list, or null after reporting why not. */
+  async function listVersions(slug: string): Promise<Snapshot[] | null> {
+    try {
+      return (await api.listVersions(slug)).versions
+    } catch (e) {
+      setError(e)
+      return null
+    }
+  }
+
+  async function removeVersion(slug: string, version: string) {
+    try {
+      await api.deleteVersion(slug, version)
+      if (snapshot.value?.projectSlug === slug && snapshot.value.project?.project.version === version) {
+        clearSnapshot()
+      }
+      await refreshProjects()
+    } catch (e) {
+      setError(e)
+    }
+  }
+
   function dismissError() {
     clearError()
   }
@@ -489,6 +511,8 @@ export const useWorkspace = defineStore('workspace', () => {
     clearSnapshot,
     removeSnapshot,
     removeProject,
+    listVersions,
+    removeVersion,
     acknowledgeParseFailures,
     dismissError,
     clearProjectError,
