@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"urara-vision/backend/internal/auth"
 	"urara-vision/backend/internal/model"
 	"urara-vision/backend/internal/store/postgres"
 )
@@ -91,7 +92,7 @@ func (s *Server) handleCreateConversation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	conv, err := s.pg.CreateConversation(r.Context(), sid, req.Title)
+	conv, err := s.pg.CreateConversation(r.Context(), conversationOwner(r), sid, req.Title)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -113,7 +114,7 @@ func (s *Server) handleListConversations(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	convs, err := s.pg.ListConversations(r.Context(), sid, listLimit(r.URL.Query().Get("limit")))
+	convs, err := s.pg.ListConversations(r.Context(), conversationOwner(r), sid, listLimit(r.URL.Query().Get("limit")))
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -141,6 +142,15 @@ func listLimit(raw string) int {
 	return min(limit, maxConversationLimit)
 }
 
+// conversationOwner scopes a user to their own threads; the service and
+// anonymous callers ("") see all of them.
+func conversationOwner(r *http.Request) string {
+	if p, _ := auth.PrincipalFrom(r.Context()); p.Kind == auth.KindUser {
+		return p.UserID
+	}
+	return ""
+}
+
 // failConversation maps a store error onto a response, naming the conversation
 // rather than leaving a bare "not found" the caller has to interpret.
 func (s *Server) failConversation(w http.ResponseWriter, r *http.Request, err error) {
@@ -153,7 +163,7 @@ func (s *Server) failConversation(w http.ResponseWriter, r *http.Request, err er
 
 // handleGetConversation returns one thread with its full transcript.
 func (s *Server) handleGetConversation(w http.ResponseWriter, r *http.Request) {
-	conv, err := s.pg.GetConversation(r.Context(), chi.URLParam(r, "cid"))
+	conv, err := s.pg.GetConversation(r.Context(), conversationOwner(r), chi.URLParam(r, "cid"))
 	if err != nil {
 		s.failConversation(w, r, err)
 		return
@@ -183,7 +193,7 @@ func (s *Server) handlePatchConversation(w http.ResponseWriter, r *http.Request)
 
 	// An empty title is a legitimate edit -- it clears one -- so it is not
 	// checked for, unlike a message's content.
-	conv, err := s.pg.UpdateConversationTitle(r.Context(), chi.URLParam(r, "cid"), req.Title)
+	conv, err := s.pg.UpdateConversationTitle(r.Context(), conversationOwner(r), chi.URLParam(r, "cid"), req.Title)
 	if err != nil {
 		s.failConversation(w, r, err)
 		return
@@ -193,7 +203,7 @@ func (s *Server) handlePatchConversation(w http.ResponseWriter, r *http.Request)
 
 // handleDeleteConversation removes a thread and its messages.
 func (s *Server) handleDeleteConversation(w http.ResponseWriter, r *http.Request) {
-	if err := s.pg.DeleteConversation(r.Context(), chi.URLParam(r, "cid")); err != nil {
+	if err := s.pg.DeleteConversation(r.Context(), conversationOwner(r), chi.URLParam(r, "cid")); err != nil {
 		s.failConversation(w, r, err)
 		return
 	}
@@ -221,7 +231,7 @@ func (s *Server) handleAppendMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stored, err := s.pg.AppendMessage(r.Context(), chi.URLParam(r, "cid"), model.Message{
+	stored, err := s.pg.AppendMessage(r.Context(), conversationOwner(r), chi.URLParam(r, "cid"), model.Message{
 		Role:      req.Role,
 		Content:   req.Content,
 		Citations: req.Citations,

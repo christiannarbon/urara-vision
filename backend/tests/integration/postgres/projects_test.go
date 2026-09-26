@@ -155,7 +155,7 @@ func TestDeleteProjectRemovesEverything(t *testing.T) {
 
 	first := savedUnder(t, ctx, pg, name, "1", past(0))
 	second := savedUnder(t, ctx, pg, name, "2", past(time.Minute))
-	conv, err := pg.CreateConversation(ctx, first.Snapshot.ID, "about the project")
+	conv, err := pg.CreateConversation(ctx, "", first.Snapshot.ID, "about the project")
 	if err != nil {
 		t.Fatalf("CreateConversation: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestDeleteProjectRemovesEverything(t *testing.T) {
 			t.Errorf("GetTable(%s) = %v, want ErrNotFound", sid, err)
 		}
 	}
-	if _, err := pg.GetConversation(ctx, conv.ID); !errors.Is(err, postgres.ErrNotFound) {
+	if _, err := pg.GetConversation(ctx, "", conv.ID); !errors.Is(err, postgres.ErrNotFound) {
 		t.Errorf("GetConversation = %v, want ErrNotFound", err)
 	}
 	if _, err := pg.GetProject(ctx, first.Snapshot.ProjectSlug); !errors.Is(err, postgres.ErrNotFound) {
