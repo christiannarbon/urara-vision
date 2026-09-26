@@ -111,6 +111,7 @@ var _ MetaStore = (*postgres.Store)(nil)
 // Routes returns the configured router.
 func (s *Server) Routes() http.Handler {
 	r := chi.NewRouter()
+	root := r
 	r.Use(middleware.RequestID)
 	// Not middleware.RealIP: it trusts client-set headers such as True-Client-IP.
 	if s.cfg.TrustedProxyHops > 0 {
@@ -142,6 +143,7 @@ func (s *Server) Routes() http.Handler {
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.Authenticated)
+			r.Use(s.RequirePermission(root))
 
 			r.Post("/auth/logout", s.handleLogout)
 			r.Get("/auth/me", s.handleMe)
