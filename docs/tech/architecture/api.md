@@ -31,6 +31,11 @@ Every read route accepts `latest` in place of a snapshot ID.
 | `GET` | `/api/v1/snapshots/{sid}/search?q=` | Full-text over tables and columns |
 | `GET` | `/api/v1/snapshots/{sid}/diagnostics` | Documentation problems (`?severity=`) |
 | `GET` | `/api/v1/snapshots/{sid}/sources` | Upstream source models by reference count |
+| `GET` | `/api/v1/snapshots/{sid}/notes?anchorKind=&anchorId=` | Notes on one anchor, with replies |
+| `GET` | `/api/v1/snapshots/{sid}/notes/counts` | Open and resolved note counts per anchor |
+| `POST` | `/api/v1/snapshots/{sid}/notes` | Add a note or a reply |
+| `PATCH` | `/api/v1/notes/{id}` | Edit a note's body, or resolve it |
+| `DELETE` | `/api/v1/notes/{id}` | Delete a note and its replies |
 | `POST` | `/api/v1/conversations` | Start a conversation about a snapshot |
 | `GET` | `/api/v1/conversations?snapshot=` | Conversations for a snapshot |
 | `GET` | `/api/v1/conversations/{cid}` | One conversation with its messages |
@@ -276,6 +281,43 @@ Turns are appended one at a time and their order is the database's to decide:
 and empty content is refused; both are `400` naming the problem. `citations` is
 the table IDs an answer drew on, and comes back as `[]` when it drew on none.
 
+## Notes
+
+A note is plain text (at most 4000 characters, trimmed) pinned to one anchor
+in one snapshot. Notes do not carry over to a new version, and go when their
+snapshot is deleted.
+
+| `anchorKind` | `anchorId` |
+|---|---|
+| `domain` | domain ID |
+| `table` | table ID (`domain/table`) |
+| `column` | `<table id>#<column name>` |
+| `relationship` | relationship ID |
+| `lineage` | `<table id>#<column name>`: that column's lineage |
+
+Column and lineage IDs split on the last `#`.
+
+| Route | Permission | Body | Answer |
+|---|---|---|---|
+| `GET …/notes` | `project.view` | — | `{"notes": [...]}` top-level notes oldest first, each with `replies`. Missing `anchorKind` or `anchorId`, or an unknown kind, `400` |
+| `GET …/notes/counts` | `project.view` | — | `{"counts": [{"anchorKind","anchorId","open","resolved"}]}`, top-level notes only |
+| `POST …/notes` | `note.write` | `{anchorKind, anchorId, body, parentId?}` | `201` with the note. An anchor not in the snapshot `400 {"error":"<kind> <id> does not exist in this version"}`; a reply to a reply `400`; an unknown parent, or one in another snapshot, `404 note not found` |
+| `PATCH /notes/{id}` | `note.write` | exactly one of `{body}` or `{resolved}` | `200` with the note. Neither or both `400`; resolving a reply `400` |
+| `DELETE /notes/{id}` | `note.write` | — | `204`; replies go with it |
+
+Authorship is checked in the handler:
+
+- Only a signed-in user can post. The service token without `X-Acting-User`
+  and `AUTH_DISABLED` get `403`, since there is no author.
+- A reply takes its parent's anchor; any anchor in the request is ignored.
+  Replies are one level deep.
+- `authorName` is the display name, or the username when that is empty, at
+  write time. It is kept when the user is deleted.
+- Editing a body or deleting needs the author or `note.moderate`, otherwise
+  `403 {"error":"not allowed"}`. Anyone with `note.write` can resolve or reopen
+  a top-level note.
+- An unknown note is `404 note not found`.
+
 ## Features and settings
 
 Chat has two switches, and `GET /api/v1/features` combines them so no caller
@@ -367,8 +409,8 @@ Failures are JSON with an `error` field and the status the outcome maps to:
 |---|---|
 | `400` | A parameter the handler can see is wrong, a body that will not decode, a missing or invalid `projectmeta.toml`, an ingest whose manifest names a different `project`, a malformed version escape or a delete of version `latest`, no `.md` files, too many files, or an upload past `MAX_UPLOAD_BYTES` |
 | `401` | Not signed in, an expired session, a wrong bearer token, an unknown `X-Acting-User`, or a failed login |
-| `403` | A cookie-authenticated write without `X-Requested-With: urara`, a password change by a non-user, or a caller without the route's permission (`{"error":"not allowed"}`) |
-| `404` | No such snapshot, table or project — including `latest` when nothing has been ingested yet, which says so rather than returning an empty graph |
+| `403` | A cookie-authenticated write without `X-Requested-With: urara`, a password change by a non-user, a note posted by a non-user, editing or deleting another user's note without `note.moderate`, or a caller without the route's permission (`{"error":"not allowed"}`) |
+| `404` | No such snapshot, table, project or note — including `latest` when nothing has been ingested yet, which says so rather than returning an empty graph |
 | `409` | Importing a version the project already has, turning chat on while `CHAT_ENABLED=false`, a taken username, deleting yourself, or removing the last admin |
 | `429` | Too many failed logins or password checks; see `Retry-After` |
 | `500` | Anything the stores report; the detail is logged with the request ID rather than returned |

@@ -19,6 +19,7 @@ import (
 	"urara-vision/backend/internal/config"
 	"urara-vision/backend/internal/graph"
 	"urara-vision/backend/internal/model"
+	"urara-vision/backend/internal/notes"
 	neostore "urara-vision/backend/internal/store/neo4j"
 	"urara-vision/backend/internal/store/postgres"
 )
@@ -86,6 +87,15 @@ type MetaStore interface {
 	ListUsers(ctx context.Context) ([]model.User, error)
 	UpdateUser(ctx context.Context, id string, role, displayName *string) (*model.User, error)
 	DeleteUser(ctx context.Context, id string) error
+
+	AnchorExists(ctx context.Context, sid string, kind notes.Kind, id string) (bool, error)
+	CreateNote(ctx context.Context, n model.Note) (*model.Note, error)
+	GetNote(ctx context.Context, id string) (*model.Note, error)
+	ListNotes(ctx context.Context, sid string, kind notes.Kind, anchorID string) ([]model.Note, error)
+	CountNotes(ctx context.Context, sid string) ([]model.NoteCount, error)
+	UpdateNoteBody(ctx context.Context, id, body string) (*model.Note, error)
+	SetNoteResolved(ctx context.Context, id string, resolved bool, byName string) (*model.Note, error)
+	DeleteNote(ctx context.Context, id string) error
 
 	GetBoolSetting(ctx context.Context, key string, def bool) (bool, error)
 	SetBoolSetting(ctx context.Context, key string, v bool) error
@@ -190,7 +200,13 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/search", s.handleSearch)
 				r.Get("/diagnostics", s.handleDiagnostics)
 				r.Get("/sources", s.handleSources)
+				r.Get("/notes", s.handleListNotes)
+				r.Get("/notes/counts", s.handleNoteCounts)
+				r.Post("/notes", s.handleCreateNote)
 			})
+
+			r.Patch("/notes/{id}", s.handlePatchNote)
+			r.Delete("/notes/{id}", s.handleDeleteNote)
 
 			// Conversations sit outside /snapshots/{sid}: a thread is addressed by
 			// its own ID, and the snapshot it belongs to is fixed when it is

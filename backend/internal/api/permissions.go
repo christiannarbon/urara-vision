@@ -31,6 +31,13 @@ var routePermissions = map[string]auth.Permission{
 	"GET /api/v1/snapshots/{sid}/tables/detail": auth.PermProjectView,
 	"DELETE /api/v1/snapshots/{sid}/":           auth.PermProjectDelete,
 
+	"GET /api/v1/snapshots/{sid}/notes":        auth.PermProjectView,
+	"GET /api/v1/snapshots/{sid}/notes/counts": auth.PermProjectView,
+	"POST /api/v1/snapshots/{sid}/notes":       auth.PermNoteWrite,
+	// Authorship and note.moderate are checked in the handlers.
+	"PATCH /api/v1/notes/{id}":  auth.PermNoteWrite,
+	"DELETE /api/v1/notes/{id}": auth.PermNoteWrite,
+
 	"GET /api/v1/projects":                                 auth.PermProjectView,
 	"GET /api/v1/projects/{project}/":                      auth.PermProjectView,
 	"GET /api/v1/projects/{project}/diff":                  auth.PermProjectView,

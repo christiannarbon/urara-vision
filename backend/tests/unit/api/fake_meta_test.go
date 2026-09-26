@@ -8,10 +8,12 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"urara-vision/backend/internal/model"
+	"urara-vision/backend/internal/notes"
 	"urara-vision/backend/internal/store/postgres"
 )
 
@@ -109,6 +111,7 @@ type fakeMeta struct {
 	settingWrites map[string]bool
 
 	fakeUsers
+	fakeNotes
 }
 
 func (f *fakeMeta) GetBoolSetting(_ context.Context, key string, def bool) (bool, error) {
@@ -491,4 +494,93 @@ func (f *fakeMeta) lastAdmin(id string) bool {
 		}
 	}
 	return n == 1 && f.users[id].Role == "admin"
+}
+
+// fakeNotes is a small in-memory notes store with the real one's reply rules.
+type fakeNotes struct {
+	notes   map[string]*model.Note
+	anchors map[string]bool // "kind:id" that AnchorExists accepts
+	nextID  int
+}
+
+func (f *fakeMeta) addNote(n model.Note) *model.Note {
+	if f.notes == nil {
+		f.notes = map[string]*model.Note{}
+	}
+	f.notes[n.ID] = &n
+	return &n
+}
+
+func (f *fakeMeta) AnchorExists(_ context.Context, _ string, kind notes.Kind, id string) (bool, error) {
+	return f.anchors[string(kind)+":"+id], nil
+}
+
+func (f *fakeMeta) CreateNote(_ context.Context, n model.Note) (*model.Note, error) {
+	if n.ParentID != "" {
+		parent, ok := f.notes[n.ParentID]
+		if !ok || parent.SnapshotID != n.SnapshotID {
+			return nil, postgres.ErrNotFound
+		}
+		if parent.ParentID != "" {
+			return nil, postgres.ErrReplyDepth
+		}
+		n.AnchorKind, n.AnchorID = parent.AnchorKind, parent.AnchorID
+	}
+	f.nextID++
+	n.ID = "n" + strconv.Itoa(f.nextID)
+	return f.addNote(n), nil
+}
+
+func (f *fakeMeta) GetNote(_ context.Context, id string) (*model.Note, error) {
+	if n, ok := f.notes[id]; ok {
+		return n, nil
+	}
+	return nil, postgres.ErrNotFound
+}
+
+func (f *fakeMeta) ListNotes(_ context.Context, sid string, kind notes.Kind, anchorID string) ([]model.Note, error) {
+	out := []model.Note{}
+	for _, n := range f.notes {
+		if n.SnapshotID == sid && n.AnchorKind == string(kind) && n.AnchorID == anchorID && n.ParentID == "" {
+			out = append(out, *n)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeMeta) CountNotes(context.Context, string) ([]model.NoteCount, error) {
+	return []model.NoteCount{}, nil
+}
+
+func (f *fakeMeta) UpdateNoteBody(_ context.Context, id, body string) (*model.Note, error) {
+	n, ok := f.notes[id]
+	if !ok {
+		return nil, postgres.ErrNotFound
+	}
+	n.Body = body
+	return n, nil
+}
+
+func (f *fakeMeta) SetNoteResolved(_ context.Context, id string, resolved bool, byName string) (*model.Note, error) {
+	n, ok := f.notes[id]
+	if !ok {
+		return nil, postgres.ErrNotFound
+	}
+	if n.ParentID != "" {
+		return nil, postgres.ErrReplyDepth
+	}
+	n.ResolvedAt, n.ResolvedByName = nil, ""
+	if resolved {
+		now := time.Now()
+		n.ResolvedAt, n.ResolvedByName = &now, byName
+	}
+	return n, nil
+}
+
+func (f *fakeMeta) DeleteNote(_ context.Context, id string) error {
+	if _, ok := f.notes[id]; !ok {
+		return postgres.ErrNotFound
+	}
+	delete(f.notes, id)
+	return nil
 }

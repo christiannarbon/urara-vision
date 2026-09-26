@@ -200,6 +200,23 @@ func (m *matrix) project(versions ...string) (string, string, []string) {
 	return name, slug, sids
 }
 
+const noteTable = "domain_one/dim_alpha"
+
+// viewerNote posts a table note as the viewer and returns its ID.
+func (m *matrix) viewerNote(sid string) string {
+	m.t.Helper()
+	code, raw, _ := m.send(viewer, http.MethodPost, "/api/v1/snapshots/"+sid+"/notes",
+		map[string]string{"anchorKind": "table", "anchorId": noteTable, "body": "viewer's note"})
+	if code != http.StatusCreated {
+		m.t.Fatalf("viewer note = %d: %s", code, raw)
+	}
+	var n struct{ ID string }
+	if err := json.Unmarshal(raw, &n); err != nil {
+		m.t.Fatal(err)
+	}
+	return n.ID
+}
+
 type request struct {
 	method, path string
 	body         any
@@ -265,6 +282,17 @@ func matrixCases(slug, name string, sids []string) []matrixCase {
 		{"create conversation", auth.PermChatUse, func(*matrix, role) request {
 			return request{http.MethodPost, "/api/v1/conversations", map[string]string{"snapshotId": sids[0]}}
 		}, all(http.StatusCreated)},
+		{"list notes", auth.PermProjectView, get("/api/v1/snapshots/" + sids[0] + "/notes?anchorKind=table&anchorId=" + noteTable), all(http.StatusOK)},
+		{"create note", auth.PermNoteWrite, func(*matrix, role) request {
+			return request{http.MethodPost, "/api/v1/snapshots/" + sids[0] + "/notes",
+				map[string]string{"anchorKind": "table", "anchorId": noteTable, "body": "hello"}}
+		}, all(http.StatusCreated)},
+		{"edit viewer's note", auth.PermNoteModerate, func(m *matrix, _ role) request {
+			return request{http.MethodPatch, "/api/v1/notes/" + m.viewerNote(sids[0]), map[string]string{"body": "edited"}}
+		}, map[role]int{viewer: http.StatusOK, creator: http.StatusForbidden, admin: http.StatusOK}},
+		{"delete viewer's note", auth.PermNoteModerate, func(m *matrix, _ role) request {
+			return request{http.MethodDelete, "/api/v1/notes/" + m.viewerNote(sids[0]), nil}
+		}, map[role]int{viewer: http.StatusNoContent, creator: http.StatusForbidden, admin: http.StatusNoContent}},
 	}
 }
 
@@ -303,6 +331,14 @@ func TestRoleMatrix(t *testing.T) {
 		}
 		if code, raw, _ := m.send(creator, http.MethodGet, "/api/v1/conversations/"+conv.ID, nil); code != http.StatusNotFound {
 			t.Errorf("stranger GET = %d, want 404: %s", code, raw)
+		}
+	})
+
+	t.Run("service cannot author notes", func(t *testing.T) {
+		code, raw, _ := m.send(service, http.MethodPost, "/api/v1/snapshots/"+sids[0]+"/notes",
+			map[string]string{"anchorKind": "table", "anchorId": noteTable, "body": "x"})
+		if code != http.StatusForbidden {
+			t.Errorf("service POST = %d, want 403: %s", code, raw)
 		}
 	})
 
