@@ -92,15 +92,16 @@ type MetaStore interface {
 
 // Server holds the API dependencies.
 type Server struct {
-	cfg    *config.Config
-	pg     MetaStore
-	graphs GraphStore
-	log    *slog.Logger
+	cfg     *config.Config
+	pg      MetaStore
+	graphs  GraphStore
+	log     *slog.Logger
+	limiter *RateLimiter
 }
 
 // New builds a Server.
 func New(cfg *config.Config, pg MetaStore, graphs GraphStore, log *slog.Logger) *Server {
-	return &Server{cfg: cfg, pg: pg, graphs: graphs, log: log}
+	return &Server{cfg: cfg, pg: pg, graphs: graphs, log: log, limiter: NewLoginLimiter(time.Now)}
 }
 
 // Compile-time proof that the real store still satisfies the interface, so a
@@ -132,8 +133,15 @@ func (s *Server) Routes() http.Handler {
 	// Everything under /api/v1 is authenticated except what is mounted outside
 	// the group (login, 13.5). The probes are not: kubelet carries no credential.
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Post("/auth/login", s.handleLogin)
+
 		r.Group(func(r chi.Router) {
 			r.Use(s.Authenticated)
+
+			r.Post("/auth/logout", s.handleLogout)
+			r.Get("/auth/me", s.handleMe)
+			r.Post("/auth/password", s.handlePassword)
+			r.Get("/auth/session", s.handleSession)
 
 			r.Get("/features", s.handleFeatures)
 			r.Patch("/settings", s.handlePatchSettings)
