@@ -14,6 +14,9 @@ Every read route accepts `latest` in place of a snapshot ID.
 | `GET` | `/api/v1/projects` | List projects, most recently updated first |
 | `GET` | `/api/v1/projects/{project}` | One project by slug, with its version count and latest snapshot |
 | `DELETE` | `/api/v1/projects/{project}` | Delete a project and every snapshot in it from both stores |
+| `GET` | `/api/v1/projects/{project}/versions` | A project's snapshots, newest first |
+| `GET` | `/api/v1/projects/{project}/versions/{version}` | One version's snapshot; `latest` is the newest |
+| `DELETE` | `/api/v1/projects/{project}/versions/{version}` | Delete one version from both stores |
 | `GET` | `/api/v1/snapshots/{sid}/context` | Compact catalogue of a whole snapshot |
 | `GET` | `/api/v1/snapshots/{sid}/domains` | Domains, with descriptions and mermaid |
 | `GET` | `/api/v1/snapshots/{sid}/tables` | Table summaries (`?domain=`) |
@@ -123,6 +126,22 @@ and every snapshot in it, then clears each snapshot's graph projection, and
 answers `204`. As with a snapshot delete, Postgres is the record of truth: a
 graph projection that fails to clear is logged, not reported as a failure.
 
+### Versions
+
+A version turns a project slug and a version label into a snapshot; every read
+after that goes through `/snapshots/{sid}/...`.
+
+- `GET …/versions` returns `{"versions": [...]}`, newest import first. An
+  unknown project is `404 {"error": "project not found"}`.
+- `GET …/versions/{version}` returns the snapshot. `latest` is the most recent
+  import. An unknown version is `404 {"error": "version not found"}`.
+- `DELETE …/versions/{version}` removes that snapshot, clears its graph
+  projection, and answers `204`. Deleting the last version removes the project
+  too. `latest` is refused with `400`: name the version you mean.
+
+Percent-encode the label in the path, e.g. `1.0.0%2Bbuild.7` or `2024%20Q1`.
+It is decoded once; a malformed escape is `400`.
+
 ## The graph response
 
 `/graph` returns a node-link shape — `{"nodes": [...], "links": [...]}` — which
@@ -217,7 +236,7 @@ Failures are JSON with an `error` field and the status the outcome maps to:
 
 | Status | When |
 |---|---|
-| `400` | A parameter the handler can see is wrong, a body that will not decode, a missing or invalid `projectmeta.toml`, an ingest whose manifest names a different `project`, no `.md` files, too many files, or an upload past `MAX_UPLOAD_BYTES` |
+| `400` | A parameter the handler can see is wrong, a body that will not decode, a missing or invalid `projectmeta.toml`, an ingest whose manifest names a different `project`, a malformed version escape or a delete of version `latest`, no `.md` files, too many files, or an upload past `MAX_UPLOAD_BYTES` |
 | `401` | `API_TOKEN` is set and the request did not carry it as `Authorization: Bearer <token>` |
 | `404` | No such snapshot, table or project — including `latest` when nothing has been ingested yet, which says so rather than returning an empty graph |
 | `409` | Importing a version the project already has, or turning chat on while `CHAT_ENABLED=false` |
