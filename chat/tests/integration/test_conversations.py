@@ -89,7 +89,7 @@ async def test_cascade_from_snapshot(
     ingest: Callable[[Path, str], str],
     other_demo_set: Path,
     backend_url: str,
-    auth_headers: dict[str, str],
+    admin_headers: dict[str, str],
 ) -> None:
     """Deleting a snapshot takes its conversations with it, across both services."""
     sid = ingest(other_demo_set, "chat-cascade")
@@ -97,7 +97,7 @@ async def test_cascade_from_snapshot(
     # A message, so the cascade has something to cascade through.
     await client.append_message(cid, "user", "does this survive?")
 
-    with httpx.Client(base_url=backend_url, headers=auth_headers, timeout=60.0) as http:
+    with httpx.Client(base_url=backend_url, headers=admin_headers, timeout=60.0) as http:
         assert http.delete(f"/api/v1/snapshots/{sid}").status_code == 204
 
     assert (await chat.get(f"/api/chat/conversations/{cid}")).status_code == 404
