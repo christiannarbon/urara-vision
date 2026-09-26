@@ -1,10 +1,11 @@
 <script setup lang="ts">
 /** First-run screen: pick a documentation directory, or open a project. */
-import { computed, ref } from 'vue'
-import type { Project } from '../api/types'
+import { computed, reactive, ref } from 'vue'
+import type { Project, Snapshot } from '../api/types'
 import type { PickedDirectory } from '../composables/useDirectoryPicker'
 import { supportsNativePicker, useDirectoryPicker } from '../composables/useDirectoryPicker'
 import { useI18n } from '../i18n'
+import VersionList from './VersionList.vue'
 
 const { t, tn, locale } = useI18n()
 
@@ -12,13 +13,41 @@ const props = defineProps<{
   projects: Project[]
   busy: boolean
   statusMessage: string
+  loadVersions: (slug: string) => Promise<Snapshot[] | null>
 }>()
 
 const emit = defineEmits<{
   (e: 'ingest', payload: { name: string; sourceLabel: string; files: { path: string; content: string }[] }): void
   (e: 'open', slug: string): void
   (e: 'delete', slug: string): void
+  (e: 'deleteVersion', slug: string, version: string, remaining: number): void
 }>()
+
+const expanded = reactive(new Set<string>())
+// Fetched once per slug while the screen is up; reload() after a delete.
+const versionsBySlug = reactive(new Map<string, Snapshot[]>())
+
+async function load(slug: string) {
+  const versions = await props.loadVersions(slug)
+  if (versions) versionsBySlug.set(slug, versions)
+}
+
+function toggle(slug: string) {
+  if (expanded.delete(slug)) return
+  expanded.add(slug)
+  if (!versionsBySlug.has(slug)) void load(slug)
+}
+
+async function reload(slug: string) {
+  if (!props.projects.some((p) => p.slug === slug)) {
+    expanded.delete(slug)
+    versionsBySlug.delete(slug)
+    return
+  }
+  await load(slug)
+}
+
+defineExpose({ reload })
 
 const picker = useDirectoryPicker()
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -124,24 +153,40 @@ function formatDate(iso: string): string {
         <h2 class="section-label">{{ t('projects.title') }}</h2>
         <ul>
           <li v-for="p in projects" :key="p.slug">
-            <button class="snap" :disabled="disabled" @click="emit('open', p.slug)">
-              <span class="snap-name">{{ p.name }}</span>
-              <span v-if="p.description" class="muted tiny snap-desc">{{ p.description }}</span>
-              <span class="faint tiny">
-                {{ tn('projects.versions', p.versionCount) }} ·
-                <template v-if="p.latest">{{ t('projects.latest', { version: p.latest.version }) }} ·</template>
-                {{ formatDate(p.updatedAt) }}
-              </span>
-            </button>
-            <button
-              class="btn btn--ghost btn--sm"
+            <div class="row">
+              <button class="snap" :disabled="disabled" @click="emit('open', p.slug)">
+                <span class="snap-name">{{ p.name }}</span>
+                <span v-if="p.description" class="muted tiny snap-desc">{{ p.description }}</span>
+                <span class="faint tiny">
+                  {{ tn('projects.versions', p.versionCount) }} ·
+                  <template v-if="p.latest">{{ t('projects.latest', { version: p.latest.version }) }} ·</template>
+                  {{ formatDate(p.updatedAt) }}
+                </span>
+              </button>
+              <button
+                class="btn btn--ghost btn--sm"
+                :aria-expanded="expanded.has(p.slug)"
+                @click="toggle(p.slug)"
+              >
+                {{ expanded.has(p.slug) ? t('versions.hide') : t('versions.show') }}
+              </button>
+              <button
+                class="btn btn--ghost btn--sm"
+                :disabled="disabled"
+                :title="t('projects.delete.named', { name: p.name })"
+                :aria-label="t('projects.delete.named', { name: p.name })"
+                @click="emit('delete', p.slug)"
+              >
+                ✕
+              </button>
+            </div>
+            <VersionList
+              v-if="expanded.has(p.slug) && versionsBySlug.has(p.slug)"
+              :project="p.slug"
+              :versions="versionsBySlug.get(p.slug) ?? []"
               :disabled="disabled"
-              :title="t('projects.delete.named', { name: p.name })"
-              :aria-label="t('projects.delete.named', { name: p.name })"
-              @click="emit('delete', p.slug)"
-            >
-              ✕
-            </button>
+              @delete="(v) => emit('deleteVersion', p.slug, v, versionsBySlug.get(p.slug)?.length ?? 0)"
+            />
           </li>
         </ul>
       </section>
@@ -213,11 +258,11 @@ function formatDate(iso: string): string {
 
 .recent { margin-top: 28px; }
 .recent ul { list-style: none; margin: 8px 0 0; padding: 0; }
-.recent li {
+.recent li { border-bottom: 1px solid var(--border); }
+.row {
   display: flex;
   align-items: center;
   gap: 6px;
-  border-bottom: 1px solid var(--border);
 }
 .recent li:last-child { border-bottom: none; }
 
