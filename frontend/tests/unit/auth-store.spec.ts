@@ -10,6 +10,9 @@ vi.mock('../../src/api/client', async () => {
 
 const { api, ApiError } = await import('../../src/api/client')
 const { useAuth } = await import('../../src/stores/auth')
+const { useChat } = await import('../../src/stores/chat')
+const { useDiff } = await import('../../src/stores/diff')
+const { useWorkspace } = await import('../../src/stores/workspace')
 const { safeNext } = await import('../../src/router')
 
 beforeEach(() => {
@@ -61,6 +64,24 @@ describe('logout', () => {
     await expect(auth.logout()).rejects.toBeInstanceOf(ApiError)
     expect(auth.signedIn).toBe(false)
     expect(auth.permissions).toEqual([])
+  })
+})
+
+describe('clearing', () => {
+  it('drops what the previous user loaded', async () => {
+    vi.mocked(api.logout).mockResolvedValue(undefined)
+    const workspace = useWorkspace()
+    workspace.projects = [{ slug: 'p' } as never]
+    workspace.snapshots = [{ id: 's' } as never]
+    useChat().conversationId = 'conv-1'
+    useDiff().result = { project: 'p' } as never
+
+    await useAuth().logout()
+
+    expect(workspace.projects).toEqual([])
+    expect(workspace.snapshots).toEqual([])
+    expect(useChat().conversationId).toBeNull()
+    expect(useDiff().result).toBeNull()
   })
 })
 

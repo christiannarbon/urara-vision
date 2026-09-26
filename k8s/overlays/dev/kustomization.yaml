@@ -18,7 +18,8 @@ replicas:
 patches:
   - path: dev-resources.yaml
   - path: dev-chat-adc.yaml
-  # Port-forward is plain HTTP, so the session cookie cannot be Secure.
+  # Port-forward is plain HTTP, so the session cookie cannot be Secure, and it
+  # skips the ingress, so only frontend nginx is in front of the backend.
   - target:
       kind: ConfigMap
       name: relviz-backend-config
@@ -29,6 +30,7 @@ patches:
         name: relviz-backend-config
       data:
         COOKIE_SECURE: "false"
+        TRUSTED_PROXY_HOPS: "1"
   # Set before applying: empty stops the pod at startup, not at the first
   # question.
   - target:

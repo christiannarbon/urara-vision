@@ -20,6 +20,7 @@ Everything the backend needs comes from the environment:
 | `BOOTSTRAP_ADMIN_USERNAME` | _(unset)_ | With the password, creates the first admin while the users table is empty |
 | `BOOTSTRAP_ADMIN_PASSWORD` | _(unset)_ | 12–72 bytes; set both or neither |
 | `AUTH_DISABLED` | `false` | Every request acts as an admin. Local use only |
+| `TRUSTED_PROXY_HOPS` | `1` | Proxies that append to `X-Forwarded-For` in front of the backend; picks the client IP for login rate limits. `0` uses the TCP peer. Compose and the dev overlay use `1`, the base (ingress + nginx) `2` |
 | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:8081` | Unused when served behind the frontend's proxy |
 | `MAX_UPLOAD_BYTES` | `67108864` | 64 MB |
 | `MAX_FILES` | `5000` | |

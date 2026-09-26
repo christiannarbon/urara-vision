@@ -112,7 +112,12 @@ var _ MetaStore = (*postgres.Store)(nil)
 func (s *Server) Routes() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	// Not middleware.RealIP: it trusts client-set headers such as True-Client-IP.
+	if s.cfg.TrustedProxyHops > 0 {
+		r.Use(middleware.ClientIPFromXFFTrustedProxies(s.cfg.TrustedProxyHops))
+	} else {
+		r.Use(middleware.ClientIPFromRemoteAddr)
+	}
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(120 * 1e9))
 	r.Use(cors.Handler(cors.Options{

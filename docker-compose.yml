@@ -59,6 +59,8 @@ services:
       CHAT_ENABLED: "${CHAT_ENABLED:-true}"
       # Plain HTTP on localhost, so the session cookie cannot be Secure.
       COOKIE_SECURE: "false"
+      # Browser → frontend nginx → backend.
+      TRUSTED_PROXY_HOPS: "1"
       # Committed dev values like the token above; created only on an empty users table.
       BOOTSTRAP_ADMIN_USERNAME: "${BOOTSTRAP_ADMIN_USERNAME:-admin}"
       BOOTSTRAP_ADMIN_PASSWORD: "${BOOTSTRAP_ADMIN_PASSWORD:-relviz-dev-admin-password}"

@@ -14,14 +14,21 @@ const name = computed(() => auth.user?.displayName || auth.user?.username || '')
 
 const open = ref(false)
 const root = ref<HTMLElement | null>(null)
+const trigger = ref<HTMLButtonElement | null>(null)
+const menu = ref<HTMLElement | null>(null)
 
 function onDocPointer(e: PointerEvent) {
   if (!root.value?.contains(e.target as Node)) open.value = false
 }
 
-watch(open, (v) => {
-  if (v) document.addEventListener('pointerdown', onDocPointer)
-  else document.removeEventListener('pointerdown', onDocPointer)
+watch(open, async (v) => {
+  if (v) {
+    document.addEventListener('pointerdown', onDocPointer)
+    await nextTick()
+    menu.value?.querySelector<HTMLElement>('[role="menuitem"]')?.focus()
+  } else {
+    document.removeEventListener('pointerdown', onDocPointer)
+  }
 })
 
 onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointer))
@@ -57,10 +64,32 @@ function openDialog() {
   void nextTick(() => dialog.value?.querySelector('input')?.focus())
 }
 
+function closeDialog() {
+  dialogOpen.value = false
+  void nextTick(() => trigger.value?.focus())
+}
+
 function onDialogKey(e: KeyboardEvent) {
   if (e.key === 'Escape') {
     e.stopPropagation()
-    dialogOpen.value = false
+    closeDialog()
+  } else if (e.key === 'Tab') {
+    trapTab(e)
+  }
+}
+
+function trapTab(e: KeyboardEvent) {
+  const items = dialog.value?.querySelectorAll<HTMLElement>('input, button:not([disabled])')
+  if (!items?.length) return
+  const first = items[0]
+  const last = items[items.length - 1]
+  const active = document.activeElement
+  if (e.shiftKey && active === first) {
+    e.preventDefault()
+    last.focus()
+  } else if (!e.shiftKey && active === last) {
+    e.preventDefault()
+    first.focus()
   }
 }
 
@@ -88,6 +117,7 @@ async function changePassword() {
 <template>
   <div v-if="auth.user" ref="root" class="picker" @keydown="onKey">
     <button
+      ref="trigger"
       class="btn btn--ghost btn--sm trigger"
       aria-haspopup="menu"
       :aria-expanded="open"
@@ -98,12 +128,12 @@ async function changePassword() {
       <span class="caret" aria-hidden="true">▾</span>
     </button>
 
-    <div v-if="open" class="menu" role="menu">
+    <div v-if="open" ref="menu" class="menu" role="menu">
       <button class="opt" role="menuitem" @click="openDialog">{{ t('auth.password.change') }}</button>
       <button class="opt" role="menuitem" @click="logout">{{ t('auth.logout') }}</button>
     </div>
 
-    <div v-if="dialogOpen" class="backdrop" @click.self="dialogOpen = false">
+    <div v-if="dialogOpen" class="backdrop" @click.self="closeDialog">
       <form
         ref="dialog"
         class="card"
@@ -132,7 +162,7 @@ async function changePassword() {
           <p v-if="error" class="error" role="alert">{{ error }}</p>
 
           <div class="actions">
-            <button type="button" class="btn btn--ghost btn--sm" @click="dialogOpen = false">
+            <button type="button" class="btn btn--ghost btn--sm" @click="closeDialog">
               {{ t('auth.cancel') }}
             </button>
             <button type="submit" class="btn btn--primary btn--sm" :disabled="!current || !next || !confirm || saving">
@@ -144,7 +174,7 @@ async function changePassword() {
         <template v-else>
           <p class="muted" role="status">{{ t('auth.password.changed') }}</p>
           <div class="actions">
-            <button type="button" class="btn btn--primary btn--sm" @click="dialogOpen = false">
+            <button type="button" class="btn btn--primary btn--sm" @click="closeDialog">
               {{ t('settings.close') }}
             </button>
           </div>

@@ -302,13 +302,14 @@ A request is identified in this order:
 
 A bearer token that does not match is `401`, even alongside a valid cookie.
 
-**CSRF.** Cookie-authenticated `POST`, `PUT`, `PATCH` and `DELETE` must send
-`X-Requested-With: urara`, or they get `403`. Bearer calls are exempt.
+**CSRF.** Cookie-authenticated `POST`, `PUT`, `PATCH` and `DELETE`, and
+`POST /auth/login`, must send `X-Requested-With: urara`, or they get `403`.
+Bearer calls are exempt.
 
 ### Login
 
 ```bash
-curl -c jar -H 'Content-Type: application/json' \
+curl -c jar -H 'Content-Type: application/json' -H 'X-Requested-With: urara' \
   -d '{"username":"admin","password":"..."}' localhost:8080/api/v1/auth/login
 ```
 
@@ -321,7 +322,7 @@ An unknown user and a wrong password both answer `401 {"error":"invalid
 username or password"}`, in the same time.
 
 **Rate limits**, on failures in a sliding 15 minutes: 5 per username and 20 per
-client IP. Past either, `429` with `Retry-After` in seconds. A successful login
+client IP (from `X-Forwarded-For`, see `TRUSTED_PROXY_HOPS`). Past either, `429` with `Retry-After` in seconds. A successful login
 clears the username's count. Limits are per replica.
 
 ### The other routes

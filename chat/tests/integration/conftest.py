@@ -1,6 +1,8 @@
 """Fixtures for the tests that meet a real backend."""
 
 import os
+import re
+import uuid
 from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
 
@@ -37,6 +39,20 @@ def auth_headers(api_token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {api_token}"} if api_token else {}
 
 
+def _demo_files(demo_set: Path) -> list[dict[str, str]]:
+    """The set's documents, with a fresh version so a used database cannot 409."""
+    version = f'version = "chat-it-{uuid.uuid4().hex[:12]}"'
+    files = []
+    for p in sorted(demo_set.rglob("*")):
+        if p.suffix not in {".md", ".toml"}:
+            continue
+        content = p.read_text()
+        if p.name == "projectmeta.toml":
+            content = re.sub(r'^version\s*=\s*".*"$', version, content, count=1, flags=re.M)
+        files.append({"path": str(p.relative_to(demo_set)), "content": content})
+    return files
+
+
 def _ingest(
     demo_set: Path, name: str, backend_url: str, auth_headers: dict[str, str]
 ) -> Iterator[str]:
@@ -47,12 +63,7 @@ def _ingest(
             "repository's docs/ must be mounted at /docs."
         )
 
-    files = [
-        {"path": str(p.relative_to(demo_set)), "content": p.read_text()}
-        for p in sorted(demo_set.rglob("*"))
-        if p.suffix in {".md", ".toml"}
-    ]
-    body = {"name": name, "sourceLabel": "phase02", "files": files}
+    body = {"name": name, "sourceLabel": "phase02", "files": _demo_files(demo_set)}
 
     with httpx.Client(base_url=backend_url, headers=auth_headers, timeout=60.0) as http:
         response = http.post("/api/v1/ingest", json=body)
@@ -120,7 +131,11 @@ def user_id(backend_url: str) -> str:
     username = os.getenv("CHAT_TEST_ADMIN_USERNAME", "admin")
     password = os.getenv("CHAT_TEST_ADMIN_PASSWORD", "relviz-dev-admin-password")
     with httpx.Client(base_url=backend_url, timeout=30.0) as http:
-        login = http.post("/api/v1/auth/login", json={"username": username, "password": password})
+        login = http.post(
+            "/api/v1/auth/login",
+            json={"username": username, "password": password},
+            headers={"X-Requested-With": "urara"},
+        )
         login.raise_for_status()
         me = http.get("/api/v1/auth/me")
         me.raise_for_status()
@@ -143,11 +158,7 @@ def ingest(backend_url: str, auth_headers: dict[str, str]) -> Iterator[Callable[
     created: list[str] = []
 
     def go(demo_set: Path, name: str) -> str:
-        files = [
-            {"path": str(p.relative_to(demo_set)), "content": p.read_text()}
-            for p in sorted(demo_set.rglob("*"))
-            if p.suffix in {".md", ".toml"}
-        ]
+        files = _demo_files(demo_set)
         with httpx.Client(base_url=backend_url, headers=auth_headers, timeout=60.0) as http:
             response = http.post(
                 "/api/v1/ingest",

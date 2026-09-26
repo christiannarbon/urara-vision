@@ -1,6 +1,6 @@
 /** Thin fetch wrapper over the chat service. */
 
-import { ApiError, withSession } from './client'
+import { ApiError, notifyUnauthorized, withSession } from './client'
 import type { MessageKey } from '../i18n'
 
 const CHAT_BASE = (import.meta.env.VITE_CHAT_BASE as string | undefined) ?? '/api/chat'
@@ -48,6 +48,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       0,
       'chat.error.unavailable',
     )
+  }
+
+  // nginx's auth_request answers this when the session has gone.
+  if (res.status === 401) {
+    notifyUnauthorized()
+    throw new ApiError('You are not signed in.', 401, 'error.notSignedIn')
   }
 
   if (!res.ok) {

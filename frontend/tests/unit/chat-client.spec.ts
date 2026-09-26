@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { ApiError } from '../../src/api/client'
+import { ApiError, setOnUnauthorized } from '../../src/api/client'
 import { chatApi } from '../../src/api/chat'
 
 /** The URL and init of every fetch call the client made. */
@@ -131,6 +131,21 @@ describe('credentials', () => {
 })
 
 describe('failures', () => {
+  it('sends the reader to login on a 401', async () => {
+    const onUnauthorized = vi.fn()
+    setOnUnauthorized(onUnauthorized)
+    try {
+      stubFetch({ status: 401 })
+      await expect(chatApi.listConversations('s1')).rejects.toMatchObject({
+        status: 401,
+        key: 'error.notSignedIn',
+      })
+      expect(onUnauthorized).toHaveBeenCalledOnce()
+    } finally {
+      setOnUnauthorized(undefined)
+    }
+  })
+
   it('throws an ApiError carrying the status on a 404', async () => {
     stubFetch({ status: 404, body: { error: 'not found' } })
     const err = await chatApi.getConversation('missing').catch((e: unknown) => e)

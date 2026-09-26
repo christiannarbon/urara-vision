@@ -37,6 +37,13 @@ export function setOnUnauthorized(fn: (() => void) | undefined): void {
   onUnauthorized = fn
 }
 
+export function notifyUnauthorized(): void {
+  onUnauthorized?.()
+}
+
+// A 401 from these means bad credentials, not a lost session.
+const CREDENTIAL_CHECKS = new Set(['/auth/login', '/auth/password'])
+
 const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
 /** Credentials and the CSRF header for every request to our own services. */
@@ -75,9 +82,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     )
   }
 
-  // Login answers 401 for bad credentials; that is not a lost session.
-  if (res.status === 401 && path !== '/auth/login') {
-    onUnauthorized?.()
+  if (res.status === 401 && !CREDENTIAL_CHECKS.has(path)) {
+    notifyUnauthorized()
     throw new ApiError('You are not signed in.', 401, 'error.notSignedIn')
   }
 

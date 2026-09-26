@@ -136,6 +136,8 @@ data:
   # and CORS never applies. The list is kept for direct-access debugging.
   CORS_ORIGINS: "http://localhost:5173,http://localhost:8081"
   COOKIE_SECURE: "true"
+  # Ingress → frontend nginx → backend. Sets which X-Forwarded-For entry is the client.
+  TRUSTED_PROXY_HOPS: "2"
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget

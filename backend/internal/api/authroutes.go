@@ -25,6 +25,10 @@ type loginRequest struct {
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	// Login runs outside authenticate, so it needs its own check against login CSRF.
+	if refuseWithoutCSRFHeader(w, r) {
+		return
+	}
 	var req loginRequest
 	if err := decodeBody(w, r, &req); err != nil {
 		s.badRequest(w, err.Error())
@@ -66,6 +70,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.limiter.Reset(userKey)
+
+	// A new login replaces any session this browser already holds.
+	if old, err := r.Cookie(sessionCookie); err == nil {
+		if err := s.pg.DeleteSession(r.Context(), auth.HashToken(old.Value)); err != nil {
+			s.log.Warn("delete previous session", "error", err, "request_id", middleware.GetReqID(r.Context()))
+		}
+	}
 
 	token, hash, err := auth.NewSessionToken()
 	if err != nil {
@@ -115,14 +126,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	p, _ := auth.PrincipalFrom(r.Context())
-	var u *model.User
-	if p.Kind == auth.KindUser {
-		var err error
-		if u, err = s.pg.GetUser(r.Context(), p.UserID); err != nil {
-			s.fail(w, r, err)
-			return
-		}
-	}
+	u, _ := r.Context().Value(userKey{}).(*model.User)
 	perms := p.Permissions()
 	if perms == nil {
 		perms = []auth.Permission{}
@@ -186,12 +190,18 @@ func (s *Server) handlePassword(w http.ResponseWriter, r *http.Request) {
 // handleSession is for nginx auth_request: 204 with identity headers, or 401.
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	p, _ := auth.PrincipalFrom(r.Context())
-	if p.Kind != auth.KindUser {
+	switch p.Kind {
+	case auth.KindUser:
+		w.Header().Set("X-User-Id", p.UserID)
+		w.Header().Set("X-User-Role", string(p.Role))
+	case auth.KindAnonymous:
+		// AUTH_DISABLED: chat's X-Acting-User is ignored by a backend that is also disabled.
+		w.Header().Set("X-User-Id", "anonymous")
+		w.Header().Set("X-User-Role", string(auth.RoleAdmin))
+	default:
 		unauthorized(w, "not signed in")
 		return
 	}
-	w.Header().Set("X-User-Id", p.UserID)
-	w.Header().Set("X-User-Role", string(p.Role))
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -207,8 +217,11 @@ func sessionHash(r *http.Request) (string, bool) {
 	return auth.HashToken(c.Value), true
 }
 
-// clientIP strips the port; middleware.RealIP has already applied proxy headers.
+// clientIP falls back to the TCP peer for direct calls with a short XFF chain.
 func clientIP(r *http.Request) string {
+	if ip := middleware.GetClientIP(r.Context()); ip != "" {
+		return ip
+	}
 	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
 		return host
 	}

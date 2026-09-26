@@ -4,6 +4,9 @@ import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
 import { api, ApiError } from '../api/client'
+import { useChat } from './chat'
+import { useDiff } from './diff'
+import { useWorkspace } from './workspace'
 import type { Me, User } from '../api/types'
 
 export const useAuth = defineStore('auth', () => {
@@ -19,6 +22,13 @@ export const useAuth = defineStore('auth', () => {
     user.value = null
     kind.value = null
     permissions.value = []
+    // The next user must not see the last one's data.
+    useChat().reset()
+    useDiff().reset()
+    const workspace = useWorkspace()
+    workspace.clearSnapshot()
+    workspace.projects = []
+    workspace.snapshots = []
   }
 
   /** A 401 means signed out; anything else is rethrown after clearing. */
