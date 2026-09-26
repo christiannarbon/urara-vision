@@ -62,6 +62,9 @@ func (s *Store) SaveSnapshot(ctx context.Context, m *model.Model) error {
 		supported,
 		m.Snapshot.Project.Internationalization.Type,
 		projectID); err != nil {
+		if isUniqueViolation(err) {
+			return fmt.Errorf("insert snapshot: %w", ErrConflict)
+		}
 		return fmt.Errorf("insert snapshot: %w", err)
 	}
 	m.Snapshot.ProjectID, m.Snapshot.ProjectSlug = projectID, slug
