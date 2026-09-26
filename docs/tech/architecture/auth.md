@@ -13,7 +13,8 @@ defined here but enforced from Phase 14.
 | `anonymous` | `AUTH_DISABLED=true` | Local use only; acts as an admin |
 
 `X-Acting-User` is ignored without a valid bearer token, and nginx blanks it on
-`/api/`. A wrong bearer token is `401` even alongside a valid cookie. The role
+`/api/`. Under `AUTH_DISABLED`, `/auth/session` reports user `anonymous` with
+role `admin`, so chat still works through nginx. A wrong bearer token is `401` even alongside a valid cookie. The role
 is read from `users` on every request, never from the session or a header.
 
 ## Sessions
@@ -25,8 +26,9 @@ per username and 20 per IP in 15 minutes. See [the API](api.md#authentication)
 for the routes.
 
 **CSRF.** Cookie-authenticated `POST`, `PUT`, `PATCH` and `DELETE` must carry
-`X-Requested-With: urara`; a cross-site form cannot set it. Bearer calls are
-exempt.
+`X-Requested-With: urara`; a cross-site form cannot set it. Login needs it
+too, so another site cannot sign a visitor into its own account. Bearer calls
+are exempt.
 
 ## The first admin
 
