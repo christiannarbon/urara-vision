@@ -39,6 +39,12 @@ def auth_headers(api_token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {api_token}"} if api_token else {}
 
 
+@pytest.fixture(scope="session")
+def admin_headers(auth_headers: dict[str, str], user_id: str) -> dict[str, str]:
+    """The service acting as the bootstrap admin; the service alone may not delete."""
+    return {**auth_headers, "X-Acting-User": user_id}
+
+
 def _demo_files(demo_set: Path) -> list[dict[str, str]]:
     """The set's documents, with a fresh version so a used database cannot 409."""
     version = f'version = "chat-it-{uuid.uuid4().hex[:12]}"'
@@ -54,7 +60,11 @@ def _demo_files(demo_set: Path) -> list[dict[str, str]]:
 
 
 def _ingest(
-    demo_set: Path, name: str, backend_url: str, auth_headers: dict[str, str]
+    demo_set: Path,
+    name: str,
+    backend_url: str,
+    auth_headers: dict[str, str],
+    admin_headers: dict[str, str],
 ) -> Iterator[str]:
     """Ingest one demo set, yield its snapshot ID, and delete it afterwards."""
     if not demo_set.is_dir():
@@ -76,20 +86,26 @@ def _ingest(
             # Deleted whatever happened above, so a failing test does not leave a snapshot behind
             # for the next run to trip over -- and the outcome is checked, because a silent
             # failure here is exactly the leak the teardown exists to prevent.
-            deleted = http.delete(f"/api/v1/snapshots/{sid}")
+            deleted = http.delete(f"/api/v1/snapshots/{sid}", headers=admin_headers)
             assert deleted.status_code in (204, 404), (
                 f"failed to delete test snapshot {sid}: {deleted.status_code} {deleted.text[:200]}"
             )
 
 
 @pytest.fixture(scope="session")
-def snapshot_id(backend_url: str, auth_headers: dict[str, str]) -> Iterator[str]:
-    yield from _ingest(DEMO_SET, "chat-integration", backend_url, auth_headers)
+def snapshot_id(
+    backend_url: str, auth_headers: dict[str, str], admin_headers: dict[str, str]
+) -> Iterator[str]:
+    yield from _ingest(DEMO_SET, "chat-integration", backend_url, auth_headers, admin_headers)
 
 
 @pytest.fixture(scope="session")
-def other_snapshot_id(backend_url: str, auth_headers: dict[str, str]) -> Iterator[str]:
-    yield from _ingest(OTHER_DEMO_SET, "chat-integration-other", backend_url, auth_headers)
+def other_snapshot_id(
+    backend_url: str, auth_headers: dict[str, str], admin_headers: dict[str, str]
+) -> Iterator[str]:
+    yield from _ingest(
+        OTHER_DEMO_SET, "chat-integration-other", backend_url, auth_headers, admin_headers
+    )
 
 
 @pytest.fixture(scope="session")
@@ -153,7 +169,9 @@ async def chat(chat_url: str, user_id: str) -> AsyncIterator[httpx.AsyncClient]:
 
 
 @pytest.fixture
-def ingest(backend_url: str, auth_headers: dict[str, str]) -> Iterator[Callable[[Path, str], str]]:
+def ingest(
+    backend_url: str, auth_headers: dict[str, str], admin_headers: dict[str, str]
+) -> Iterator[Callable[[Path, str], str]]:
     """Ingest a demo set mid-test and clean it up afterwards."""
     created: list[str] = []
 
@@ -171,7 +189,7 @@ def ingest(backend_url: str, auth_headers: dict[str, str]) -> Iterator[Callable[
 
     yield go
 
-    with httpx.Client(base_url=backend_url, headers=auth_headers, timeout=60.0) as http:
+    with httpx.Client(base_url=backend_url, headers=admin_headers, timeout=60.0) as http:
         for sid in created:
             http.delete(f"/api/v1/snapshots/{sid}")
 
