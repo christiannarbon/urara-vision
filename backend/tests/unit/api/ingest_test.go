@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"urara-vision/backend/internal/auth"
 	"urara-vision/backend/internal/model"
 	"urara-vision/backend/internal/projectmeta"
 	"urara-vision/backend/internal/store/postgres"
@@ -288,5 +289,52 @@ func TestIngestVersionCheckErrorIs500(t *testing.T) {
 	}
 	if meta.saved != nil {
 		t.Error("saved despite a failed version check")
+	}
+}
+
+func TestIngestPermissionCreatorNewProject(t *testing.T) {
+	meta := &fakeMeta{}
+	h := roleServer(t, meta)
+
+	rec := asRole(t, h, auth.RoleCreator, http.MethodPost, "/api/v1/ingest", ingestBody(t, "", "", oneDoc()))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body)
+	}
+}
+
+// No markdown would be a 400; a 403 shows the check runs before the upload is parsed.
+func TestIngestPermissionViewerRefusedBeforeParsing(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		meta := &fakeMeta{}
+		if existing {
+			meta.project = &model.ProjectSummary{}
+		}
+		h := roleServer(t, meta)
+
+		rec := asRole(t, h, auth.RoleViewer, http.MethodPost, "/api/v1/ingest", ingestBody(t, "", "", nil))
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("existing=%v: status = %d, want 403: %s", existing, rec.Code, rec.Body)
+		}
+		if meta.saved != nil {
+			t.Error("saved despite 403")
+		}
+	}
+}
+
+func TestIngestPermissionService(t *testing.T) {
+	h := roleServer(t, &fakeMeta{project: &model.ProjectSummary{}})
+
+	rec := asService(h, http.MethodPost, "/api/v1/ingest", ingestBody(t, "", "", oneDoc()))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestIngestPermissionProjectCheckErrorIs500(t *testing.T) {
+	h := newServer(t, &fakeMeta{errProject: errBoom}, &fakeGraphs{})
+
+	rec := do(t, h, http.MethodPost, "/api/v1/ingest", ingestBody(t, "", "", oneDoc()), "application/json")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500: %s", rec.Code, rec.Body)
 	}
 }
