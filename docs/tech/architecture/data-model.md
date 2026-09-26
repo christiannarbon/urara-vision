@@ -68,6 +68,24 @@ step for step (`projects_backfill_test.go` checks the two agree); then whatever
 is left has no usable name and gets a project each, slugged
 `legacy-<first 12 hex of md5(snapshot id)>`, matching `projectmeta.LegacySlug`.
 
+### Versions
+
+A version is a snapshot's `project_version`, and a project holds each one once:
+`snapshots_project_version_key` is unique on `(project_id, project_version)`.
+The ingest checks for an existing version before parsing and answers `409`; the
+index settles two imports racing past that check.
+
+Databases from before the index can hold the same version several times. The
+schema renames them rather than deleting any: within a project and version the
+newest keeps the label and the older ones become `<version>+legacy.1`,
+`+legacy.2`, … in age order. A snapshot with no version is `legacy`. Both steps
+touch only duplicates or empty labels, so they are a no-op once the index
+exists.
+
+`latest` is not stored. It means the most recently imported version
+(`created_at`), not the highest by semver, and works on reads only: deleting by
+alias is refused. Deleting a project's last version deletes the project too.
+
 ### The search index
 
 `tables.search` is a weighted `tsvector`, rebuilt at the end of each ingest
