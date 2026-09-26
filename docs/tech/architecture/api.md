@@ -179,13 +179,15 @@ found"}`; an unknown version is `404 {"error": "version <v> not found"}`.
 - `change` is `added`, `removed` or `changed`. Unchanged things are left out,
   and every list is sorted, so the same pair always gives the same body.
 - Things are matched by name, not by ID or position. Tables match by
-  `domain/table`, columns by name, joins by from-table, to-table (or target ref
-  when unresolved) and both columns, lineage by table, column and source. A
-  renamed table is one removed and one added.
+  `domain/table`, columns by name, joins by from-table, the target reference
+  as written and both columns, lineage by table, column and source. A renamed
+  table is one removed and one added; so is a join whose reference is
+  rewritten.
 - `fields` lists only what differs. Domains compare `title`, `description`;
   tables `kind`, `grain`, `updateFrequency`, `layer`, `description`,
   `conformed`; columns `type`, `description`, `isPk`, `isFk`; joins
-  `cardinality`, `resolution`; lineage `notes`, `derived`.
+  `cardinality`, `resolution`, `toTableId`; lineage `notes`, `derived`. A join
+  whose target stops resolving is `changed`, with `toTableId` going to `""`.
 - A table whose only changes are in its columns is `changed` with empty
   `fields`. Added and removed tables list no columns, and their columns are not
   counted in `summary.columns`.
