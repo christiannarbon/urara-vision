@@ -1,4 +1,10 @@
-import { createRouter, createWebHistory, type Router, type RouterHistory } from 'vue-router'
+import {
+  createRouter,
+  createWebHistory,
+  type RouteLocationNormalized,
+  type Router,
+  type RouterHistory,
+} from 'vue-router'
 
 import { ApiError, setOnForbidden, setOnUnauthorized } from './api/client'
 import { Perm } from './auth/permissions'
@@ -50,6 +56,14 @@ export function safeNext(next: unknown): string {
  * Sign-in guard. Separate from createAppRouter so view tests with a mocked API
  * can build a router without a `/me` call.
  */
+/** True when the route needs a permission the user lacks; shows the banner. */
+function denied(route: RouteLocationNormalized): boolean {
+  const perm = route.meta.permission
+  if (!perm || useAuth().can(perm)) return false
+  useWorkspace().setError(new ApiError('No access to that page.', 403, 'access.denied'))
+  return true
+}
+
 export function installAuthGuard(router: Router) {
   setOnUnauthorized(() => {
     const auth = useAuth()
@@ -61,8 +75,14 @@ export function installAuthGuard(router: Router) {
     }
   })
 
+  // The route guard only runs on navigation, so re-check the page after the reload.
   setOnForbidden(() => {
-    useAuth().load().catch(() => undefined)
+    useAuth()
+      .load()
+      .then(() => {
+        if (denied(router.currentRoute.value)) void router.replace({ name: 'home' })
+      })
+      .catch(() => undefined)
   })
 
   router.beforeEach(async (to) => {
@@ -77,10 +97,6 @@ export function installAuthGuard(router: Router) {
     if (to.name === 'login') return auth.signedIn ? safeNext(to.query.next) : true
     if (to.meta.public) return true
     if (!auth.signedIn) return { name: 'login', query: { next: to.fullPath } }
-    if (to.meta.permission && !auth.can(to.meta.permission)) {
-      useWorkspace().setError(new ApiError('No access to that page.', 403, 'access.denied'))
-      return { name: 'home' }
-    }
-    return true
+    return denied(to) ? { name: 'home' } : true
   })
 }
