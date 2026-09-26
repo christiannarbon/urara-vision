@@ -18,6 +18,17 @@ const { projects, busy, statusMessage } = storeToRefs(store)
 const pendingDelete = ref<Project | null>(null)
 const deleting = ref(false)
 
+const welcome = ref<InstanceType<typeof WelcomeScreen> | null>(null)
+const pendingVersion = ref<{ slug: string; version: string; last: boolean } | null>(null)
+
+const versionMessage = computed(() => {
+  const p = pendingVersion.value
+  if (!p) return ''
+  const name = projects.value.find((x) => x.slug === p.slug)?.name ?? p.slug
+  const msg = t('versions.delete.message', { version: p.version, name })
+  return p.last ? `${msg} ${t('versions.delete.last')}` : msg
+})
+
 const deleteMessage = computed(() =>
   pendingDelete.value ? t('projects.delete.message', { name: pendingDelete.value.name }) : '',
 )
@@ -48,6 +59,23 @@ function onDelete(slug: string) {
   pendingDelete.value = projects.value.find((p) => p.slug === slug) ?? null
 }
 
+function onDeleteVersion(slug: string, version: string, remaining: number) {
+  pendingVersion.value = { slug, version, last: remaining <= 1 }
+}
+
+async function confirmDeleteVersion() {
+  const p = pendingVersion.value
+  if (!p) return
+  deleting.value = true
+  try {
+    await store.removeVersion(p.slug, p.version)
+    await welcome.value?.reload(p.slug)
+  } finally {
+    deleting.value = false
+    pendingVersion.value = null
+  }
+}
+
 async function confirmDelete() {
   if (!pendingDelete.value) return
   deleting.value = true
@@ -63,12 +91,15 @@ async function confirmDelete() {
 <template>
   <main class="main">
     <WelcomeScreen
+      ref="welcome"
       :projects="projects"
       :busy="busy"
       :status-message="statusMessage"
+      :load-versions="store.listVersions"
       @ingest="onIngest"
       @open="onOpen"
       @delete="onDelete"
+      @delete-version="onDeleteVersion"
     />
     <ConfirmDialog
       :open="pendingDelete !== null"
@@ -79,6 +110,16 @@ async function confirmDelete() {
       :busy="deleting"
       @confirm="confirmDelete"
       @cancel="pendingDelete = null"
+    />
+    <ConfirmDialog
+      :open="pendingVersion !== null"
+      :title="t('versions.delete.title')"
+      :message="versionMessage"
+      :confirm-label="t('versions.delete')"
+      danger
+      :busy="deleting"
+      @confirm="confirmDeleteVersion"
+      @cancel="pendingVersion = null"
     />
   </main>
 </template>
