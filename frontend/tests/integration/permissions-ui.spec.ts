@@ -18,6 +18,7 @@ vi.mock('../../src/api/client', async () => {
       listProjects: vi.fn(),
       listVersions: vi.fn(),
       deleteProject: vi.fn(),
+      listUsers: vi.fn(),
       getVersion: vi.fn(),
       getSnapshot: vi.fn(),
       domains: vi.fn(),
@@ -190,6 +191,19 @@ describe('a 403 mid-session', () => {
 })
 
 describe('route permissions', () => {
+  it('leaves a page whose permission was lost mid-session', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":"not allowed"}', { status: 403 })))
+    vi.mocked(api.listUsers).mockImplementation(() => actual.api.listUsers())
+    vi.mocked(api.me).mockResolvedValue({ user: null, kind: 'user', permissions: VIEWER })
+
+    const w = await mountApp('/admin/users', { permissions: ADMIN })
+    mounted.push(w)
+    await flushPromises()
+
+    expect(w.vm.$route.path).toBe('/')
+    expect(w.find('.banner').text()).toContain(en['access.denied'])
+  })
+
   it('sends a user without the permission home with a banner', async () => {
     const w = await mountApp('/', { permissions: VIEWER })
     mounted.push(w)
