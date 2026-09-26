@@ -133,6 +133,19 @@ func TestUsersResetPasswordRevokesSessions(t *testing.T) {
 	}
 }
 
+func TestUsersResetOwnPasswordKeepsThisSession(t *testing.T) {
+	meta := &fakeMeta{}
+	h := roleServer(t, meta)
+
+	if code, body := asAdmin(t, h, http.MethodPost, "/api/v1/users/admin/password", `{"password":"`+goodPassword+`"}`); code != http.StatusNoContent {
+		t.Fatalf("status = %d: %s", code, body)
+	}
+	want := [2]string{"admin", auth.HashToken("admin-token")}
+	if len(meta.sessionsDeletedFor) != 1 || meta.sessionsDeletedFor[0] != want {
+		t.Errorf("DeleteUserSessions calls = %v, want [%v]", meta.sessionsDeletedFor, want)
+	}
+}
+
 func TestUsersDelete(t *testing.T) {
 	meta := &fakeMeta{}
 	h := roleServer(t, meta)
