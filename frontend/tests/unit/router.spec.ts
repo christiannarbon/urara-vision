@@ -38,6 +38,12 @@ describe('routes', () => {
     expect(route.params.project).toBe('jaffle-shop-ddd')
   })
 
+  it('resolves a version path, decoding the version', () => {
+    const route = createAppRouter(createMemoryHistory()).resolve('/projects/p/versions/1.0.0%2Bb')
+    expect(route.name).toBe('version')
+    expect(route.params.version).toBe('1.0.0+b')
+  })
+
   it('redirects an unknown path home', async () => {
     const router = createAppRouter(createMemoryHistory())
     await router.push('/no/such/page')
@@ -48,7 +54,7 @@ describe('routes', () => {
 describe('ProjectView', () => {
   it('opens the project on mount and again when the param changes', async () => {
     const store = useWorkspace()
-    const open = vi.spyOn(store, 'openProject').mockResolvedValue()
+    const open = vi.spyOn(store, 'openVersion').mockResolvedValue()
     const router = createAppRouter(createMemoryHistory())
     await router.push('/projects/first')
     await router.isReady()
@@ -56,17 +62,17 @@ describe('ProjectView', () => {
     const Shell = defineComponent({ render: () => h(RouterView) })
     const w = mount(Shell, { global: { plugins: [router], stubs: { SearchOverlay: true } } })
     await flushPromises()
-    expect(open.mock.calls.map((c) => c[0])).toEqual(['first'])
+    expect(open.mock.calls).toEqual([['first', 'latest']])
 
     await router.push('/projects/second')
     await flushPromises()
-    expect(open.mock.calls.map((c) => c[0])).toEqual(['first', 'second'])
+    expect(open.mock.calls).toEqual([['first', 'latest'], ['second', 'latest']])
     w.unmount()
   })
 
   it('leaves no workspace, banner or overlay behind when the route goes home', async () => {
     const store = useWorkspace()
-    vi.spyOn(store, 'openProject').mockResolvedValue()
+    vi.spyOn(store, 'openVersion').mockResolvedValue()
     const clearBanner = vi.spyOn(store, 'clearProjectError')
     const ui = useUi()
     const router = createAppRouter(createMemoryHistory())
