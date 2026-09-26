@@ -18,6 +18,7 @@ import type {
   Snapshot,
   TableResponse,
   TableSummary,
+  VersionConflict,
 } from '../api/types'
 
 export type ViewMode = 'overview' | 'focus'
@@ -87,6 +88,9 @@ export const useWorkspace = defineStore('workspace', () => {
     errorParams.value = undefined
     errorDetail.value = null
   }
+  /** Set when an import hit a version that already exists. */
+  const conflict = ref<VersionConflict | null>(null)
+
   /** Set once the backend has answered 401. */
   const authRequired = ref(false)
 
@@ -144,17 +148,24 @@ export const useWorkspace = defineStore('workspace', () => {
     }
   }
 
-  /** Uploads a picked directory and loads the resulting snapshot. */
-  async function ingest(name: string, sourceLabel: string, files: IngestFile[]) {
+  /** Uploads a picked directory and loads the resulting snapshot. With
+   *  `project`, a directory of another project is refused. */
+  async function ingest(name: string, sourceLabel: string, files: IngestFile[], project?: string) {
     busy.value = true
     clearError()
+    conflict.value = null
     status.value = { key: 'status.parsing', n: files.length }
     try {
-      const res = await api.ingest(name, sourceLabel, files)
+      const res = await api.ingest(name, sourceLabel, files, project)
       await loadSnapshot(res.snapshot.id)
       return res
     } catch (e) {
-      setError(e)
+      const body = e instanceof ApiError && e.status === 409 ? e.body : undefined
+      if (typeof body?.project === 'string' && typeof body.version === 'string') {
+        conflict.value = { project: body.project, version: body.version }
+      } else {
+        setError(e)
+      }
       return null
     } finally {
       busy.value = false
@@ -412,6 +423,10 @@ export const useWorkspace = defineStore('workspace', () => {
     clearError()
   }
 
+  function dismissConflict() {
+    conflict.value = null
+  }
+
   /** Drops a project or version not-found banner once the route leaves it. The
    *  ingest and token errors share this banner and belong on the home screen. */
   function clearProjectError() {
@@ -453,6 +468,9 @@ export const useWorkspace = defineStore('workspace', () => {
     ingest,
     loadSnapshot,
     authRequired,
+    conflict,
+    dismissConflict,
+    setError,
     openVersion,
     submitApiToken,
     refreshSnapshots,

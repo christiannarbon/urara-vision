@@ -35,7 +35,9 @@ async function onIngest(payload: {
   // The Diagnostics panel stays closed. Findings are advisory and the reader
   // opens them when ready; only a dropped document interrupts, via the notice
   // below the header.
-  if (res) await router.push({ name: 'project', params: { project: res.project.slug } })
+  const version = res?.snapshot.project?.project.version
+  if (res && version) await router.push({ name: 'version', params: { project: res.project.slug, version } })
+  else if (res) await router.push({ name: 'project', params: { project: res.project.slug } })
 }
 
 async function onOpen(slug: string) {
