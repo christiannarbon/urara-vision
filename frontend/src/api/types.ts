@@ -359,3 +359,18 @@ export interface DiffResult {
   relationships: RelationshipDiff[]
   lineage: LineageDiff[]
 }
+
+export interface User {
+  id: string
+  username: string
+  displayName: string
+  role: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Me {
+  user: User | null
+  kind: 'user' | 'service' | 'anonymous'
+  permissions: string[]
+}
