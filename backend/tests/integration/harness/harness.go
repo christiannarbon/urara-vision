@@ -118,6 +118,8 @@ func Neo4j(t *testing.T) *neostore.Store {
 func SavedModel(t *testing.T, ctx context.Context, pg *postgres.Store) *model.Model {
 	t.Helper()
 	m := fixtures.BuildAs(SnapshotID(), fixtures.StarSchema())
+	// Versions are unique per project, and every caller shares the fixture's.
+	m.Snapshot.Project.Project.Version = m.Snapshot.ID
 	if err := pg.SaveSnapshot(ctx, m); err != nil {
 		t.Fatalf("save snapshot: %v", err)
 	}
