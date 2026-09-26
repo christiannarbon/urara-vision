@@ -39,6 +39,7 @@ import {
   type Petal,
   type Point,
 } from '../graph/hull'
+import type { DiffMarks } from '../graph/diff-marks'
 import { resolvePetalOverlaps } from '../graph/petal-overlap'
 import { layoutOptions, supportsGrouping, type LayoutMode } from '../graph/layout'
 import { rolesPresent, roleColor, type RoleSpec } from '../graph/roles'
@@ -64,6 +65,7 @@ const props = defineProps<{
   selectedId: string | null
   loading: boolean
   layoutMode: LayoutMode
+  diffMarks?: DiffMarks | null
 }>()
 
 const emit = defineEmits<{
@@ -154,6 +156,8 @@ function buildStyle(): cytoscape.StylesheetJson {
   const stroke = token('--node-stroke', '#ffffff')
   const accent = token('--accent', '#0f766e')
   const danger = token('--danger', '#b91c1c')
+  const ok = token('--ok', '#15803d')
+  const warning = token('--warning', '#a16207')
 
   return [
     {
@@ -252,6 +256,11 @@ function buildStyle(): cytoscape.StylesheetJson {
       selector: 'edge[resolution = "conformed"]',
       style: { 'line-style': 'dashed', 'line-dash-pattern': [7, 3] },
     },
+    // Diff marks sit in an underlay so role colours and the selection border stay readable.
+    { selector: 'node.diff-added', style: { 'underlay-color': ok, 'underlay-opacity': 0.45, 'underlay-padding': 7 } },
+    { selector: 'node.diff-changed', style: { 'underlay-color': warning, 'underlay-opacity': 0.45, 'underlay-padding': 7 } },
+    { selector: 'edge.diff-added', style: { 'underlay-color': ok, 'underlay-opacity': 0.45, 'underlay-padding': 4 } },
+    { selector: 'edge.diff-changed', style: { 'underlay-color': warning, 'underlay-opacity': 0.45, 'underlay-padding': 4 } },
     // Selection and hover emphasis.
     {
       selector: 'node.is-selected',
@@ -272,6 +281,8 @@ function buildStyle(): cytoscape.StylesheetJson {
       style: { 'line-color': accent, 'target-arrow-color': accent, width: 2.6, opacity: 1, 'z-index': 20 },
     },
     { selector: '.is-dimmed', style: { opacity: 0.12 } },
+    // Underlays ignore element opacity, so a dimmed mark is faded separately.
+    { selector: '.diff-added.is-dimmed, .diff-changed.is-dimmed', style: { 'underlay-opacity': 0.06 } },
     { selector: 'node.is-orphan', style: { 'border-color': danger, 'border-style': 'dotted' } },
   ] as unknown as cytoscape.StylesheetJson
 }
@@ -382,6 +393,17 @@ function applyHighlight() {
   drawHulls()
 }
 
+function applyDiffMarks() {
+  if (!cy) return
+  const marks = props.diffMarks
+  cy.batch(() => {
+    cy!.elements().removeClass('diff-added diff-changed')
+    if (!marks) return
+    for (const [id, mark] of marks.nodes) cy!.getElementById(id).addClass(`diff-${mark}`)
+    for (const [id, mark] of marks.edges) cy!.getElementById(id).addClass(`diff-${mark}`)
+  })
+}
+
 function render(data: GraphData, relayout: boolean) {
   if (!cy) return
   const els = toElements(data)
@@ -397,6 +419,7 @@ function render(data: GraphData, relayout: boolean) {
   if (relayout) {
     runLayout(data.nodes.length)
   }
+  applyDiffMarks()
   applyHighlight()
 }
 
@@ -744,6 +767,8 @@ watch(
   () => props.selectedId,
   () => applyHighlight(),
 )
+
+watch(() => props.diffMarks, applyDiffMarks)
 
 watch(domainSlot, () => drawHulls())
 
