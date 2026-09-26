@@ -3,13 +3,16 @@
 import { useRouter } from 'vue-router'
 
 import type { Snapshot } from '../api/types'
+import { Perm } from '../auth/permissions'
 import { useI18n } from '../i18n'
+import { useAuth } from '../stores/auth'
 
 const props = defineProps<{ project: string; versions: Snapshot[]; disabled?: boolean }>()
 const emit = defineEmits<{ (e: 'delete', version: string): void }>()
 
 const { t, tn, locale } = useI18n()
 const router = useRouter()
+const auth = useAuth()
 
 const label = (v: Snapshot) => v.project?.project.version ?? ''
 
@@ -51,6 +54,7 @@ function formatDate(iso: string): string {
         {{ t('versions.compare') }}
       </button>
       <button
+        v-if="auth.can(Perm.VersionDelete)"
         class="btn btn--ghost btn--sm"
         :disabled="disabled"
         :title="t('versions.delete.named', { version: label(v) })"
