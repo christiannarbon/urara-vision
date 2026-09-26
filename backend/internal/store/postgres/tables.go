@@ -83,32 +83,23 @@ func (s *Store) ListTables(ctx context.Context, sid, domainID string) ([]TableSu
 
 // GetTable returns one table with its columns, lineage and relationships.
 func (s *Store) GetTable(ctx context.Context, sid, tableID string) (*model.Table, error) {
-	var t model.Table
-	var notes, conformedIn []byte
-	err := s.pool.QueryRow(ctx, `
-		SELECT id, name, domain_id, kind, kind_raw, grain, update_frequency, layer,
-		       domain_label, description, notes, relationship_note, doc_path, conformed, conformed_in
-		FROM tables WHERE snapshot_id = $1 AND id = $2`, sid, tableID).
-		Scan(&t.ID, &t.Name, &t.DomainID, &t.Kind, &t.KindRaw, &t.Grain, &t.UpdateFrequency,
-			&t.Layer, &t.DomainLabel, &t.Description, &notes, &t.RelationshipNote,
-			&t.DocPath, &t.Conformed, &conformedIn)
+	var ts tableScan
+	err := s.pool.QueryRow(ctx,
+		`SELECT `+tableCols+` FROM tables WHERE snapshot_id = $1 AND id = $2`, sid, tableID).
+		Scan(ts.dest()...)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, ErrNotFound
 		}
 		return nil, err
 	}
-	t.SnapshotID = sid
-	if err := json.Unmarshal(notes, &t.Notes); err != nil {
-		return nil, err
-	}
-	if err := json.Unmarshal(conformedIn, &t.ConformedIn); err != nil {
+	t, err := ts.table(sid)
+	if err != nil {
 		return nil, err
 	}
 
 	colRows, err := s.pool.Query(ctx,
-		`SELECT name, type, description, ordinal, is_pk, is_fk
-		 FROM columns WHERE snapshot_id = $1 AND table_id = $2 ORDER BY ordinal`, sid, tableID)
+		`SELECT `+columnCols+` FROM columns WHERE snapshot_id = $1 AND table_id = $2 ORDER BY ordinal`, sid, tableID)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +107,7 @@ func (s *Store) GetTable(ctx context.Context, sid, tableID string) (*model.Table
 	t.Columns = []model.Column{}
 	for colRows.Next() {
 		var c model.Column
-		if err := colRows.Scan(&c.Name, &c.Type, &c.Description, &c.Ordinal, &c.IsPK, &c.IsFK); err != nil {
+		if err := colRows.Scan(columnDest(&c)...); err != nil {
 			return nil, err
 		}
 		t.Columns = append(t.Columns, c)
@@ -126,8 +117,7 @@ func (s *Store) GetTable(ctx context.Context, sid, tableID string) (*model.Table
 	}
 
 	linRows, err := s.pool.Query(ctx,
-		`SELECT column_name, source_table, source_column, notes, derived
-		 FROM column_lineage WHERE snapshot_id = $1 AND table_id = $2 ORDER BY ordinal`, sid, tableID)
+		`SELECT `+lineageCols+` FROM column_lineage WHERE snapshot_id = $1 AND table_id = $2 ORDER BY ordinal`, sid, tableID)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +125,7 @@ func (s *Store) GetTable(ctx context.Context, sid, tableID string) (*model.Table
 	t.ColumnLineage = []model.ColumnLineage{}
 	for linRows.Next() {
 		var l model.ColumnLineage
-		if err := linRows.Scan(&l.Column, &l.SourceTable, &l.SourceColumn, &l.Notes, &l.Derived); err != nil {
+		if err := linRows.Scan(lineageDest(&l)...); err != nil {
 			return nil, err
 		}
 		t.ColumnLineage = append(t.ColumnLineage, l)
@@ -145,25 +135,81 @@ func (s *Store) GetTable(ctx context.Context, sid, tableID string) (*model.Table
 	}
 
 	relRows, err := s.pool.Query(ctx,
-		`SELECT id, from_table_id, to_table_id, target_ref, from_column, to_column,
-		        join_key_raw, cardinality, resolution, candidates
-		 FROM relationships WHERE snapshot_id = $1 AND from_table_id = $2 ORDER BY id`, sid, tableID)
+		`SELECT `+relationshipCols+` FROM relationships WHERE snapshot_id = $1 AND from_table_id = $2 ORDER BY id`, sid, tableID)
 	if err != nil {
 		return nil, err
 	}
 	defer relRows.Close()
 	t.Relationships = []model.Relationship{}
 	for relRows.Next() {
-		var r model.Relationship
-		var cands []byte
-		if err := relRows.Scan(&r.ID, &r.FromTableID, &r.ToTableID, &r.TargetRef, &r.FromColumn,
-			&r.ToColumn, &r.JoinKeyRaw, &r.Cardinality, &r.Resolution, &cands); err != nil {
+		var rs relationshipScan
+		if err := relRows.Scan(rs.dest()...); err != nil {
 			return nil, err
 		}
-		if err := json.Unmarshal(cands, &r.Candidates); err != nil {
+		r, err := rs.relationship()
+		if err != nil {
 			return nil, err
 		}
 		t.Relationships = append(t.Relationships, r)
 	}
 	return &t, relRows.Err()
+}
+
+// Shared by GetTable and LoadModel so the two cannot decode rows differently.
+const (
+	tableCols = `id, name, domain_id, kind, kind_raw, grain, update_frequency, layer,
+		domain_label, description, notes, relationship_note, doc_path, conformed, conformed_in`
+	columnCols       = `name, type, description, ordinal, is_pk, is_fk`
+	lineageCols      = `column_name, source_table, source_column, notes, derived`
+	relationshipCols = `id, from_table_id, to_table_id, target_ref, from_column, to_column,
+		join_key_raw, cardinality, resolution, candidates`
+)
+
+type tableScan struct {
+	t                  model.Table
+	notes, conformedIn []byte
+}
+
+func (ts *tableScan) dest() []any {
+	t := &ts.t
+	return []any{&t.ID, &t.Name, &t.DomainID, &t.Kind, &t.KindRaw, &t.Grain, &t.UpdateFrequency,
+		&t.Layer, &t.DomainLabel, &t.Description, &ts.notes, &t.RelationshipNote,
+		&t.DocPath, &t.Conformed, &ts.conformedIn}
+}
+
+func (ts *tableScan) table(sid string) (model.Table, error) {
+	t := ts.t
+	t.SnapshotID = sid
+	if err := json.Unmarshal(ts.notes, &t.Notes); err != nil {
+		return t, err
+	}
+	if err := json.Unmarshal(ts.conformedIn, &t.ConformedIn); err != nil {
+		return t, err
+	}
+	return t, nil
+}
+
+func columnDest(c *model.Column) []any {
+	return []any{&c.Name, &c.Type, &c.Description, &c.Ordinal, &c.IsPK, &c.IsFK}
+}
+
+func lineageDest(l *model.ColumnLineage) []any {
+	return []any{&l.Column, &l.SourceTable, &l.SourceColumn, &l.Notes, &l.Derived}
+}
+
+type relationshipScan struct {
+	r     model.Relationship
+	cands []byte
+}
+
+func (rs *relationshipScan) dest() []any {
+	r := &rs.r
+	return []any{&r.ID, &r.FromTableID, &r.ToTableID, &r.TargetRef, &r.FromColumn,
+		&r.ToColumn, &r.JoinKeyRaw, &r.Cardinality, &r.Resolution, &rs.cands}
+}
+
+func (rs *relationshipScan) relationship() (model.Relationship, error) {
+	r := rs.r
+	err := json.Unmarshal(rs.cands, &r.Candidates)
+	return r, err
 }
