@@ -2,6 +2,7 @@
 
 import type {
   Diagnostic,
+  DiffResult,
   Domain,
   Features,
   GraphData,
@@ -196,6 +197,10 @@ export const api = {
     return request(`/projects/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}`, {
       method: 'DELETE',
     })
+  },
+
+  diff(slug: string, from: string, to: string): Promise<DiffResult> {
+    return request(`/projects/${encodeURIComponent(slug)}/diff${qs({ from, to })}`)
   },
 
   domains(sid: string): Promise<{ domains: Domain[] }> {
