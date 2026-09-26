@@ -268,6 +268,12 @@ export interface IngestResult {
   diagnostics: Diagnostic[]
 }
 
+/** The version a refused import collided with (the 409 body). */
+export interface VersionConflict {
+  project: string
+  version: string
+}
+
 export interface Features {
   chat: {
     /** Deployed: the server's CHAT_ENABLED. */
