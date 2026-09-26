@@ -7,6 +7,11 @@ docker compose up -d --build
 open http://localhost:8081
 ```
 
+Sign in as `admin` / `relviz-dev-admin-password`. Compose creates that account
+on first start; set `BOOTSTRAP_ADMIN_USERNAME` and `BOOTSTRAP_ADMIN_PASSWORD`
+before then to choose your own. Change the password from the name in the top
+right.
+
 Then click **Choose folder…** and select your documentation directory, e.g.
 
 ```
@@ -98,7 +103,9 @@ Run the datastores in containers and the two apps natively for hot reload:
 docker compose up -d postgres neo4j
 
 cd backend && POSTGRES_DSN='postgres://relviz:relviz@localhost:5433/relviz?sslmode=disable' \
-  NEO4J_URI=bolt://localhost:7687 NEO4J_PASSWORD=relviz-dev-password go run ./cmd/server
+  NEO4J_URI=bolt://localhost:7687 NEO4J_PASSWORD=relviz-dev-password COOKIE_SECURE=false \
+  BOOTSTRAP_ADMIN_USERNAME=admin BOOTSTRAP_ADMIN_PASSWORD=relviz-dev-admin-password \
+  go run ./cmd/server
 
 cd frontend && npm install && npm run dev   # http://localhost:5173, proxies /api
 ```
