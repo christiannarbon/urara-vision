@@ -60,13 +60,13 @@ type MetaStore interface {
 	ListDiagnostics(ctx context.Context, sid, severity string) ([]model.Diagnostic, error)
 	ListSourceTables(ctx context.Context, sid string) ([]model.SourceTable, error)
 
-	CreateConversation(ctx context.Context, snapshotID, title string) (*model.Conversation, error)
-	ListConversations(ctx context.Context, snapshotID string, limit int) ([]model.Conversation, error)
-	GetConversation(ctx context.Context, id string) (*model.Conversation, error)
-	UpdateConversationTitle(ctx context.Context, id, title string) (*model.Conversation, error)
-	DeleteConversation(ctx context.Context, id string) error
-	AppendMessage(ctx context.Context, conversationID string, m model.Message) (*model.Message, error)
-	ListMessages(ctx context.Context, conversationID string) ([]model.Message, error)
+	CreateConversation(ctx context.Context, owner, snapshotID, title string) (*model.Conversation, error)
+	ListConversations(ctx context.Context, owner, snapshotID string, limit int) ([]model.Conversation, error)
+	GetConversation(ctx context.Context, owner, id string) (*model.Conversation, error)
+	UpdateConversationTitle(ctx context.Context, owner, id, title string) (*model.Conversation, error)
+	DeleteConversation(ctx context.Context, owner, id string) error
+	AppendMessage(ctx context.Context, owner, conversationID string, m model.Message) (*model.Message, error)
+	ListMessages(ctx context.Context, owner, conversationID string) ([]model.Message, error)
 
 	ListProjects(ctx context.Context) ([]model.ProjectSummary, error)
 	GetProject(ctx context.Context, slug string) (*model.ProjectSummary, error)
