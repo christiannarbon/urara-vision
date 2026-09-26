@@ -1,15 +1,19 @@
 /** Which optional features the server has on. The server owns the state. */
 
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import { api } from '../api/client'
 import type { Features } from '../api/types'
+import { Perm } from '../auth/permissions'
+import { useAuth } from './auth'
 
 export const useFeatures = defineStore('features', () => {
   const chatAvailable = ref(false)
   const chatEnabled = ref(false)
   const loaded = ref(false)
+  /** Switched on and permitted for this user. */
+  const chatUsable = computed(() => chatEnabled.value && useAuth().can(Perm.ChatUse))
 
   function apply(f: Features) {
     chatAvailable.value = f.chat.available
@@ -30,5 +34,5 @@ export const useFeatures = defineStore('features', () => {
     apply(await api.patchSettings({ chatEnabled: v }))
   }
 
-  return { chatAvailable, chatEnabled, loaded, load, setChatEnabled }
+  return { chatAvailable, chatEnabled, chatUsable, loaded, load, setChatEnabled }
 })
