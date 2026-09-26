@@ -11,7 +11,9 @@ import (
 	"strings"
 	"testing"
 
+	"urara-vision/backend/internal/model"
 	"urara-vision/backend/internal/projectmeta"
+	"urara-vision/backend/internal/store/postgres"
 	"urara-vision/backend/tests/fixtures"
 )
 
@@ -223,5 +225,68 @@ func TestIngestFailsWhenTheSaveFails(t *testing.T) {
 	}
 	if graphs.projected != nil {
 		t.Error("the graph was projected even though the snapshot was never stored")
+	}
+}
+
+// fixtureSlug and fixtureVersion are what fixtures.ProjectMetaTOML declares.
+var fixtureSlug, fixtureVersion = projectmeta.Slug(fixtures.ProjectMeta().Project.Name), fixtures.ProjectMeta().Project.Version
+
+func oneDoc() map[string]string {
+	return map[string]string{"d/fact_x.md": fixtures.Doc("fact_x", "Fact", "D", []string{"id"}, "")}
+}
+
+func assertVersionConflict(t *testing.T, code int, body []byte) {
+	t.Helper()
+	if code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409: %s", code, body)
+	}
+	got := decode(t, body)
+	if got["project"] != fixtureSlug || got["version"] != fixtureVersion {
+		t.Errorf("body = %v, want project %q and version %q", got, fixtureSlug, fixtureVersion)
+	}
+	want := "version " + fixtureVersion + " of " + fixtureSlug + " already exists; delete it first to re-import"
+	if got["error"] != want {
+		t.Errorf("error = %q, want %q", got["error"], want)
+	}
+}
+
+func TestIngestExistingVersionIs409BeforeParsing(t *testing.T) {
+	meta := &fakeMeta{version: &model.Snapshot{ID: "existing"}}
+	graphs := &fakeGraphs{}
+	h := newServer(t, meta, graphs)
+
+	rec := do(t, h, http.MethodPost, "/api/v1/ingest", ingestBody(t, "", "", oneDoc()), "application/json")
+	assertVersionConflict(t, rec.Code, rec.Body.Bytes())
+	if meta.gotVersionArgs != [2]string{fixtureSlug, fixtureVersion} {
+		t.Errorf("GetVersion(%v), want (%s, %s)", meta.gotVersionArgs, fixtureSlug, fixtureVersion)
+	}
+	if meta.saved != nil || graphs.projected != nil {
+		t.Error("an existing version was parsed and saved anyway")
+	}
+}
+
+// Two imports raced past the early check; the unique index caught the second.
+func TestIngestSaveConflictIs409(t *testing.T) {
+	meta := &fakeMeta{errSave: postgres.ErrConflict}
+	graphs := &fakeGraphs{}
+	h := newServer(t, meta, graphs)
+
+	rec := do(t, h, http.MethodPost, "/api/v1/ingest", ingestBody(t, "", "", oneDoc()), "application/json")
+	assertVersionConflict(t, rec.Code, rec.Body.Bytes())
+	if graphs.projected != nil {
+		t.Error("a conflicting save was still projected")
+	}
+}
+
+func TestIngestVersionCheckErrorIs500(t *testing.T) {
+	meta := &fakeMeta{errVersion: errBoom}
+	h := newServer(t, meta, &fakeGraphs{})
+
+	rec := do(t, h, http.MethodPost, "/api/v1/ingest", ingestBody(t, "", "", oneDoc()), "application/json")
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500: %s", rec.Code, rec.Body)
+	}
+	if meta.saved != nil {
+		t.Error("saved despite a failed version check")
 	}
 }
