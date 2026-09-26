@@ -70,7 +70,9 @@ type MetaStore interface {
 	ListProjects(ctx context.Context) ([]model.ProjectSummary, error)
 	GetProject(ctx context.Context, slug string) (*model.ProjectSummary, error)
 	DeleteProject(ctx context.Context, slug string) ([]string, error)
+	ListVersions(ctx context.Context, slug string) ([]model.Snapshot, error)
 	GetVersion(ctx context.Context, slug, version string) (*model.Snapshot, error)
+	DeleteVersion(ctx context.Context, slug, version string) (sid string, projectDeleted bool, err error)
 
 	GetBoolSetting(ctx context.Context, key string, def bool) (bool, error)
 	SetBoolSetting(ctx context.Context, key string, v bool) error
@@ -132,6 +134,9 @@ func (s *Server) Routes() http.Handler {
 		r.Route("/projects/{project}", func(r chi.Router) {
 			r.Get("/", s.handleGetProject)
 			r.Delete("/", s.handleDeleteProject)
+			r.Get("/versions", s.handleListVersions)
+			r.Get("/versions/{version}", s.handleGetVersion)
+			r.Delete("/versions/{version}", s.handleDeleteVersion)
 		})
 
 		r.Route("/snapshots/{sid}", func(r chi.Router) {
