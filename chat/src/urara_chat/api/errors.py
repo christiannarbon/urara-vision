@@ -15,6 +15,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from urara_chat.api.features import ChatDisabled
+from urara_chat.api.identity import NotSignedIn
 from urara_chat.api.locks import RETRY_AFTER_SECONDS, TurnsBusy
 from urara_chat.api.middleware import REQUEST_ID_HEADER, request_id_of
 from urara_chat.backend.errors import BackendError, BackendNotFound, BackendRejected
@@ -28,6 +29,7 @@ BACKEND_UNAVAILABLE = "the model store is unavailable"
 PROVIDER_FAILED = "the language model did not answer"
 INTERNAL = "internal error"
 CHAT_TURNED_OFF = "chat is turned off"
+NOT_SIGNED_IN = "not signed in"
 
 
 class ProviderError(Exception):
@@ -95,6 +97,11 @@ async def backend_rejected(request: Request, exc: Exception) -> Response:
         extra={"request_id": request_id_of(request), "backend_error": detail},
     )
     return _body(request, 500, error=INTERNAL)
+
+
+async def not_signed_in(request: Request, exc: Exception) -> Response:
+    """401 -- no identity from nginx; the caller bypassed it or has no session."""
+    return _body(request, 401, error=NOT_SIGNED_IN)
 
 
 async def chat_disabled(request: Request, exc: Exception) -> Response:
@@ -187,6 +194,7 @@ def install_error_handlers(app: FastAPI) -> None:
     app.add_exception_handler(BackendNotFound, backend_not_found)
     app.add_exception_handler(BackendRejected, backend_rejected)
     app.add_exception_handler(TurnsBusy, turns_busy)
+    app.add_exception_handler(NotSignedIn, not_signed_in)
     app.add_exception_handler(ChatDisabled, chat_disabled)
     app.add_exception_handler(ProviderError, provider_failed)
     # asyncio.TimeoutError is this class in 3.11 and later, so the deadline on a turn and a

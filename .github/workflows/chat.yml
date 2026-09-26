@@ -100,6 +100,9 @@ jobs:
       # 24+ characters, or the backend refuses it. Committed on purpose: it
       # authenticates nothing outside this job.
       API_TOKEN: chat-ci-token-not-for-production
+      # The conversation tests log in as this admin to get a user ID for X-User-Id.
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: chat-ci-admin-password
 
     services:
       postgres:
@@ -163,6 +166,10 @@ jobs:
           NEO4J_URI: bolt://localhost:7687
           NEO4J_USER: neo4j
           NEO4J_PASSWORD: relviz-dev-password
+          BOOTSTRAP_ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
+          BOOTSTRAP_ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
+          # Plain HTTP, so a Secure cookie would never be sent back.
+          COOKIE_SECURE: "false"
           BACKEND_BASE_URL: http://localhost:8080
           BACKEND_API_TOKEN: ${{ env.API_TOKEN }}
           LLM_PROVIDER: vertex
@@ -198,6 +205,8 @@ jobs:
           CHAT_TEST_BACKEND_URL: http://localhost:8080
           CHAT_TEST_CHAT_URL: http://localhost:8090
           CHAT_TEST_API_TOKEN: ${{ env.API_TOKEN }}
+          CHAT_TEST_ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
+          CHAT_TEST_ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
         run: |
           uv run --frozen pytest tests/integration -v \
             -m "integration and not llm" --junitxml=report.xml

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 from fastapi import Request
 from pydantic import ValidationError
 
+from urara_chat.api.identity import as_service
 from urara_chat.backend.errors import BackendError
 
 if TYPE_CHECKING:
@@ -47,7 +48,9 @@ class FeatureGate:
 
     async def _refresh(self) -> None:
         try:
-            self._enabled = (await self._client.features()).chat.enabled
+            # The answer is cached for everyone, so it is read as the service.
+            with as_service():
+                self._enabled = (await self._client.features()).chat.enabled
         except (BackendError, ValidationError) as exc:
             # Keep the last answer; with none yet, chat stays allowed.
             log.warning("could not read backend features: %s", exc)

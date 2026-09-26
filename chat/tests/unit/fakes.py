@@ -12,6 +12,10 @@ from langchain_core.outputs import ChatGeneration, ChatResult
 
 from urara_chat.backend.models import SnapshotContext
 
+# What nginx sets after checking the session; unit clients send it by default.
+TEST_USER_ID = "test-user"
+USER_HEADERS = {"X-User-Id": TEST_USER_ID}
+
 
 class FakeChatModel(BaseChatModel):
     """Replays a scripted sequence of replies."""

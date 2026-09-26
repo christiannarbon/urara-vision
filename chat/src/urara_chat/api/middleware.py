@@ -12,6 +12,8 @@ from starlette.datastructures import Headers, MutableHeaders
 from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from urara_chat.api.identity import user_id_var
+
 log = logging.getLogger(__name__)
 
 REQUEST_ID_HEADER = "x-request-id"
@@ -62,6 +64,8 @@ class RequestIDMiddleware:
         request_id = sanitise_request_id(Headers(scope=scope).get(REQUEST_ID_HEADER))
         scope.setdefault("state", {})["request_id"] = request_id
         token = _request_id.set(request_id)
+        # Reset per request so one caller's identity cannot outlive its request.
+        user_token = user_id_var.set(None)
 
         started = time.perf_counter()
         # The status the line reports if nothing is ever sent, which is what happens when the
@@ -81,6 +85,7 @@ class RequestIDMiddleware:
             await self.app(scope, receive, send_with_id)
         finally:
             _request_id.reset(token)
+            user_id_var.reset(user_token)
             log.log(
                 _level_for(str(scope.get("path", "")), status),
                 "request",
