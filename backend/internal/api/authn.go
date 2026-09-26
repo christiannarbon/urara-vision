@@ -13,7 +13,10 @@ import (
 
 const sessionCookie = "urara_session"
 
-type fromCookieKey struct{}
+type (
+	fromCookieKey struct{}
+	userKey       struct{}
+)
 
 // Authenticated chains authenticate and requireCSRFHeader, the order Routes uses.
 func (s *Server) Authenticated(next http.Handler) http.Handler {
@@ -24,7 +27,7 @@ func (s *Server) Authenticated(next http.Handler) http.Handler {
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.AuthDisabled {
-			next.ServeHTTP(w, withPrincipal(r, auth.Principal{Kind: auth.KindAnonymous}, false))
+			next.ServeHTTP(w, withPrincipal(r, auth.Principal{Kind: auth.KindAnonymous}, nil, false))
 			return
 		}
 		// A CORS preflight carries no credentials; the CORS handler answers it.
@@ -51,7 +54,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 				s.fail(w, r, err)
 				return
 			}
-			next.ServeHTTP(w, withPrincipal(r, userPrincipal(u), true))
+			next.ServeHTTP(w, withPrincipal(r, userPrincipal(u), u, true))
 			return
 		}
 
@@ -70,10 +73,10 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 				s.fail(w, r, err)
 				return
 			}
-			next.ServeHTTP(w, withPrincipal(r, userPrincipal(u), false))
+			next.ServeHTTP(w, withPrincipal(r, userPrincipal(u), u, false))
 			return
 		}
-		next.ServeHTTP(w, withPrincipal(r, auth.Principal{Kind: auth.KindService}, false))
+		next.ServeHTTP(w, withPrincipal(r, auth.Principal{Kind: auth.KindService}, nil, false))
 	})
 }
 
@@ -84,8 +87,7 @@ func (s *Server) requireCSRFHeader(next http.Handler) http.Handler {
 		switch r.Method {
 		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
 			fromCookie, _ := r.Context().Value(fromCookieKey{}).(bool)
-			if fromCookie && r.Header.Get("X-Requested-With") != "urara" {
-				writeJSON(w, http.StatusForbidden, map[string]string{"error": "missing X-Requested-With header"})
+			if fromCookie && refuseWithoutCSRFHeader(w, r) {
 				return
 			}
 		}
@@ -93,8 +95,19 @@ func (s *Server) requireCSRFHeader(next http.Handler) http.Handler {
 	})
 }
 
-func withPrincipal(r *http.Request, p auth.Principal, fromCookie bool) *http.Request {
+// refuseWithoutCSRFHeader answers 403 and reports true when the header is missing.
+func refuseWithoutCSRFHeader(w http.ResponseWriter, r *http.Request) bool {
+	if r.Header.Get("X-Requested-With") == "urara" {
+		return false
+	}
+	writeJSON(w, http.StatusForbidden, map[string]string{"error": "missing X-Requested-With header"})
+	return true
+}
+
+// withPrincipal also keeps the loaded user (nil unless KindUser), so handlers need not re-read it.
+func withPrincipal(r *http.Request, p auth.Principal, u *model.User, fromCookie bool) *http.Request {
 	ctx := auth.WithPrincipal(r.Context(), p)
+	ctx = context.WithValue(ctx, userKey{}, u)
 	ctx = context.WithValue(ctx, fromCookieKey{}, fromCookie)
 	return r.WithContext(ctx)
 }
