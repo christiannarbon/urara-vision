@@ -17,6 +17,7 @@ Every read route accepts `latest` in place of a snapshot ID.
 | `GET` | `/api/v1/projects/{project}/versions` | A project's snapshots, newest first |
 | `GET` | `/api/v1/projects/{project}/versions/{version}` | One version's snapshot; `latest` is the newest |
 | `DELETE` | `/api/v1/projects/{project}/versions/{version}` | Delete one version from both stores |
+| `GET` | `/api/v1/projects/{project}/diff?from=&to=` | What changed in the model between two versions |
 | `GET` | `/api/v1/snapshots/{sid}/context` | Compact catalogue of a whole snapshot |
 | `GET` | `/api/v1/snapshots/{sid}/domains` | Domains, with descriptions and mermaid |
 | `GET` | `/api/v1/snapshots/{sid}/tables` | Table summaries (`?domain=`) |
@@ -141,6 +142,53 @@ after that goes through `/snapshots/{sid}/...`.
 
 Percent-encode the label in the path, e.g. `1.0.0%2Bbuild.7` or `2024%20Q1`.
 It is decoded once; a malformed escape is `400`.
+
+### Diff
+
+`GET …/diff?from=<version>&to=<version>` compares two versions of one project.
+Both parameters are required (`400 {"error": "from is required"}`), and
+`latest` works for either. An unknown project is `404 {"error": "project not
+found"}`; an unknown version is `404 {"error": "version <v> not found"}`.
+`from == to` is an empty diff, not an error.
+
+```json
+{
+  "project": "jaffle-shop-ddd",
+  "from": { "version": "0.1.0", "snapshotId": "…" },
+  "to":   { "version": "0.2.0", "snapshotId": "…" },
+  "summary": {
+    "domains":       { "added": 0, "removed": 0, "changed": 1 },
+    "tables":        { "added": 1, "removed": 1, "changed": 2 },
+    "columns":       { "added": 3, "removed": 0, "changed": 1 },
+    "relationships": { "added": 1, "removed": 0, "changed": 0 },
+    "lineage":       { "added": 0, "removed": 2, "changed": 0 }
+  },
+  "domains": [ { "id": "ordering", "change": "changed",
+                 "fields": [ { "field": "description", "from": "…", "to": "…" } ] } ],
+  "tables":  [ { "id": "ordering/fact_orders", "domainId": "ordering", "change": "changed",
+                 "fields": [ { "field": "grain", "from": "…", "to": "…" } ],
+                 "columns": [ { "name": "amount", "change": "changed",
+                                "fields": [ { "field": "type", "from": "int", "to": "numeric" } ] } ] } ],
+  "relationships": [ { "fromTableId": "…", "toTableId": "…", "targetRef": "…",
+                       "fromColumn": "…", "toColumn": "…", "change": "added", "fields": [] } ],
+  "lineage": [ { "tableId": "…", "column": "…", "sourceTable": "…", "sourceColumn": "…",
+                 "change": "removed", "fields": [] } ]
+}
+```
+
+- `change` is `added`, `removed` or `changed`. Unchanged things are left out,
+  and every list is sorted, so the same pair always gives the same body.
+- Things are matched by name, not by ID or position. Tables match by
+  `domain/table`, columns by name, joins by from-table, to-table (or target ref
+  when unresolved) and both columns, lineage by table, column and source. A
+  renamed table is one removed and one added.
+- `fields` lists only what differs. Domains compare `title`, `description`;
+  tables `kind`, `grain`, `updateFrequency`, `layer`, `description`,
+  `conformed`; columns `type`, `description`, `isPk`, `isFk`; joins
+  `cardinality`, `resolution`; lineage `notes`, `derived`.
+- A table whose only changes are in its columns is `changed` with empty
+  `fields`. Added and removed tables list no columns, and their columns are not
+  counted in `summary.columns`.
 
 ## The graph response
 

@@ -1,0 +1,11 @@
+[project]
+name = "diff-fixture"
+version = "1.0.0"
+description = "Two versions of a small model, for testing the version diff"
+
+[internationalization]
+primary = "EN"
+supported = [
+	"EN"
+]
+type = "inline"
