@@ -134,6 +134,8 @@ func Parse(content string) (model.ProjectMeta, error) {
 	}
 	if meta.Project.Version == "" {
 		problems = append(problems, "project.version is required")
+	} else if meta.Project.Version == "latest" {
+		problems = append(problems, `project.version cannot be "latest", which names the newest version`)
 	}
 
 	seen := map[string]bool{}
