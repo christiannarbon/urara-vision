@@ -3,7 +3,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 
-import { api, ApiError, setApiToken } from '../api/client'
+import { api, ApiError } from '../api/client'
 import { splitDiagnostics } from '../diagnostics'
 import { translate as t, translateCount as tn } from '../i18n'
 import { setDocumentLanguages } from '../i18n/content'
@@ -91,9 +91,6 @@ export const useWorkspace = defineStore('workspace', () => {
   /** Set when an import hit a version that already exists. */
   const conflict = ref<VersionConflict | null>(null)
 
-  /** Set once the backend has answered 401. */
-  const authRequired = ref(false)
-
   const hasSnapshot = computed(() => snapshot.value !== null)
 
   /** Documents that were dropped, versus findings about documents that parsed. */
@@ -128,10 +125,8 @@ export const useWorkspace = defineStore('workspace', () => {
   })
 
   function setError(e: unknown) {
+    // Not a failure to report: the client has already sent the reader to login.
     if (e instanceof ApiError && e.status === 401) {
-      // Not a failure to report, a credential to collect. The client has
-      // already dropped the rejected token.
-      authRequired.value = true
       clearError()
       return
     }
@@ -264,20 +259,6 @@ export const useWorkspace = defineStore('workspace', () => {
       return
     }
     setError(e)
-  }
-
-  /** Stores a token and retries the first call the app makes. */
-  async function submitApiToken(token: string): Promise<boolean> {
-    setApiToken(token)
-    authRequired.value = false
-    try {
-      const res = await api.listSnapshots()
-      snapshots.value = res.snapshots
-      return true
-    } catch (e) {
-      setError(e)
-      return false
-    }
   }
 
   async function refreshSnapshots() {
@@ -509,12 +490,10 @@ export const useWorkspace = defineStore('workspace', () => {
     tableById,
     ingest,
     loadSnapshot,
-    authRequired,
     conflict,
     dismissConflict,
     setError,
     openVersion,
-    submitApiToken,
     refreshSnapshots,
     refreshProjects,
     refreshGraph,
