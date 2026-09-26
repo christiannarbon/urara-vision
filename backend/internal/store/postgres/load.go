@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
@@ -12,17 +13,27 @@ import (
 // LoadModel reads a snapshot's domains and every table with its columns,
 // lineage and relationships, in a fixed number of queries.
 func (s *Store) LoadModel(ctx context.Context, sid string) (*model.Model, error) {
-	sn, err := s.GetSnapshot(ctx, sid)
+	// One consistent view, so a concurrent delete cannot leave a half-read model.
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return nil, fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	sn, err := scanSnapshot(tx.QueryRow(ctx, `SELECT `+snapshotColumns+` `+snapshotsFrom+` WHERE s.id = $1`, sid))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
 		return nil, err
 	}
-	domains, err := s.ListDomains(ctx, sid)
+	domains, err := listDomains(ctx, tx, sid)
 	if err != nil {
 		return nil, fmt.Errorf("load domains: %w", err)
 	}
 
 	tables := []model.Table{}
-	err = s.eachRow(ctx, `SELECT `+tableCols+` FROM tables WHERE snapshot_id = $1 ORDER BY id`, sid,
+	err = eachRow(ctx, tx, `SELECT `+tableCols+` FROM tables WHERE snapshot_id = $1 ORDER BY id`, sid,
 		func(rows pgx.Rows) error {
 			var ts tableScan
 			if err := rows.Scan(ts.dest()...); err != nil {
@@ -47,7 +58,7 @@ func (s *Store) LoadModel(ctx context.Context, sid string) (*model.Model, error)
 		byID[tables[i].ID] = &tables[i]
 	}
 
-	err = s.eachRow(ctx,
+	err = eachRow(ctx, tx,
 		`SELECT table_id, `+columnCols+` FROM columns WHERE snapshot_id = $1 ORDER BY table_id, ordinal`, sid,
 		func(rows pgx.Rows) error {
 			var tid string
@@ -64,7 +75,7 @@ func (s *Store) LoadModel(ctx context.Context, sid string) (*model.Model, error)
 		return nil, fmt.Errorf("load columns: %w", err)
 	}
 
-	err = s.eachRow(ctx,
+	err = eachRow(ctx, tx,
 		`SELECT table_id, `+lineageCols+` FROM column_lineage WHERE snapshot_id = $1 ORDER BY table_id, ordinal`, sid,
 		func(rows pgx.Rows) error {
 			var tid string
@@ -81,7 +92,7 @@ func (s *Store) LoadModel(ctx context.Context, sid string) (*model.Model, error)
 		return nil, fmt.Errorf("load lineage: %w", err)
 	}
 
-	err = s.eachRow(ctx,
+	err = eachRow(ctx, tx,
 		`SELECT `+relationshipCols+` FROM relationships WHERE snapshot_id = $1 ORDER BY from_table_id, id`, sid,
 		func(rows pgx.Rows) error {
 			var rs relationshipScan
@@ -102,7 +113,7 @@ func (s *Store) LoadModel(ctx context.Context, sid string) (*model.Model, error)
 	}
 
 	return &model.Model{
-		Snapshot:     *sn,
+		Snapshot:     sn,
 		Domains:      domains,
 		Tables:       tables,
 		SourceTables: []model.SourceTable{},
@@ -110,8 +121,8 @@ func (s *Store) LoadModel(ctx context.Context, sid string) (*model.Model, error)
 	}, nil
 }
 
-func (s *Store) eachRow(ctx context.Context, q, sid string, fn func(pgx.Rows) error) error {
-	rows, err := s.pool.Query(ctx, q, sid)
+func eachRow(ctx context.Context, q querier, sql, sid string, fn func(pgx.Rows) error) error {
+	rows, err := q.Query(ctx, sql, sid)
 	if err != nil {
 		return err
 	}
