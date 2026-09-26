@@ -178,6 +178,20 @@ export const api = {
     return request(`/projects/${encodeURIComponent(slug)}`, { method: 'DELETE' })
   },
 
+  listVersions(slug: string): Promise<{ versions: Snapshot[] }> {
+    return request(`/projects/${encodeURIComponent(slug)}/versions`)
+  },
+
+  getVersion(slug: string, version: string): Promise<Snapshot> {
+    return request(`/projects/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}`)
+  },
+
+  deleteVersion(slug: string, version: string): Promise<void> {
+    return request(`/projects/${encodeURIComponent(slug)}/versions/${encodeURIComponent(version)}`, {
+      method: 'DELETE',
+    })
+  },
+
   domains(sid: string): Promise<{ domains: Domain[] }> {
     return request(`/snapshots/${encodeURIComponent(sid)}/domains`)
   },
