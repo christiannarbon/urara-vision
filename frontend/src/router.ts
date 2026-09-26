@@ -1,11 +1,21 @@
 import { createRouter, createWebHistory, type Router, type RouterHistory } from 'vue-router'
 
-import { setOnUnauthorized } from './api/client'
+import { ApiError, setOnForbidden, setOnUnauthorized } from './api/client'
+import type { Perm } from './auth/permissions'
 import { useAuth } from './stores/auth'
+import { useWorkspace } from './stores/workspace'
 import DiffView from './views/DiffView.vue'
 import HomeView from './views/HomeView.vue'
 import LoginView from './views/LoginView.vue'
 import ProjectView from './views/ProjectView.vue'
+
+declare module 'vue-router' {
+  interface RouteMeta {
+    public?: boolean
+    /** Without it the user is sent home with a banner. */
+    permission?: Perm
+  }
+}
 
 export function createAppRouter(history: RouterHistory = createWebHistory()) {
   return createRouter({
@@ -44,6 +54,10 @@ export function installAuthGuard(router: Router) {
     }
   })
 
+  setOnForbidden(() => {
+    useAuth().load().catch(() => undefined)
+  })
+
   router.beforeEach(async (to) => {
     const auth = useAuth()
     if (!auth.loaded) {
@@ -54,7 +68,12 @@ export function installAuthGuard(router: Router) {
       }
     }
     if (to.name === 'login') return auth.signedIn ? safeNext(to.query.next) : true
-    if (to.meta.public || auth.signedIn) return true
-    return { name: 'login', query: { next: to.fullPath } }
+    if (to.meta.public) return true
+    if (!auth.signedIn) return { name: 'login', query: { next: to.fullPath } }
+    if (to.meta.permission && !auth.can(to.meta.permission)) {
+      useWorkspace().setError(new ApiError('No access to that page.', 403, 'access.denied'))
+      return { name: 'home' }
+    }
+    return true
   })
 }

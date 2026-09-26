@@ -61,6 +61,7 @@ export const messages: Messages = {
 
   // The project list on the entry screen
   'projects.title': 'プロジェクト',
+  'projects.askForImport': 'プロジェクトのインポートは管理者または作成者に依頼してください。',
   'projects.versions.one': 'バージョン {n} 件',
   'projects.versions.other': 'バージョン {n} 件',
   'projects.latest': '最新 {version}',
@@ -161,6 +162,8 @@ export const messages: Messages = {
   'error.unreachable':
     'バックエンドに接続できません。API が起動していて到達可能か確認してください。',
   'error.notSignedIn': 'サインインしていません。',
+  'error.notAllowed': 'この操作は許可されていません。権限が変更された可能性があります。',
+  'access.denied': 'このページへのアクセス権がありません。',
   'error.requestFailed': 'リクエストが失敗しました（ステータス {status}）。',
 
   // The role vocabulary
@@ -389,6 +392,7 @@ export const messages: Messages = {
   'auth.tooMany.other': '試行回数が多すぎます。{n} 分後にもう一度お試しください。',
   'auth.menu': '{name} としてサインイン中',
   'auth.logout': 'ログアウト',
+  'auth.users': 'ユーザー',
   'auth.cancel': 'キャンセル',
   'auth.saving': '保存中…',
   'auth.password.change': 'パスワードを変更',

@@ -6,13 +6,16 @@ import { useRouter } from 'vue-router'
 
 import type { PickedDirectory } from '../composables/useDirectoryPicker'
 import { supportsNativePicker, useDirectoryPicker } from '../composables/useDirectoryPicker'
+import { Perm } from '../auth/permissions'
 import { useI18n } from '../i18n'
+import { useAuth } from '../stores/auth'
 import { useWorkspace } from '../stores/workspace'
 
 const { t } = useI18n()
 const router = useRouter()
 const store = useWorkspace()
 const { snapshot, busy } = storeToRefs(store)
+const auth = useAuth()
 
 const picker = useDirectoryPicker()
 const fileInput = ref<HTMLInputElement | null>(null)
@@ -53,21 +56,23 @@ async function submit(picked: PickedDirectory) {
 </script>
 
 <template>
-  <button
-    class="btn btn--ghost btn--sm"
-    :title="t('import.version.title')"
-    :disabled="busy || picker.reading.value"
-    @click="choose"
-  >
-    {{ t('import.version') }}
-  </button>
-  <input
-    ref="fileInput"
-    type="file"
-    webkitdirectory
-    directory
-    multiple
-    hidden
-    @change="onInput"
-  />
+  <template v-if="auth.can(Perm.VersionImport)">
+    <button
+      class="btn btn--ghost btn--sm"
+      :title="t('import.version.title')"
+      :disabled="busy || picker.reading.value"
+      @click="choose"
+    >
+      {{ t('import.version') }}
+    </button>
+    <input
+      ref="fileInput"
+      type="file"
+      webkitdirectory
+      directory
+      multiple
+      hidden
+      @change="onInput"
+    />
+  </template>
 </template>

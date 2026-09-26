@@ -31,6 +31,7 @@ try {
 }
 
 let onUnauthorized: (() => void) | undefined
+let onForbidden: (() => void) | undefined
 
 /** Registered by the auth store; avoids an import cycle. */
 export function setOnUnauthorized(fn: (() => void) | undefined): void {
@@ -39,6 +40,11 @@ export function setOnUnauthorized(fn: (() => void) | undefined): void {
 
 export function notifyUnauthorized(): void {
   onUnauthorized?.()
+}
+
+/** Called on a 403, which means the caller's permissions changed since `/me`. */
+export function setOnForbidden(fn: (() => void) | undefined): void {
+  onForbidden = fn
 }
 
 // A 401 from these means bad credentials, not a lost session.
@@ -96,6 +102,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       if (typeof body?.error === 'string') detail = body.error
     } catch {
       // Response was not JSON; the status text is the best available message.
+    }
+    if (res.status === 403) {
+      onForbidden?.()
+      throw new ApiError(detail || 'Not allowed.', 403, 'error.notAllowed', body, res.headers)
     }
     // A key only when the server said nothing usable; its own error text is
     // prose this client has no translation for.

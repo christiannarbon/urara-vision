@@ -50,7 +50,7 @@ describe('can', () => {
     vi.mocked(api.me).mockResolvedValue({ user: null, kind: 'service', permissions: ['project.view', 'chat.use'] })
     const auth = useAuth()
     await auth.load()
-    expect(auth.can('project.view')).toBe(true)
+    expect(auth.can('chat.use')).toBe(true)
     expect(auth.can('project.delete')).toBe(false)
   })
 })

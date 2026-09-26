@@ -5,6 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { seedAuth } from '../helpers/mountApp'
 import type { Project } from '../../src/api/types'
 
 vi.mock('../../src/api/client', async () => {
@@ -51,6 +52,7 @@ function rowOf(w: Awaited<ReturnType<typeof home>>['w'], slug: string) {
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  seedAuth(true)
   vi.clearAllMocks()
   vi.mocked(api.listProjects).mockResolvedValue({ projects: PROJECTS })
   vi.mocked(api.deleteProject).mockResolvedValue(undefined)

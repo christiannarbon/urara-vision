@@ -1,14 +1,21 @@
 /** The entry screen, mounted, in both languages. */
 
 import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import WelcomeScreen from '../../src/components/WelcomeScreen.vue'
 import type { Project } from '../../src/api/types'
 import { setLocale } from '../../src/i18n'
 import { messages as en } from '../../src/i18n/messages/en'
 import { messages as ja } from '../../src/i18n/messages/ja'
+import { seedAuth } from '../helpers/mountApp'
+
+beforeEach(() => {
+  setActivePinia(createPinia())
+  seedAuth(true)
+})
 
 function project(over: Partial<Project> = {}): Project {
   return {

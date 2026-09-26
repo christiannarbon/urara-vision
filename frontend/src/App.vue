@@ -10,6 +10,7 @@ import SettingsDialog from './components/SettingsDialog.vue'
 import ThemePicker from './components/ThemePicker.vue'
 import UserMenu from './components/UserMenu.vue'
 import VersionSwitcher from './components/VersionSwitcher.vue'
+import { Perm } from './auth/permissions'
 import { useI18n } from './i18n'
 import { useAuth } from './stores/auth'
 import { useChat } from './stores/chat'
@@ -42,6 +43,7 @@ const {
   conflict,
 } = storeToRefs(store)
 
+const auth = useAuth()
 const ui = useUi()
 const { searchOpen, diagnosticsOpen } = storeToRefs(ui)
 
@@ -49,7 +51,8 @@ const chat = useChat()
 const { open: chatOpen } = storeToRefs(chat)
 
 const features = useFeatures()
-const { chatEnabled } = storeToRefs(features)
+const { chatEnabled: featureOn } = storeToRefs(features)
+const chatEnabled = computed(() => featureOn.value && auth.can(Perm.ChatUse))
 const settingsOpen = ref(false)
 const settingsButton = ref<HTMLButtonElement | null>(null)
 
@@ -60,6 +63,11 @@ function closeSettings() {
 
 watch(chatEnabled, (on) => {
   if (!on) chat.closePanel()
+})
+
+const canManageSettings = computed(() => auth.can(Perm.SettingsManage))
+watch(canManageSettings, (on) => {
+  if (!on) settingsOpen.value = false
 })
 
 /** The Diagnostics button carries a marker rather than a count: the number of
@@ -90,7 +98,6 @@ watch(() => route.fullPath, () => store.dismissConflict())
 const atHome = computed(() => route.name === 'home')
 
 // Features need a session, so they load once someone is signed in.
-const auth = useAuth()
 watch(
   () => auth.signedIn,
   (on) => {
@@ -193,6 +200,7 @@ function backToPicker() {
       <LanguagePicker />
       <ThemePicker />
       <button
+        v-if="canManageSettings"
         ref="settingsButton"
         class="btn btn--ghost btn--sm"
         aria-haspopup="dialog"
@@ -243,7 +251,7 @@ function backToPicker() {
 
     <RouterView />
 
-    <SettingsDialog v-if="settingsOpen" @close="closeSettings" />
+    <SettingsDialog v-if="settingsOpen && canManageSettings" @close="closeSettings" />
   </div>
 </template>
 

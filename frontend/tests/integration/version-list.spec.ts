@@ -5,6 +5,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory } from 'vue-router'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { seedAuth } from '../helpers/mountApp'
 import type { Project, Snapshot } from '../../src/api/types'
 
 vi.mock('../../src/api/client', async () => {
@@ -81,6 +82,7 @@ async function expand(w: Wrapper, slug: string) {
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  seedAuth(true)
   vi.clearAllMocks()
   vi.mocked(api.listProjects).mockResolvedValue({ projects: [project('jaffle', 2), project('sakila', 1)] })
   vi.mocked(api.listVersions).mockImplementation(async (slug: string) => ({ versions: VERSIONS[slug] }))
