@@ -1,16 +1,17 @@
 <script setup lang="ts">
-/** Application shell: token gate, topbar, banners and the routed view. */
+/** Application shell: topbar, banners and the routed view. */
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch, watchEffect } from 'vue'
 import { storeToRefs } from 'pinia'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 
-import ApiTokenGate from './components/ApiTokenGate.vue'
 import ImportVersionButton from './components/ImportVersionButton.vue'
 import LanguagePicker from './components/LanguagePicker.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import ThemePicker from './components/ThemePicker.vue'
+import UserMenu from './components/UserMenu.vue'
 import VersionSwitcher from './components/VersionSwitcher.vue'
 import { useI18n } from './i18n'
+import { useAuth } from './stores/auth'
 import { useChat } from './stores/chat'
 import { useFeatures } from './stores/features'
 import { useUi } from './stores/ui'
@@ -38,23 +39,8 @@ const {
   findings,
   hasDiagnostics,
   needsParseNotice,
-  authRequired,
   conflict,
 } = storeToRefs(store)
-
-const tokenGate = ref<InstanceType<typeof ApiTokenGate> | null>(null)
-const tokenChecking = ref(false)
-
-/** Hands the token to the store and tells the gate if it was refused. */
-async function onTokenSubmit(token: string) {
-  tokenChecking.value = true
-  try {
-    if (await store.submitApiToken(token)) void features.load()
-    else tokenGate.value?.markRejected()
-  } finally {
-    tokenChecking.value = false
-  }
-}
 
 const ui = useUi()
 const { searchOpen, diagnosticsOpen } = storeToRefs(ui)
@@ -103,10 +89,19 @@ watch(() => route.fullPath, () => store.dismissConflict())
 // Home, not "has a snapshot": a not-found project has none and still needs a way back.
 const atHome = computed(() => route.name === 'home')
 
-onMounted(() => {
-  void features.load()
-  window.addEventListener('keydown', onKeydown)
-})
+// Features need a session, so they load once someone is signed in.
+const auth = useAuth()
+watch(
+  () => auth.signedIn,
+  (on) => {
+    if (on) void features.load()
+  },
+  { immediate: true },
+)
+
+const onLogin = computed(() => route.name === 'login')
+
+onMounted(() => window.addEventListener('keydown', onKeydown))
 
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
@@ -138,12 +133,8 @@ function backToPicker() {
 </script>
 
 <template>
-  <!-- The token gate replaces the shell entirely: nothing behind it can load
-       until the backend accepts a token. -->
-  <ApiTokenGate v-if="authRequired" ref="tokenGate" :busy="tokenChecking" @submit="onTokenSubmit" />
-
-  <div v-else class="app">
-    <header class="topbar">
+  <div class="app">
+    <header v-if="!onLogin" class="topbar">
       <button
         type="button"
         class="brand"
@@ -210,6 +201,7 @@ function backToPicker() {
       >
         {{ t('settings.open') }}
       </button>
+      <UserMenu />
     </header>
 
     <p v-if="error" class="banner" role="alert">

@@ -1,6 +1,6 @@
 /** Thin fetch wrapper over the chat service. */
 
-import { ApiError } from './client'
+import { ApiError, withSession } from './client'
 import type { MessageKey } from '../i18n'
 
 const CHAT_BASE = (import.meta.env.VITE_CHAT_BASE as string | undefined) ?? '/api/chat'
@@ -35,11 +35,11 @@ export interface TurnResult {
   model: string
 }
 
-/** One request, with no `Authorization` header and no timeout. */
+/** One request, with the session cookie and no timeout. */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response
   try {
-    res = await fetch(`${CHAT_BASE}${path}`, init)
+    res = await fetch(`${CHAT_BASE}${path}`, withSession(init))
   } catch {
     // The likeliest error a reader meets: the service is a separate container
     // and can be down while the rest of the app is perfectly healthy.

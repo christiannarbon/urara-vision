@@ -160,7 +160,7 @@ export const messages = {
   'import.conflict': 'Version {version} of {project} already exists.',
   'import.conflict.open': 'Open it',
   'error.unreachable': 'Cannot reach the backend. Check that the API is running and reachable.',
-  'error.tokenRejected': 'This API needs a token, and the one supplied was not accepted.',
+  'error.notSignedIn': 'You are not signed in.',
   'error.requestFailed': 'Request failed with status {status}.',
 
   // The role vocabulary. Mirrors graph/roles.ts, which mirrors the backend.
@@ -375,18 +375,27 @@ export const messages = {
   'diagnostic.empty_document.title': 'Empty documents',
   'diagnostic.empty_document.blurb': 'A markdown file had no content, so it was skipped entirely.',
 
-  // API token gate
-  'gate.title': 'This instance needs a token',
-  // Split around the <code>API_TOKEN</code> the sentence names, rather than interpolated as markup.
-  'gate.intro.before':
-    'The API is protected by a shared token. Ask whoever runs this deployment for it — it is the',
-  'gate.intro.after': 'the backend was started with.',
-  'gate.field': 'API token',
-  'gate.placeholder': 'Paste the token',
-  'gate.rejected': 'That token was not accepted. Check it for a missing or trailing character.',
-  'gate.checking': 'Checking…',
-  'gate.continue': 'Continue',
-  'gate.storage': "It is kept in this browser's local storage so you are not asked on every visit.",
+  // Sign-in
+  'auth.title': 'Sign in to Urara Vision',
+  'auth.username': 'Username',
+  'auth.password': 'Password',
+  'auth.signIn': 'Sign in',
+  'auth.signingIn': 'Signing in…',
+  'auth.invalid': 'Invalid username or password.',
+  'auth.tooMany.one': 'Too many attempts; try again in {n} minute.',
+  'auth.tooMany.other': 'Too many attempts; try again in {n} minutes.',
+  'auth.menu': 'Signed in as {name}',
+  'auth.logout': 'Log out',
+  'auth.cancel': 'Cancel',
+  'auth.saving': 'Saving…',
+  'auth.password.change': 'Change password',
+  'auth.password.current': 'Current password',
+  'auth.password.new': 'New password',
+  'auth.password.confirm': 'Confirm new password',
+  'auth.password.save': 'Change password',
+  'auth.password.mismatch': 'The new passwords do not match.',
+  'auth.password.wrongCurrent': 'The current password is incorrect.',
+  'auth.password.changed': 'Your password was changed. Other sessions have been signed out.',
 } as const
 
 export type MessageKey = keyof typeof messages

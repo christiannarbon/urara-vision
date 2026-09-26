@@ -111,28 +111,22 @@ describe('what a turn sends', () => {
 })
 
 describe('credentials', () => {
-  it('sends no Authorization header on any request', async () => {
-    // A token held for the backend must not reach a service that does not want
-    // one; this is the assertion that keeps it inside its own boundary.
-    const { setApiToken, clearApiToken } = await import('../../src/api/client')
-    setApiToken('a-token-the-backend-uses')
-    try {
-      stubFetch({ status: 204 })
-      await chatApi.deleteConversation('c1')
+  it('sends the session cookie, and X-Requested-With only on writes', async () => {
+    stubFetch({ status: 204 })
+    await chatApi.deleteConversation('c1')
 
-      stubFetch({ body: { conversations: [] } })
-      await chatApi.listConversations('s1')
+    stubFetch({ body: { conversations: [] } })
+    await chatApi.listConversations('s1')
 
-      stubFetch({ body: { conversationId: 'c1' } })
-      await chatApi.turn('c1', 'q', 'en')
+    stubFetch({ body: { conversationId: 'c1' } })
+    await chatApi.turn('c1', 'q', 'en')
 
-      expect(calls).toHaveLength(3)
-      for (let i = 0; i < calls.length; i++) {
-        expect(headersOf(i).has('Authorization')).toBe(false)
-      }
-    } finally {
-      clearApiToken()
-    }
+    expect(calls).toHaveLength(3)
+    expect(calls.map((c) => c.init?.credentials)).toEqual(['same-origin', 'same-origin', 'same-origin'])
+    expect(headersOf(0).get('X-Requested-With')).toBe('urara')
+    expect(headersOf(1).has('X-Requested-With')).toBe(false)
+    expect(headersOf(2).get('X-Requested-With')).toBe('urara')
+    for (let i = 0; i < calls.length; i++) expect(headersOf(i).has('Authorization')).toBe(false)
   })
 })
 
