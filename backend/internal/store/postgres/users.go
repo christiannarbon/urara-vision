@@ -5,12 +5,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"urara-vision/backend/internal/model"
 )
+
+var ErrLastAdmin = errors.New("last admin")
 
 const userColumns = `u.id, u.username, u.display_name, u.role, u.created_at, u.updated_at`
 
@@ -67,6 +70,87 @@ func createPasswordUser(ctx context.Context, tx pgx.Tx, username, displayName, r
 
 func (s *Store) GetUser(ctx context.Context, id string) (*model.User, error) {
 	return scanUser(s.pool.QueryRow(ctx, `SELECT `+userColumns+` FROM users u WHERE u.id = $1`, id))
+}
+
+func (s *Store) ListUsers(ctx context.Context) ([]model.User, error) {
+	rows, err := s.pool.Query(ctx, `SELECT `+userColumns+` FROM users u ORDER BY u.username`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []model.User{}
+	for rows.Next() {
+		u, err := scanUser(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *u)
+	}
+	return out, rows.Err()
+}
+
+// UpdateUser changes role and/or display name. ErrLastAdmin if it would leave no admin.
+func (s *Store) UpdateUser(ctx context.Context, id string, role, displayName *string) (*model.User, error) {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if role != nil && *role != "admin" {
+		if err := guardLastAdmin(ctx, tx, id); err != nil {
+			return nil, err
+		}
+	}
+	u, err := scanUser(tx.QueryRow(ctx,
+		`UPDATE users AS u
+		    SET role = COALESCE($2, u.role),
+		        display_name = COALESCE($3, u.display_name),
+		        updated_at = now()
+		  WHERE u.id = $1
+		 RETURNING `+userColumns, id, role, displayName))
+	if err != nil {
+		return nil, err
+	}
+	return u, tx.Commit(ctx)
+}
+
+// DeleteUser removes a user; sessions and identities go by cascade. ErrLastAdmin if they are the last admin.
+func (s *Store) DeleteUser(ctx context.Context, id string) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := guardLastAdmin(ctx, tx, id); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return tx.Commit(ctx)
+}
+
+// guardLastAdmin refuses when id is the only admin. FOR UPDATE makes concurrent
+// demotions queue, and the second re-reads the set after the first commits.
+func guardLastAdmin(ctx context.Context, tx pgx.Tx, id string) error {
+	rows, err := tx.Query(ctx, `SELECT id FROM users WHERE role = 'admin' FOR UPDATE`)
+	if err != nil {
+		return fmt.Errorf("lock admins: %w", err)
+	}
+	admins, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return fmt.Errorf("lock admins: %w", err)
+	}
+	if len(admins) == 1 && slices.Contains(admins, id) {
+		return ErrLastAdmin
+	}
+	return nil
 }
 
 // PasswordIdentity returns the user and hash for a password login.
