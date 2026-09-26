@@ -25,7 +25,9 @@ import (
 type ingestRequest struct {
 	Name        string `json:"name"`
 	SourceLabel string `json:"sourceLabel"`
-	Files       []struct {
+	// Project is the slug the caller expects the manifest to name.
+	Project string `json:"project"`
+	Files   []struct {
 		Path    string `json:"path"`
 		Content string `json:"content"`
 	} `json:"files"`
@@ -39,6 +41,7 @@ type upload struct {
 	metaFound   bool
 	name        string
 	sourceLabel string
+	project     string
 	// nestedMeta holds manifests found below the root. They are not read --
 	// only the root one counts -- but they turn "there is no manifest" into
 	// "the manifest is in the wrong place", which is a different fix.
@@ -72,6 +75,7 @@ func (s *Server) readJSON(r *http.Request) (*upload, error) {
 		files:       make([]parser.File, 0, len(req.Files)),
 		name:        req.Name,
 		sourceLabel: req.SourceLabel,
+		project:     req.Project,
 	}
 	for _, f := range req.Files {
 		up.add(f.Path, f.Content)
@@ -80,7 +84,7 @@ func (s *Server) readJSON(r *http.Request) (*upload, error) {
 }
 
 // readMultipart streams a multipart ingest body. Each file part carries its
-// relative path as the form field name; the "name" and "sourceLabel" fields
+// relative path as the form field name; "name", "sourceLabel" and "project"
 // are plain values.
 func (s *Server) readMultipart(r *http.Request) (*upload, error) {
 	mr, err := r.MultipartReader()
@@ -100,16 +104,19 @@ func (s *Server) readMultipart(r *http.Request) (*upload, error) {
 
 		field := part.FormName()
 		switch field {
-		case "name", "sourceLabel":
+		case "name", "sourceLabel", "project":
 			b, err := io.ReadAll(io.LimitReader(part, 4096))
 			_ = part.Close()
 			if err != nil {
 				return nil, err
 			}
-			if field == "name" {
+			switch field {
+			case "name":
 				up.name = string(b)
-			} else {
+			case "sourceLabel":
 				up.sourceLabel = string(b)
+			default:
+				up.project = string(b)
 			}
 			continue
 		}
