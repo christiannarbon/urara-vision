@@ -9,7 +9,7 @@ import (
 // ErrNotFound is returned when a requested row does not exist.
 var ErrNotFound = errors.New("not found")
 
-// ErrConflict is returned when a project already has the version being saved.
+// ErrConflict is returned when a unique key is taken: a saved version or a username.
 var ErrConflict = errors.New("conflict")
 
 func isUniqueViolation(err error) bool {
