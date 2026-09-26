@@ -8,6 +8,7 @@ import ApiTokenGate from './components/ApiTokenGate.vue'
 import LanguagePicker from './components/LanguagePicker.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import ThemePicker from './components/ThemePicker.vue'
+import VersionSwitcher from './components/VersionSwitcher.vue'
 import { useI18n } from './i18n'
 import { useChat } from './stores/chat'
 import { useFeatures } from './stores/features'
@@ -152,6 +153,7 @@ function backToPicker() {
 
       <div v-if="hasSnapshot" class="snap-label">
         <span class="snap-name">{{ snapshot?.name }}</span>
+        <VersionSwitcher />
         <span v-if="statusMessage" class="faint tiny">{{ statusMessage }}</span>
       </div>
 

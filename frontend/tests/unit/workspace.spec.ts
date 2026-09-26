@@ -18,7 +18,8 @@ vi.mock('../../src/api/client', async () => {
     api: {
       ingest: vi.fn(),
       listSnapshots: vi.fn(),
-      getProject: vi.fn(),
+      listVersions: vi.fn(),
+      getVersion: vi.fn(),
       getSnapshot: vi.fn(),
       deleteSnapshot: vi.fn(),
       domains: vi.fn(),
@@ -488,15 +489,29 @@ describe('lookups', () => {
   })
 })
 
-describe('openProject', () => {
+describe('openVersion', () => {
+  it('loads the version and the project\'s version list', async () => {
+    stubHappyPath()
+    vi.mocked(api.listVersions).mockResolvedValue({ versions: [snapshot] })
+    vi.mocked(api.getVersion).mockResolvedValue(snapshot)
+    const ws = useWorkspace()
+    await ws.openVersion('snap', '1.0.0+b')
+
+    expect(api.getVersion).toHaveBeenCalledWith('snap', '1.0.0+b')
+    expect(api.getSnapshot).toHaveBeenCalledWith('s1')
+    expect(ws.versions).toEqual([snapshot])
+    expect(ws.hasSnapshot).toBe(true)
+  })
+
   it('leaves nothing of the last project behind when the slug is unknown', async () => {
     stubHappyPath()
     const ws = useWorkspace()
     await ws.loadSnapshot('s1')
     expect(ws.tables).toHaveLength(2)
 
-    vi.mocked(api.getProject).mockRejectedValue(new ApiError('nope', 404))
-    await ws.openProject('gone')
+    vi.mocked(api.listVersions).mockRejectedValue(new ApiError('nope', 404))
+    vi.mocked(api.getVersion).mockRejectedValue(new ApiError('nope', 404))
+    await ws.openVersion('gone', 'latest')
 
     expect(ws.hasSnapshot).toBe(false)
     expect(ws.tables).toEqual([])
@@ -506,10 +521,21 @@ describe('openProject', () => {
     expect(ws.error).toBe(en['project.notFound'].replace('{slug}', 'gone'))
   })
 
+  it('says which version is missing from a known project', async () => {
+    vi.mocked(api.listVersions).mockResolvedValue({ versions: [snapshot] })
+    vi.mocked(api.getVersion).mockRejectedValue(new ApiError('nope', 404))
+    const ws = useWorkspace()
+    await ws.openVersion('snap', '9.9.9')
+
+    expect(ws.hasSnapshot).toBe(false)
+    expect(ws.error).toBe(en['version.notFound'].replace('{version}', '9.9.9'))
+  })
+
   it('clears a project banner but keeps one the home screen needs', async () => {
     const ws = useWorkspace()
-    vi.mocked(api.getProject).mockRejectedValue(new ApiError('nope', 404))
-    await ws.openProject('gone')
+    vi.mocked(api.listVersions).mockRejectedValue(new ApiError('nope', 404))
+    vi.mocked(api.getVersion).mockRejectedValue(new ApiError('nope', 404))
+    await ws.openVersion('gone', 'latest')
     ws.clearProjectError()
     expect(ws.error).toBeNull()
 

@@ -2,7 +2,7 @@
 /** The workspace for one project: filters, canvas and the right-hand pane. */
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import ChatPanel from '../components/ChatPanel.vue'
 import DiagnosticsPanel from '../components/DiagnosticsPanel.vue'
@@ -16,6 +16,7 @@ import { useUi } from '../stores/ui'
 import { useWorkspace } from '../stores/workspace'
 
 const route = useRoute()
+const router = useRouter()
 const store = useWorkspace()
 const {
   snapshot,
@@ -44,10 +45,24 @@ const { chatEnabled } = storeToRefs(useFeatures())
 
 const canvas = ref<InstanceType<typeof GraphCanvas> | null>(null)
 
+const loadedVersion = () => snapshot.value?.project?.project.version
+
 watch(
-  () => route.params.project,
-  (project) => {
-    if (typeof project === 'string') void store.openProject(project)
+  () => [route.params.project, route.params.version] as const,
+  async ([project, version]) => {
+    if (typeof project !== 'string') return
+    if (typeof version !== 'string') {
+      await store.openVersion(project, 'latest')
+      const v = snapshot.value?.projectSlug === project ? loadedVersion() : undefined
+      // Replace, so Back does not return to the bare URL.
+      if (v && route.name === 'project' && route.params.project === project) {
+        void router.replace({ name: 'version', params: { project, version: v } })
+      }
+      return
+    }
+    // The replace above lands here with its snapshot already loaded.
+    if (snapshot.value?.projectSlug === project && loadedVersion() === version) return
+    void store.openVersion(project, version)
   },
   { immediate: true },
 )

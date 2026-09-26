@@ -13,7 +13,8 @@ vi.mock('../../src/api/client', async () => {
     ...actual,
     api: {
       features: vi.fn(),
-      getProject: vi.fn(),
+      listVersions: vi.fn(),
+      getVersion: vi.fn(),
       getSnapshot: vi.fn(),
       domains: vi.fn(),
       tables: vi.fn(),
@@ -105,7 +106,10 @@ beforeEach(() => {
   setActivePinia(createPinia())
   vi.clearAllMocks()
   vi.mocked(api.features).mockResolvedValue({ chat: { available: true, enabled: true } })
-  vi.mocked(api.getProject).mockImplementation(async (slug: string) => project(slug))
+  vi.mocked(api.listVersions).mockImplementation(async (slug: string) => ({
+    versions: [snapshot(`${slug}-v2`)],
+  }))
+  vi.mocked(api.getVersion).mockImplementation(async (slug: string) => snapshot(`${slug}-v2`))
   vi.mocked(api.getSnapshot).mockImplementation(async (sid: string) => snapshot(sid))
   vi.mocked(api.domains).mockResolvedValue({ domains: [] })
   vi.mocked(api.tables).mockResolvedValue({ tables: [] })
