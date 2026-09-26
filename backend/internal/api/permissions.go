@@ -2,6 +2,7 @@
 package api
 
 import (
+	"maps"
 	"net/http"
 	"strings"
 
@@ -85,6 +86,9 @@ var routeRules = func() map[string]routeRule {
 }()
 
 func routeKey(k string) string { return strings.TrimSuffix(k, "/") }
+
+// RoutePermissions returns a copy of the route → permission table.
+func RoutePermissions() map[string]auth.Permission { return maps.Clone(routePermissions) }
 
 // DeclaredRoutes lists every route the permission table covers.
 func DeclaredRoutes() []string {

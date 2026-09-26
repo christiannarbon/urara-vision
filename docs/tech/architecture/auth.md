@@ -71,6 +71,29 @@ caller's list. Enforced from Phase 14.
 | `user.manage` | | | ✓ | |
 | `user.delete` | | | ✓ | |
 
+## Enforcement
+
+Every `/api/v1` route is listed in `backend/internal/api/permissions.go`:
+`routePermissions` maps `"METHOD pattern"` to a permission, and `publicRoutes`
+lists the ones any caller may use (login, and the `/auth/*` routes for a
+signed-in caller). `POST /ingest` decides in its handler: `version.import` if
+the project exists, `project.import` if not.
+
+`RequirePermission` runs inside the authenticated group. It looks up the
+matched pattern on the root router, because a group middleware only sees the
+subrouter mount. A route missing from the table answers `500`, so it fails
+closed.
+
+**Adding a route:** add its entry to the table. `TestPermissionTableCoversEveryRoute`
+walks the router and fails for any `/api/v1` route without one, and for any
+stale entry. If the route needs a permission no other route uses, also add a
+case to `tests/integration/api/role_matrix_test.go`, which checks every role
+against the real server and fails when a routed permission has no case.
+
+**403 vs 404.** A caller without the permission gets `403 {"error":"not
+allowed"}`. Something that exists but belongs to another user, such as a
+conversation, is `404`, so its existence is not revealed.
+
 ## Chat and permissions
 
 nginx establishes who the caller is, chat forwards it as `X-Acting-User`, and
