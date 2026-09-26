@@ -5,6 +5,8 @@ import (
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 
@@ -77,16 +79,35 @@ func (s *Store) GetSnapshot(ctx context.Context, id string) (*model.Snapshot, er
 	return &sn, nil
 }
 
-// DeleteSnapshot removes a snapshot and everything hanging off it.
+// DeleteSnapshot removes a snapshot and everything hanging off it, and its
+// project too when it was the last one.
 func (s *Store) DeleteSnapshot(ctx context.Context, id string) error {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM snapshots WHERE id = $1`, id)
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var projectID string
+	err = tx.QueryRow(ctx, `SELECT project_id FROM snapshots WHERE id = $1`, id).Scan(&projectID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
-		return ErrNotFound
+	// Locked first, as DeleteProject does, so a concurrent save into this
+	// project is not cascaded away with it.
+	if _, err := tx.Exec(ctx, `SELECT 1 FROM projects WHERE id = $1 FOR UPDATE`, projectID); err != nil {
+		return err
 	}
-	return nil
+	if _, err := tx.Exec(ctx, `DELETE FROM snapshots WHERE id = $1`, id); err != nil {
+		return err
+	}
+	if _, err := deleteEmptyProject(ctx, tx, projectID); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 // LatestSnapshotID returns the most recent snapshot, or ErrNotFound.
