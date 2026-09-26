@@ -66,7 +66,6 @@ type MetaStore interface {
 	UpdateConversationTitle(ctx context.Context, owner, id, title string) (*model.Conversation, error)
 	DeleteConversation(ctx context.Context, owner, id string) error
 	AppendMessage(ctx context.Context, owner, conversationID string, m model.Message) (*model.Message, error)
-	ListMessages(ctx context.Context, owner, conversationID string) ([]model.Message, error)
 
 	ListProjects(ctx context.Context) ([]model.ProjectSummary, error)
 	GetProject(ctx context.Context, slug string) (*model.ProjectSummary, error)
