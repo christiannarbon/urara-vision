@@ -40,16 +40,20 @@ const STATS = {
 
 beforeEach(() => setActivePinia(createPinia()))
 
-// The snapshot already belongs to the routed project, so the view keeps it.
+// The snapshot already is the routed version, so the view keeps it.
 async function app() {
   const workspace = useWorkspace()
   workspace.snapshot = {
     id: 's1', name: 's1', sourceLabel: 'docs', createdAt: '', stats: STATS, projectId: 'p1', projectSlug: 's1',
+    project: {
+      project: { name: 's1', version: 'v1', description: '' },
+      internationalization: { primary: 'EN', supported: ['EN'], type: 'inline' },
+    },
   }
   const chat = useChat()
   // Set up front: the load on mount resolves after these specs click.
   useFeatures().chatEnabled = true
-  return { workspace, chat, w: await mountApp('/projects/s1') }
+  return { workspace, chat, w: await mountApp('/projects/s1/versions/v1') }
 }
 
 const button = (w: VueWrapper, match: RegExp) =>
