@@ -125,7 +125,7 @@ describe('importing a version from the workspace', () => {
     await importDirectory(w)
 
     const banner = w.find('.banner--notice')
-    expect(banner.text()).toContain('Version 0.1.0 already exists.')
+    expect(banner.text()).toContain('Version 0.1.0 of p already exists.')
     const link = banner.find('a')
     expect(link.attributes('href')).toBe('/projects/p/versions/0.1.0')
 
@@ -166,7 +166,7 @@ describe('a 409 from the home picker', () => {
 
     expect(vi.mocked(api.ingest).mock.calls[0][3]).toBeUndefined()
     const banner = w.find('.banner--notice')
-    expect(banner.text()).toContain('Version 0.1.0 already exists.')
+    expect(banner.text()).toContain('Version 0.1.0 of p already exists.')
     expect(banner.find('a').attributes('href')).toBe('/projects/p/versions/0.1.0')
     expect(w.vm.$route.name).toBe('home')
   })
