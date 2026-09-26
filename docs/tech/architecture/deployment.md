@@ -14,7 +14,12 @@ Everything the backend needs comes from the environment:
 | `NEO4J_URI` | `bolt://localhost:7687` | |
 | `NEO4J_USER` | `neo4j` | |
 | `NEO4J_PASSWORD` | — | Required; the server refuses to start without it |
-| `API_TOKEN` | _(unset)_ | Shared bearer token for `/api/v1`. Unset disables authentication; if set it must be 24+ characters |
+| `API_TOKEN` | _(unset)_ | Service bearer token (chat, CI imports). Unset means no service calls; if set it must be 24+ characters |
+| `SESSION_TTL_HOURS` | `168` | How long a login lasts |
+| `COOKIE_SECURE` | `true` | `Secure` on the session cookie. `false` only for plain-HTTP local stacks |
+| `BOOTSTRAP_ADMIN_USERNAME` | _(unset)_ | With the password, creates the first admin while the users table is empty |
+| `BOOTSTRAP_ADMIN_PASSWORD` | _(unset)_ | 12–72 bytes; set both or neither |
+| `AUTH_DISABLED` | `false` | Every request acts as an admin. Local use only |
 | `CORS_ORIGINS` | `http://localhost:5173,http://localhost:8081` | Unused when served behind the frontend's proxy |
 | `MAX_UPLOAD_BYTES` | `67108864` | 64 MB |
 | `MAX_FILES` | `5000` | |
@@ -22,11 +27,34 @@ Everything the backend needs comes from the environment:
 | `SHUTDOWN_TIMEOUT_SECONDS` | `20` | Grace period for in-flight requests on SIGTERM |
 | `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
 
-Two of those refuse rather than warn. A missing `NEO4J_PASSWORD` stops the
-server: there is no sensible default for a credential. An `API_TOKEN` shorter
-than 24 characters is refused outright, because a short token looks like a
-control while being trivially guessable — unset it deliberately instead, and
-the server logs a warning on every start to say authentication is off.
+A missing `NEO4J_PASSWORD` stops the server: there is no sensible default for a
+credential. An `API_TOKEN` shorter than 24 characters is refused, because a
+short token looks like a control while being trivially guessable. So is a
+bootstrap password that fails the password policy, or only one of the two
+bootstrap variables.
+
+### Signing in
+
+People sign in at `/login` and get an `HttpOnly` session cookie. The first
+admin comes from `BOOTSTRAP_ADMIN_USERNAME` / `BOOTSTRAP_ADMIN_PASSWORD`: the
+backend creates it at start when there are no users, and ignores the variables
+otherwise. Compose and the dev overlay set `admin` /
+`relviz-dev-admin-password`; prod expects a `relviz-bootstrap-admin` secret
+(see `k8s/README.md`).
+
+nginx no longer attaches the API token to browser requests. It did so while the
+token was the only credential, which made every visitor the service; with
+sessions that would bypass login entirely. nginx now forwards the browser's
+own cookie, blanks `X-Acting-User`, and for `/api/chat/` asks the backend
+(`auth_request` to `/api/v1/auth/session`) who the caller is, passing chat
+`X-User-Id` and `X-User-Role`. A request without a session never reaches chat.
+
+CI and CLI imports talk to the backend directly with the service token:
+
+```bash
+curl -H "Authorization: Bearer $API_TOKEN" -H 'Content-Type: application/json' \
+  -d @payload.json http://backend:8080/api/v1/ingest
+```
 
 The chat service reads its own set:
 
@@ -80,7 +108,10 @@ make logs     # follow the backend
 ```
 
 Postgres is published on `5433` so it cannot collide with a local install on
-the default port.
+the default port. Chat is published on `127.0.0.1:8090` only: it trusts the
+identity headers nginx sets, so it must not be reachable from the network.
+
+Sign in at `localhost:8081` as `admin` / `relviz-dev-admin-password`.
 
 ## Kubernetes
 
@@ -131,7 +162,7 @@ existing volume. `k8s-clean` is the way through that.
 
 | Overlay | Replicas | Secrets | Storage |
 |---|---|---|---|
-| `dev` | 1 backend, 1 chat, 1 frontend | Generated, committed on purpose; `relviz-adc` created out of band | 8Gi / 8Gi / 2Gi, default storage class |
+| `dev` | 1 backend, 1 chat, 1 frontend | Generated, committed on purpose (including the bootstrap admin); `relviz-adc` created out of band | 8Gi / 8Gi / 2Gi, default storage class |
 | `prod` | 3 backend, 2 chat, 2 frontend | Externally managed; the overlay creates none | 50Gi / 50Gi / 5Gi on `standard-rwo`, TLS ingress |
 
 The dev overlay also drops the HPAs and PodDisruptionBudgets, which fight a
