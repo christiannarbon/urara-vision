@@ -83,6 +83,10 @@ type MetaStore interface {
 	DeleteUserSessions(ctx context.Context, userID, keepHash string) error
 	PasswordIdentity(ctx context.Context, username string) (*model.User, string, error)
 	SetPasswordHash(ctx context.Context, userID, hash string) error
+	CreatePasswordUser(ctx context.Context, username, displayName, role, passwordHash string) (*model.User, error)
+	ListUsers(ctx context.Context) ([]model.User, error)
+	UpdateUser(ctx context.Context, id string, role, displayName *string) (*model.User, error)
+	DeleteUser(ctx context.Context, id string) error
 
 	GetBoolSetting(ctx context.Context, key string, def bool) (bool, error)
 	SetBoolSetting(ctx context.Context, key string, v bool) error
@@ -152,6 +156,12 @@ func (s *Server) Routes() http.Handler {
 
 			r.Get("/features", s.handleFeatures)
 			r.Patch("/settings", s.handlePatchSettings)
+
+			r.Get("/users", s.handleListUsers)
+			r.Post("/users", s.handleCreateUser)
+			r.Patch("/users/{id}", s.handlePatchUser)
+			r.Post("/users/{id}/password", s.handleResetPassword)
+			r.Delete("/users/{id}", s.handleDeleteUser)
 
 			r.Post("/ingest", s.handleIngest)
 			r.Get("/snapshots", s.handleListSnapshots)
