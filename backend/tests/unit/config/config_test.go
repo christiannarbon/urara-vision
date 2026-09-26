@@ -238,3 +238,30 @@ func TestBootstrapAdminConfig(t *testing.T) {
 		})
 	}
 }
+
+func TestTrustedProxyHops(t *testing.T) {
+	setRequired(t)
+	t.Setenv("TRUSTED_PROXY_HOPS", "")
+	c, err := config.Load()
+	if err != nil || c.TrustedProxyHops != 1 {
+		t.Fatalf("default: %v, %v", c, err)
+	}
+	t.Setenv("TRUSTED_PROXY_HOPS", "-1")
+	if _, err := config.Load(); err == nil {
+		t.Error("negative TRUSTED_PROXY_HOPS accepted")
+	}
+}
+
+func TestSessionTTLMustBePositive(t *testing.T) {
+	for _, v := range []string{"0", "-5"} {
+		setRequired(t)
+		t.Setenv("SESSION_TTL_HOURS", v)
+		if _, err := config.Load(); err == nil {
+			t.Errorf("SESSION_TTL_HOURS=%s accepted", v)
+		}
+	}
+	t.Setenv("SESSION_TTL_HOURS", "1")
+	if c, err := config.Load(); err != nil || c.SessionTTL != time.Hour {
+		t.Errorf("SESSION_TTL_HOURS=1: %v, %v", c, err)
+	}
+}
