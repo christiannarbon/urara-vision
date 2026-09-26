@@ -47,7 +47,18 @@ the open project; the server refuses one whose manifest names another project,
 and a version that already exists raises a banner linking to it.
 
 On the home screen each project expands to its `VersionList`, from which a
-version opens or is deleted.
+version opens, is deleted, or (except the newest) is compared with the latest.
+
+`/projects/:project/diff?from=&to=` is `DiffView`, the comparison of two
+versions. Missing params are replaced with the two newest versions; the pickers
+and *Swap* also `replace`, so the query is always the state. The workspace's
+*Compare* button, beside the `VersionSwitcher`, opens it for the version on
+screen and the next-older one (the newest, from the oldest).
+
+The version route also takes `?diffFrom=<version>`. `ProjectView` then fetches
+the diff from that version to the one on screen, turns it into marks with
+`buildDiffMarks` (`graph/diff-marks.ts`), passes them to `GraphCanvas` and shows
+`DiffLegend`, whose *Clear* drops the query.
 
 ## The right-hand pane
 
@@ -144,6 +155,23 @@ which is how the dev stacks open without asking for a key. Where it is empty,
 a 401 raises `ApiTokenGate`, which prompts for the token and keeps it in
 `localStorage`. A token the browser holds always wins, so the gate still works
 against a proxy that has one of its own.
+
+`stores/diff.ts` holds one comparison: `result`, `loading` and `error` (the
+`ApiError` itself, so a keyed message is translated when rendered).
+A generation counter drops an answer that arrives after the versions changed.
+`workspace.selectAfterOpen(id)` selects a table once the next `openVersion`
+settles, which is how a table clicked on the diff page opens selected.
+
+### Diff marks on the canvas
+
+`GraphCanvas` takes an optional `diffMarks` prop and toggles `diff-added` and
+`diff-changed` on nodes and edges, reapplied after every rebuild. The styles use
+Cytoscape underlays in `--ok` and `--warning`, so role colours and the selection
+border stay readable. Underlays ignore element opacity, so
+`.diff-*.is-dimmed` fades them separately when something else is selected.
+Graph edges are direction-normalised, so a relationship is matched to its link
+by endpoints and columns in either direction. Removed things are not on the
+newer graph and are not drawn.
 
 ## Language
 

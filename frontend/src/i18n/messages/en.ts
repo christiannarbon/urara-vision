@@ -79,6 +79,8 @@ export const messages = {
   'versions.delete.title': 'Delete version?',
   'versions.delete.message': 'Delete version {version} of {name}? This cannot be undone.',
   'versions.delete.last': 'It is the only version, so the project will be deleted too.',
+  'versions.compare': 'Compare',
+  'versions.compare.named': 'Compare {version} with the latest version',
 
   // The version diff page
   'diff.title': 'Compare versions',
@@ -149,6 +151,8 @@ export const messages = {
   'version.label': 'Version',
   'version.latest': '{version} (latest)',
   'version.notFound': 'This project has no version “{version}”.',
+  'version.compare': 'Compare',
+  'version.compare.title': 'Compare {from} with {to}',
   'import.version': 'Import version',
   'import.version.title': 'Import a new version of this project from a directory',
   'import.conflict': 'Version {version} of {project} already exists.',

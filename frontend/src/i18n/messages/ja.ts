@@ -78,6 +78,8 @@ export const messages: Messages = {
   'versions.delete.title': 'バージョンを削除しますか？',
   'versions.delete.message': '{name} のバージョン {version} を削除しますか？この操作は取り消せません。',
   'versions.delete.last': 'これが唯一のバージョンのため、プロジェクトも削除されます。',
+  'versions.compare': '比較',
+  'versions.compare.named': '{version} を最新バージョンと比較',
 
   // The version diff page
   'diff.title': 'バージョンの比較',
@@ -148,6 +150,8 @@ export const messages: Messages = {
   'version.label': 'バージョン',
   'version.latest': '{version}（最新）',
   'version.notFound': 'このプロジェクトにはバージョン「{version}」がありません。',
+  'version.compare': '比較',
+  'version.compare.title': '{from} と {to} を比較',
   'import.version': 'バージョンを取り込む',
   'import.version.title': 'ディレクトリからこのプロジェクトの新しいバージョンを取り込みます',
   'import.conflict': '{project} のバージョン {version} はすでに存在します。',

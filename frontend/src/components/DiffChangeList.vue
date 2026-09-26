@@ -64,6 +64,9 @@ function toggle(key: string) {
 const isProse = (f: FieldChange) => f.field === 'description'
 
 const tagClass = (c: DiffChange) => `tag tag--${c}`
+
+// A prose source leaves table and column empty.
+const source = (l: LineageDiff) => [l.sourceTable, l.sourceColumn].filter(Boolean).join('.') || t('diff.value.empty')
 </script>
 
 <template>
@@ -175,7 +178,7 @@ const tagClass = (c: DiffChange) => `tag tag--${c}`
             <div class="line">
               <span :class="tagClass(l.change)">{{ t(`diff.change.${l.change}`) }}</span>
               <span class="mono">
-                {{ l.tableId }}.{{ l.column }} ← {{ l.sourceTable }}.{{ l.sourceColumn }}
+                {{ l.tableId }}.{{ l.column }} ← {{ source(l) }}
               </span>
             </div>
             <ul v-if="l.fields.length" class="fields">
