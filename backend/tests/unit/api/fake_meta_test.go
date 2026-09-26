@@ -88,7 +88,8 @@ type fakeMeta struct {
 	// versionsByLabel replaces version when set; a missing label is ErrNotFound.
 	versionsByLabel map[string]*model.Snapshot
 	// models is what LoadModel returns, keyed by snapshot ID.
-	models map[string]*model.Model
+	models         map[string]*model.Model
+	loadModelCalls int
 
 	versions        []model.Snapshot
 	errVersions     error
@@ -315,6 +316,7 @@ func (f *fakeMeta) GetVersion(_ context.Context, slug, version string) (*model.S
 }
 
 func (f *fakeMeta) LoadModel(_ context.Context, sid string) (*model.Model, error) {
+	f.loadModelCalls++
 	if m, ok := f.models[sid]; ok {
 		return m, nil
 	}
