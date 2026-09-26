@@ -9,6 +9,7 @@ export function createAppRouter(history: RouterHistory = createWebHistory()) {
     routes: [
       { path: '/', name: 'home', component: HomeView },
       { path: '/projects/:project', name: 'project', component: ProjectView },
+      { path: '/projects/:project/versions/:version', name: 'version', component: ProjectView },
       { path: '/:pathMatch(.*)*', redirect: '/' },
     ],
   })
