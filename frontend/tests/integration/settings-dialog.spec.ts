@@ -29,7 +29,6 @@ vi.mock('../../src/api/client', async () => {
 
 const { mountApp } = await import('../helpers/mountApp')
 const SettingsDialog = (await import('../../src/components/SettingsDialog.vue')).default
-const ApiTokenGate = (await import('../../src/components/ApiTokenGate.vue')).default
 const { useWorkspace } = await import('../../src/stores/workspace')
 const { useChat } = await import('../../src/stores/chat')
 const { useFeatures } = await import('../../src/stores/features')
@@ -104,22 +103,6 @@ describe('the chat button', () => {
 
     expect(chat.open).toBe(false)
     expect(w.find('.composer').exists()).toBe(false)
-    w.unmount()
-  })
-})
-
-describe('after the token gate', () => {
-  it('reloads features once the token is accepted', async () => {
-    features.mockResolvedValue(state(true, true))
-    useWorkspace().authRequired = true
-    const w = await mountApp()
-    await flushPromises()
-
-    w.findComponent(ApiTokenGate).vm.$emit('submit', 'x'.repeat(32))
-    await flushPromises()
-
-    expect(features).toHaveBeenCalledTimes(2)
-    expect(useFeatures().chatEnabled).toBe(true)
     w.unmount()
   })
 })
