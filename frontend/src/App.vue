@@ -2,9 +2,10 @@
 /** Application shell: token gate, topbar, banners and the routed view. */
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch, watchEffect } from 'vue'
 import { storeToRefs } from 'pinia'
-import { RouterView, useRoute, useRouter } from 'vue-router'
+import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 
 import ApiTokenGate from './components/ApiTokenGate.vue'
+import ImportVersionButton from './components/ImportVersionButton.vue'
 import LanguagePicker from './components/LanguagePicker.vue'
 import SettingsDialog from './components/SettingsDialog.vue'
 import ThemePicker from './components/ThemePicker.vue'
@@ -38,6 +39,7 @@ const {
   hasDiagnostics,
   needsParseNotice,
   authRequired,
+  conflict,
 } = storeToRefs(store)
 
 const tokenGate = ref<InstanceType<typeof ApiTokenGate> | null>(null)
@@ -94,6 +96,9 @@ function reviewParseFailures() {
   ui.showDiagnostics()
   store.acknowledgeParseFailures()
 }
+
+// The conflict is about the import just made, not wherever the reader goes next.
+watch(() => route.fullPath, () => store.dismissConflict())
 
 // Home, not "has a snapshot": a not-found project has none and still needs a way back.
 const atHome = computed(() => route.name === 'home')
@@ -188,6 +193,7 @@ function backToPicker() {
           <span class="glyph" aria-hidden="true">◗</span>
           {{ chatOpen ? t('chat.close') : t('chat.open') }}
         </button>
+        <ImportVersionButton />
         <button class="btn btn--ghost btn--sm" @click="backToPicker">
           {{ t('topbar.newIngest') }}
         </button>
@@ -211,6 +217,21 @@ function backToPicker() {
       <button class="btn btn--ghost btn--sm" @click="store.dismissError">
         {{ t('banner.dismiss') }}
       </button>
+    </p>
+
+    <p v-if="conflict" class="banner banner--notice" role="alert">
+      <span>{{ t('import.conflict', { version: conflict.version }) }}</span>
+      <span class="banner-actions">
+        <RouterLink
+          class="btn btn--ghost btn--sm"
+          :to="{ name: 'version', params: { project: conflict.project, version: conflict.version } }"
+        >
+          {{ t('import.conflict.open') }}
+        </RouterLink>
+        <button class="btn btn--ghost btn--sm" @click="store.dismissConflict">
+          {{ t('banner.dismiss') }}
+        </button>
+      </span>
     </p>
 
     <p v-if="hasSnapshot && needsParseNotice" class="banner banner--notice" role="alert">
