@@ -3,8 +3,8 @@
 ## The backend pod sits in `CreateContainerConfigError`
 
 The Deployment references the `relviz-api` secret, so the pod will not start
-until it exists. That is deliberate: forgetting the API token should stop a
-rollout rather than quietly publish an open API.
+until it exists. That is deliberate: chat and CI imports need the service
+token, and forgetting it should stop a rollout rather than break them quietly.
 
 The dev overlay generates it. On prod you create it yourself:
 
@@ -13,24 +13,17 @@ kubectl -n urara-vision create secret generic relviz-api \
   --from-literal=token="$(openssl rand -hex 32)"
 ```
 
-To run without authentication on purpose, delete the `API_TOKEN` block from
-`base/backend.yaml`.
+## The app shows a login page and no account works
 
-## The app asks for an API token
-
-The frontend prompts when nginx forwarded the request without a credential and
-the backend answered 401. The dev overlay avoids that by giving the frontend
-`API_AUTHORIZATION`, built from the `relviz-api` secret; check it survived on
-the pod:
+People sign in with accounts, not the API token. The first admin is created
+from the `relviz-bootstrap-admin` secret, and only while the users table is
+empty. The dev overlay generates `admin` / `relviz-dev-admin-password`; on prod,
+create the secret before the first rollout (see `k8s/README.md`). Check the
+backend log for `created bootstrap admin`:
 
 ```bash
-kubectl -n urara-vision exec deploy/frontend -- printenv API_AUTHORIZATION
+kubectl -n urara-vision logs deploy/backend | grep 'bootstrap admin'
 ```
-
-Empty means the patch did not apply, or that `API_TOKEN` is declared after it
-in the env list — `$(VAR)` expansion only sees names defined before the one
-using them. Prod prompts on purpose; read the token out of the secret and hand
-it over.
 
 ## Postgres will not initialise its data directory
 
