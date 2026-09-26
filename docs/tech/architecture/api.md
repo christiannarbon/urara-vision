@@ -63,7 +63,7 @@ curl -X POST localhost:8080/api/v1/ingest \
 ```
 
 In multipart, each file part carries its relative path as the form field name,
-and `name` and `sourceLabel` are plain fields. Either way anything that is
+and `name`, `sourceLabel` and `project` are plain fields. Either way anything that is
 neither a `.md` file nor the manifest is dropped rather than rejected, so
 posting a whole directory is fine.
 
@@ -73,6 +73,19 @@ root: it is read and validated before any document is, and an upload without a
 valid one is `400` with every problem the manifest has listed at once. It is
 stored with the snapshot and comes back on it as `project`, so a caller reading
 `/snapshots` sees what project and version each ingest documented.
+
+`project` is optional: the slug the caller expects the manifest to name. When
+it does not match, the upload is `400` naming both slugs.
+
+A project holds each version once. Importing a version it already has is `409`,
+checked before any document is parsed:
+
+```json
+{"error": "version 0.1.0 of jaffle-shop-ddd already exists; delete it first to re-import",
+ "project": "jaffle-shop-ddd", "version": "0.1.0"}
+```
+
+Two imports racing for the same version get the same `409` from the database.
 
 It returns `201` with the snapshot, its stats, the normalised edge count and
 every diagnostic — so a caller knows what its documentation resolved to without
@@ -204,8 +217,8 @@ Failures are JSON with an `error` field and the status the outcome maps to:
 
 | Status | When |
 |---|---|
-| `400` | A parameter the handler can see is wrong, a body that will not decode, a missing or invalid `projectmeta.toml`, no `.md` files, too many files, or an upload past `MAX_UPLOAD_BYTES` |
+| `400` | A parameter the handler can see is wrong, a body that will not decode, a missing or invalid `projectmeta.toml`, an ingest whose manifest names a different `project`, no `.md` files, too many files, or an upload past `MAX_UPLOAD_BYTES` |
 | `401` | `API_TOKEN` is set and the request did not carry it as `Authorization: Bearer <token>` |
 | `404` | No such snapshot, table or project — including `latest` when nothing has been ingested yet, which says so rather than returning an empty graph |
-| `409` | Turning chat on while `CHAT_ENABLED=false` |
+| `409` | Importing a version the project already has, or turning chat on while `CHAT_ENABLED=false` |
 | `500` | Anything the stores report; the detail is logged with the request ID rather than returned |
