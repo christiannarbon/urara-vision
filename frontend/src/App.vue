@@ -51,8 +51,7 @@ const chat = useChat()
 const { open: chatOpen } = storeToRefs(chat)
 
 const features = useFeatures()
-const { chatEnabled: featureOn } = storeToRefs(features)
-const chatEnabled = computed(() => featureOn.value && auth.can(Perm.ChatUse))
+const { chatUsable } = storeToRefs(features)
 const settingsOpen = ref(false)
 const settingsButton = ref<HTMLButtonElement | null>(null)
 
@@ -61,7 +60,7 @@ function closeSettings() {
   void nextTick(() => settingsButton.value?.focus())
 }
 
-watch(chatEnabled, (on) => {
+watch(chatUsable, (on) => {
   if (!on) chat.closePanel()
 })
 
@@ -182,7 +181,7 @@ function backToPicker() {
           >
         </button>
         <button
-          v-if="chatEnabled"
+          v-if="chatUsable"
           class="btn btn--ghost btn--sm"
           :aria-expanded="chatOpen"
           :title="chatOpen ? t('chat.close') : t('chat.open')"
