@@ -29,6 +29,8 @@ export const useWorkspace = defineStore('workspace', () => {
   const snapshot = ref<Snapshot | null>(null)
   const snapshots = ref<Snapshot[]>([])
   const projects = ref<Project[]>([])
+  /** The open project's snapshots, newest first. */
+  const versions = ref<Snapshot[]>([])
   const domains = ref<Domain[]>([])
   const tables = ref<TableSummary[]>([])
   const diagnostics = ref<Diagnostic[]>([])
@@ -204,33 +206,34 @@ export const useWorkspace = defineStore('workspace', () => {
   // project the reader has left, so it is dropped.
   let opening = 0
 
-  /** Loads a project's newest snapshot. One already open from that project is
-   *  kept, so an older snapshot picked from the list survives the navigation. */
-  async function openProject(slug: string) {
-    if (snapshot.value?.projectSlug === slug) return
+  /** Loads one version of a project; `latest` is the newest. Also refreshes
+   *  the project's version list. */
+  async function openVersion(slug: string, version: string) {
     clearError()
     const started = ++opening
     const stale = () => started !== opening
-    try {
-      const project = await api.getProject(slug)
-      if (stale()) return
-      if (!project.latest) {
-        clearSnapshot()
-        errorKey.value = 'project.empty'
-        return
-      }
-      await loadSnapshot(project.latest.snapshotId, stale)
-    } catch (e) {
-      if (stale()) return
-      if (e instanceof ApiError && e.status === 404) {
-        clearSnapshot()
-        clearError()
-        errorKey.value = 'project.notFound'
-        errorParams.value = { slug }
-        return
-      }
-      setError(e)
+    // Settled separately, so an unknown project and an unknown version get
+    // their own banners.
+    const [list, snap] = await Promise.allSettled([
+      api.listVersions(slug),
+      api.getVersion(slug, version),
+    ])
+    if (stale()) return
+    if (list.status === 'rejected') return failOpen(list.reason, 'project.notFound', { slug })
+    versions.value = list.value.versions
+    if (snap.status === 'rejected') return failOpen(snap.reason, 'version.notFound', { version })
+    await loadSnapshot(snap.value.id, stale)
+  }
+
+  function failOpen(e: unknown, key: MessageKey, params: Record<string, string>) {
+    if (e instanceof ApiError && e.status === 404) {
+      clearSnapshot()
+      clearError()
+      errorKey.value = key
+      errorParams.value = params
+      return
     }
+    setError(e)
   }
 
   /** Stores a token and retries the first call the app makes. */
@@ -374,6 +377,7 @@ export const useWorkspace = defineStore('workspace', () => {
     // No project is open, so a load still in flight is about a stale one.
     opening += 1
     snapshot.value = null
+    versions.value = []
     setDocumentLanguages(null)
     domains.value = []
     tables.value = []
@@ -408,10 +412,10 @@ export const useWorkspace = defineStore('workspace', () => {
     clearError()
   }
 
-  /** Drops a not-found or empty-project banner once the route leaves it. The
+  /** Drops a project or version not-found banner once the route leaves it. The
    *  ingest and token errors share this banner and belong on the home screen. */
   function clearProjectError() {
-    if (errorKey.value === 'project.notFound' || errorKey.value === 'project.empty') {
+    if (errorKey.value === 'project.notFound' || errorKey.value === 'version.notFound') {
       clearError()
     }
   }
@@ -420,6 +424,7 @@ export const useWorkspace = defineStore('workspace', () => {
     snapshot,
     snapshots,
     projects,
+    versions,
     domains,
     tables,
     diagnostics,
@@ -448,7 +453,7 @@ export const useWorkspace = defineStore('workspace', () => {
     ingest,
     loadSnapshot,
     authRequired,
-    openProject,
+    openVersion,
     submitApiToken,
     refreshSnapshots,
     refreshProjects,
