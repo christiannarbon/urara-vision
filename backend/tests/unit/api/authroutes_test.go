@@ -2,6 +2,7 @@ package api_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -57,6 +58,7 @@ func login(h http.Handler, username, password string) *httptest.ResponseRecorder
 	body, _ := json.Marshal(map[string]string{"username": username, "password": password})
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(string(body)))
 	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("X-Requested-With", "urara")
 	return serve(h, r)
 }
 
@@ -205,6 +207,9 @@ func TestMe(t *testing.T) {
 		len(user.Permissions) != len(auth.Permissions(auth.RoleCreator)) {
 		t.Errorf("user me = %+v", user)
 	}
+	if meta.getUserCalls != 0 {
+		t.Errorf("cookie /me made %d GetUser calls, want 0", meta.getUserCalls)
+	}
 
 	r := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
 	r.Header.Set("Authorization", "Bearer "+testToken)
@@ -273,5 +278,87 @@ func TestAuthSession(t *testing.T) {
 	r.Header.Set("Authorization", "Bearer "+testToken)
 	if rec := serve(routesServer(t, meta), r); rec.Code != http.StatusUnauthorized {
 		t.Errorf("service: status = %d", rec.Code)
+	}
+
+	anonH := routesServer(t, meta, func(c *config.Config) { c.AuthDisabled = true })
+	rec = serve(anonH, httptest.NewRequest(http.MethodGet, "/api/v1/auth/session", nil))
+	if rec.Code != http.StatusNoContent || rec.Header().Get("X-User-Id") != "anonymous" || rec.Header().Get("X-User-Role") != "admin" {
+		t.Errorf("anonymous: status = %d, headers %v", rec.Code, rec.Header())
+	}
+}
+
+func loginFrom(h http.Handler, username string, headers map[string]string) *httptest.ResponseRecorder {
+	body, _ := json.Marshal(map[string]string{"username": username, "password": "wrong-password-123"})
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(string(body)))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("X-Requested-With", "urara")
+	for k, v := range headers {
+		r.Header.Set(k, v)
+	}
+	return serve(h, r)
+}
+
+func behindOneProxy(c *config.Config) { c.TrustedProxyHops = 1 }
+
+func TestSpoofedIPHeadersDoNotEvadeTheIPLimit(t *testing.T) {
+	h := routesServer(t, aliceMeta(t), behindOneProxy)
+	for i := range 20 {
+		fake := fmt.Sprintf("10.9.9.%d", i)
+		rec := loginFrom(h, fmt.Sprintf("nobody%d", i), map[string]string{
+			"True-Client-IP":  fake,
+			"X-Real-IP":       fake,
+			"X-Forwarded-For": fake + ", 192.0.2.7",
+		})
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("failure %d: status = %d", i+1, rec.Code)
+		}
+	}
+	rec := loginFrom(h, "nobody-last", map[string]string{"True-Client-IP": "10.8.8.8", "X-Forwarded-For": "10.8.8.8, 192.0.2.7"})
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("21st: status = %d, want 429", rec.Code)
+	}
+}
+
+func TestDifferentClientsHaveSeparateIPLimits(t *testing.T) {
+	h := routesServer(t, aliceMeta(t), behindOneProxy)
+	for i := range 20 {
+		loginFrom(h, fmt.Sprintf("nobody%d", i), map[string]string{"X-Forwarded-For": "192.0.2.7"})
+	}
+	if rec := loginFrom(h, "someone-else", map[string]string{"X-Forwarded-For": "192.0.2.8"}); rec.Code != http.StatusUnauthorized {
+		t.Errorf("other client: status = %d, want 401", rec.Code)
+	}
+}
+
+func TestLoginRequiresCSRFHeader(t *testing.T) {
+	h := routesServer(t, aliceMeta(t))
+	body := `{"username":"alice","password":"` + alicePassword + `"}`
+
+	r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(body))
+	r.Header.Set("Content-Type", "text/plain")
+	rec := serve(h, r)
+	if rec.Code != http.StatusForbidden || rec.Header().Get("Set-Cookie") != "" {
+		t.Fatalf("no header: status = %d, set-cookie %q", rec.Code, rec.Header().Get("Set-Cookie"))
+	}
+
+	r = httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(body))
+	r.Header.Set("X-Requested-With", "urara")
+	if rec := serve(h, r); rec.Code != http.StatusOK {
+		t.Errorf("with header: status = %d", rec.Code)
+	}
+}
+
+func TestLoginReplacesExistingSession(t *testing.T) {
+	meta := aliceMeta(t)
+	body := `{"username":"alice","password":"` + alicePassword + `"}`
+	r := withCookie(httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(body)), cookieToken)
+	r.Header.Set("X-Requested-With", "urara")
+	if rec := serve(routesServer(t, meta), r); rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if _, ok := meta.sessions[auth.HashToken(cookieToken)]; ok {
+		t.Error("old session survived")
+	}
+	if len(meta.sessions) != 1 {
+		t.Errorf("%d sessions, want 1", len(meta.sessions))
 	}
 }
