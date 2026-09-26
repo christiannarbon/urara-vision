@@ -46,6 +46,12 @@ var routePermissions = map[string]auth.Permission{
 	"POST /api/v1/conversations/{cid}/messages": auth.PermChatUse,
 
 	"PATCH /api/v1/settings": auth.PermSettingsManage,
+
+	"GET /api/v1/users":                auth.PermUserManage,
+	"POST /api/v1/users":               auth.PermUserManage,
+	"PATCH /api/v1/users/{id}":         auth.PermUserManage,
+	"POST /api/v1/users/{id}/password": auth.PermUserManage,
+	"DELETE /api/v1/users/{id}":        auth.PermUserDelete,
 }
 
 // publicRoutes need only a principal, or nothing at all.
