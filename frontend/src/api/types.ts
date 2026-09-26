@@ -282,3 +282,80 @@ export interface Features {
     enabled: boolean
   }
 }
+
+export type DiffChange = 'added' | 'removed' | 'changed'
+
+export interface FieldChange {
+  field: string
+  from: unknown
+  to: unknown
+}
+
+export interface DiffCounts {
+  added: number
+  removed: number
+  changed: number
+}
+
+export interface DiffSummary {
+  domains: DiffCounts
+  tables: DiffCounts
+  columns: DiffCounts
+  relationships: DiffCounts
+  lineage: DiffCounts
+}
+
+export interface DomainDiff {
+  id: string
+  change: DiffChange
+  fields: FieldChange[]
+}
+
+export interface ColumnDiff {
+  name: string
+  change: DiffChange
+  fields: FieldChange[]
+}
+
+export interface TableDiff {
+  id: string
+  domainId: string
+  change: DiffChange
+  fields: FieldChange[]
+  columns: ColumnDiff[]
+}
+
+export interface RelationshipDiff {
+  fromTableId: string
+  toTableId: string
+  targetRef: string
+  fromColumn: string
+  toColumn: string
+  change: DiffChange
+  fields: FieldChange[]
+}
+
+export interface LineageDiff {
+  tableId: string
+  column: string
+  sourceTable: string
+  sourceColumn: string
+  change: DiffChange
+  fields: FieldChange[]
+}
+
+export interface DiffVersionRef {
+  version: string
+  snapshotId: string
+}
+
+export interface DiffResult {
+  project: string
+  from: DiffVersionRef
+  to: DiffVersionRef
+  summary: DiffSummary
+  domains: DomainDiff[]
+  tables: TableDiff[]
+  relationships: RelationshipDiff[]
+  lineage: LineageDiff[]
+}
