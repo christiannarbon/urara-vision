@@ -43,7 +43,7 @@ function onKey(e: KeyboardEvent) {
 
 function openUsers() {
   open.value = false
-  void router.push('/admin/users')
+  void router.push({ name: 'admin-users' })
 }
 
 async function logout() {

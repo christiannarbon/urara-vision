@@ -93,11 +93,14 @@ func (s *Store) CreateConversation(ctx context.Context, owner, snapshotID, title
 // in use for a month accumulates threads without limit, and every one of them
 // was being returned in a single response to a sidebar that shows twenty.
 func (s *Store) ListConversations(ctx context.Context, owner, snapshotID string, limit int) ([]model.Conversation, error) {
-	rows, err := s.pool.Query(ctx,
-		`SELECT `+conversationColumns+`
-		   FROM conversations WHERE snapshot_id = $1 AND ($3 = '' OR user_id = $3)
-		  ORDER BY created_at DESC
-		  LIMIT $2`, snapshotID, limit, owner)
+	// Two statements, not `$3 = '' OR`, so a generic plan can use the owner index.
+	query := `SELECT ` + conversationColumns + ` FROM conversations WHERE snapshot_id = $1`
+	args := []any{snapshotID, limit}
+	if owner != "" {
+		query += ` AND user_id = $3`
+		args = append(args, owner)
+	}
+	rows, err := s.pool.Query(ctx, query+` ORDER BY created_at DESC LIMIT $2`, args...)
 	if err != nil {
 		return nil, err
 	}
