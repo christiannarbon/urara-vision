@@ -10,57 +10,40 @@ import type {
   IngestResult,
   JoinPath,
   LineageEntry,
+  Me,
   Project,
   SearchHit,
   Snapshot,
   SourceTable,
   TableResponse,
   TableSummary,
+  User,
 } from './types'
 import type { MessageKey } from '../i18n'
 
 const BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api/v1'
 
-// Where the API token lives between visits. It shares the `relviz.` prefix the
-// theme uses; see the note in the README about why that name survived.
-const TOKEN_KEY = 'relviz.apiToken'
-
-/**
- * The token is module state rather than a store field: every request needs it, including the ones…
- */
-let apiToken = readStoredToken()
-
-function readStoredToken(): string {
-  try {
-    return localStorage.getItem(TOKEN_KEY) ?? ''
-  } catch {
-    // Private windows and blocked site data both throw; a session-only token
-    // still works, it just will not survive a reload.
-    return ''
-  }
+// Tokens from before cookie sessions must not linger.
+try {
+  localStorage.removeItem('relviz.apiToken')
+} catch {
+  // Blocked site data.
 }
 
-/** True when a token has been supplied. */
-export function hasApiToken(): boolean {
-  return apiToken !== ''
+let onUnauthorized: (() => void) | undefined
+
+/** Registered by the auth store; avoids an import cycle. */
+export function setOnUnauthorized(fn: (() => void) | undefined): void {
+  onUnauthorized = fn
 }
 
-/** Stores the token for subsequent requests and for the next visit. */
-export function setApiToken(value: string): void {
-  apiToken = value.trim()
-  try {
-    if (apiToken) localStorage.setItem(TOKEN_KEY, apiToken)
-    else localStorage.removeItem(TOKEN_KEY)
-  } catch {
-    // Blocked site data; the in-memory token still covers this session.
-  }
-}
+const UNSAFE = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
 
-/**
- * Drops a token the backend has rejected, so the next load prompts again rather than retrying a…
- */
-export function clearApiToken(): void {
-  setApiToken('')
+/** Credentials and the CSRF header for every request to our own services. */
+export function withSession(init?: RequestInit): RequestInit {
+  const headers = new Headers(init?.headers)
+  if (UNSAFE.has((init?.method ?? 'GET').toUpperCase())) headers.set('X-Requested-With', 'urara')
+  return { ...init, headers, credentials: 'same-origin' }
 }
 
 /**
@@ -73,6 +56,7 @@ export class ApiError extends Error {
     readonly key?: MessageKey,
     /** The parsed JSON error body, when there was one. */
     readonly body?: Record<string, unknown>,
+    readonly headers?: Headers,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -80,13 +64,9 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  // Merge rather than replace: callers set Content-Type on the bodied calls.
-  const headers = new Headers(init?.headers)
-  if (apiToken) headers.set('Authorization', `Bearer ${apiToken}`)
-
   let res: Response
   try {
-    res = await fetch(`${BASE}${path}`, { ...init, headers })
+    res = await fetch(`${BASE}${path}`, withSession(init))
   } catch (cause) {
     throw new ApiError(
       'Cannot reach the backend. Check that the API is running and reachable.',
@@ -95,14 +75,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     )
   }
 
-  if (res.status === 401) {
-    // Whatever we hold is wrong or expired. Drop it so the app can ask again.
-    clearApiToken()
-    throw new ApiError(
-      'This API needs a token, and the one supplied was not accepted.',
-      401,
-      'error.tokenRejected',
-    )
+  // Login answers 401 for bad credentials; that is not a lost session.
+  if (res.status === 401 && path !== '/auth/login') {
+    onUnauthorized?.()
+    throw new ApiError('You are not signed in.', 401, 'error.notSignedIn')
   }
 
   if (!res.ok) {
@@ -122,6 +98,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       res.status,
       detail ? undefined : 'error.requestFailed',
       body,
+      res.headers,
     )
   }
 
@@ -139,7 +116,29 @@ function qs(params: Record<string, string | number | boolean | undefined>): stri
   return s ? `?${s}` : ''
 }
 
+const json = { 'Content-Type': 'application/json' }
+
 export const api = {
+  login(username: string, password: string): Promise<{ user: User }> {
+    return request('/auth/login', { method: 'POST', headers: json, body: JSON.stringify({ username, password }) })
+  },
+
+  logout(): Promise<void> {
+    return request('/auth/logout', { method: 'POST' })
+  },
+
+  me(): Promise<Me> {
+    return request('/auth/me')
+  },
+
+  changePassword(current: string, next: string): Promise<void> {
+    return request('/auth/password', {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({ current, new: next }),
+    })
+  },
+
   features(): Promise<Features> {
     return request('/features')
   },
