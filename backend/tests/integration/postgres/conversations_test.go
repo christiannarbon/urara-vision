@@ -47,7 +47,7 @@ func TestConversationRoundTrip(t *testing.T) {
 	pg := harness.Postgres(t)
 	m := harness.SavedModel(t, ctx, pg)
 
-	conv, err := pg.CreateConversation(ctx, m.Snapshot.ID, "why is fact_primary conformed")
+	conv, err := pg.CreateConversation(ctx, "", m.Snapshot.ID, "why is fact_primary conformed")
 	if err != nil {
 		t.Fatalf("CreateConversation: %v", err)
 	}
@@ -62,12 +62,12 @@ func TestConversationRoundTrip(t *testing.T) {
 		{Role: model.RoleAssistant, Content: "two of them", Citations: citations, Meta: meta},
 		{Role: model.RoleUser, Content: "why?"},
 	} {
-		if _, err := pg.AppendMessage(ctx, conv.ID, in); err != nil {
+		if _, err := pg.AppendMessage(ctx, "", conv.ID, in); err != nil {
 			t.Fatalf("AppendMessage(%s): %v", in.Role, err)
 		}
 	}
 
-	got, err := pg.GetConversation(ctx, conv.ID)
+	got, err := pg.GetConversation(ctx, "", conv.ID)
 	if err != nil {
 		t.Fatalf("GetConversation: %v", err)
 	}
@@ -121,17 +121,17 @@ func TestConversationUpdatedAtAdvances(t *testing.T) {
 	pg := harness.Postgres(t)
 	m := harness.SavedModel(t, ctx, pg)
 
-	conv, err := pg.CreateConversation(ctx, m.Snapshot.ID, "t")
+	conv, err := pg.CreateConversation(ctx, "", m.Snapshot.ID, "t")
 	if err != nil {
 		t.Fatalf("CreateConversation: %v", err)
 	}
 	before := conv.UpdatedAt
 
-	if _, err := pg.AppendMessage(ctx, conv.ID, model.Message{Role: model.RoleUser, Content: "hi"}); err != nil {
+	if _, err := pg.AppendMessage(ctx, "", conv.ID, model.Message{Role: model.RoleUser, Content: "hi"}); err != nil {
 		t.Fatalf("AppendMessage: %v", err)
 	}
 
-	got, err := pg.GetConversation(ctx, conv.ID)
+	got, err := pg.GetConversation(ctx, "", conv.ID)
 	if err != nil {
 		t.Fatalf("GetConversation: %v", err)
 	}
@@ -148,12 +148,12 @@ func TestConversationCascadeFromConversation(t *testing.T) {
 	pg := harness.Postgres(t)
 	m := harness.SavedModel(t, ctx, pg)
 
-	conv, err := pg.CreateConversation(ctx, m.Snapshot.ID, "t")
+	conv, err := pg.CreateConversation(ctx, "", m.Snapshot.ID, "t")
 	if err != nil {
 		t.Fatalf("CreateConversation: %v", err)
 	}
 	for i := 0; i < 2; i++ {
-		if _, err := pg.AppendMessage(ctx, conv.ID, model.Message{Role: model.RoleUser, Content: "hi"}); err != nil {
+		if _, err := pg.AppendMessage(ctx, "", conv.ID, model.Message{Role: model.RoleUser, Content: "hi"}); err != nil {
 			t.Fatalf("AppendMessage: %v", err)
 		}
 	}
@@ -161,7 +161,7 @@ func TestConversationCascadeFromConversation(t *testing.T) {
 		t.Fatalf("messages before delete = %d, want 2", n)
 	}
 
-	if err := pg.DeleteConversation(ctx, conv.ID); err != nil {
+	if err := pg.DeleteConversation(ctx, "", conv.ID); err != nil {
 		t.Fatalf("DeleteConversation: %v", err)
 	}
 	if n := countMessages(t, ctx, conv.ID); n != 0 {
@@ -177,11 +177,11 @@ func TestConversationCascadeFromSnapshot(t *testing.T) {
 	pg := harness.Postgres(t)
 	m := harness.SavedModel(t, ctx, pg)
 
-	conv, err := pg.CreateConversation(ctx, m.Snapshot.ID, "t")
+	conv, err := pg.CreateConversation(ctx, "", m.Snapshot.ID, "t")
 	if err != nil {
 		t.Fatalf("CreateConversation: %v", err)
 	}
-	if _, err := pg.AppendMessage(ctx, conv.ID, model.Message{
+	if _, err := pg.AppendMessage(ctx, "", conv.ID, model.Message{
 		Role:      model.RoleAssistant,
 		Content:   "fact_primary joins dim_alpha",
 		Citations: []string{"domain_one/fact_primary"},
@@ -193,7 +193,7 @@ func TestConversationCascadeFromSnapshot(t *testing.T) {
 		t.Fatalf("DeleteSnapshot: %v", err)
 	}
 
-	if _, err := pg.GetConversation(ctx, conv.ID); !errors.Is(err, postgres.ErrNotFound) {
+	if _, err := pg.GetConversation(ctx, "", conv.ID); !errors.Is(err, postgres.ErrNotFound) {
 		t.Errorf("GetConversation after the snapshot went = %v, want ErrNotFound", err)
 	}
 	if n := countMessages(t, ctx, conv.ID); n != 0 {
@@ -211,7 +211,7 @@ func TestConversationConcurrentAppendOrdinals(t *testing.T) {
 	pg := harness.Postgres(t)
 	m := harness.SavedModel(t, ctx, pg)
 
-	conv, err := pg.CreateConversation(ctx, m.Snapshot.ID, "t")
+	conv, err := pg.CreateConversation(ctx, "", m.Snapshot.ID, "t")
 	if err != nil {
 		t.Fatalf("CreateConversation: %v", err)
 	}
@@ -228,7 +228,7 @@ func TestConversationConcurrentAppendOrdinals(t *testing.T) {
 		go func(w int) {
 			defer wg.Done()
 			for i := 0; i < each; i++ {
-				_, err := pg.AppendMessage(ctx, conv.ID, model.Message{
+				_, err := pg.AppendMessage(ctx, "", conv.ID, model.Message{
 					Role:    model.RoleUser,
 					Content: fmt.Sprintf("writer %d message %d", w, i),
 				})
@@ -247,7 +247,7 @@ func TestConversationConcurrentAppendOrdinals(t *testing.T) {
 		t.Errorf("append failed: %v", err)
 	}
 
-	msgs, err := pg.ListMessages(ctx, conv.ID)
+	msgs, err := pg.ListMessages(ctx, "", conv.ID)
 	if err != nil {
 		t.Fatalf("ListMessages: %v", err)
 	}
@@ -275,13 +275,13 @@ func TestConversationNotFound(t *testing.T) {
 
 	const unknown = "no-such-conversation"
 
-	if _, err := pg.GetConversation(ctx, unknown); !errors.Is(err, postgres.ErrNotFound) {
+	if _, err := pg.GetConversation(ctx, "", unknown); !errors.Is(err, postgres.ErrNotFound) {
 		t.Errorf("GetConversation = %v, want ErrNotFound", err)
 	}
-	if err := pg.DeleteConversation(ctx, unknown); !errors.Is(err, postgres.ErrNotFound) {
+	if err := pg.DeleteConversation(ctx, "", unknown); !errors.Is(err, postgres.ErrNotFound) {
 		t.Errorf("DeleteConversation = %v, want ErrNotFound", err)
 	}
-	if _, err := pg.AppendMessage(ctx, unknown, model.Message{
+	if _, err := pg.AppendMessage(ctx, "", unknown, model.Message{
 		Role: model.RoleUser, Content: "hi",
 	}); !errors.Is(err, postgres.ErrNotFound) {
 		t.Errorf("AppendMessage = %v, want ErrNotFound", err)
