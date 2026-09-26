@@ -19,6 +19,7 @@ from urara_chat.api.answering import (
     turn_record,
 )
 from urara_chat.api.features import require_chat
+from urara_chat.api.identity import require_user
 from urara_chat.api.locks import ConversationLocks, TurnLimiter
 from urara_chat.api.middleware import current_request_id
 from urara_chat.api.routes import get_client, get_settings_for
@@ -39,7 +40,12 @@ from urara_chat.backend.errors import BackendError, BackendNotFound
 from urara_chat.backend.models import Conversation, Message
 from urara_chat.config import Settings
 
-router = APIRouter(prefix="/api/chat", tags=["chat"], dependencies=[Depends(require_chat)])
+# Identity first, so an anonymous caller cannot learn whether chat is on.
+router = APIRouter(
+    prefix="/api/chat",
+    tags=["chat"],
+    dependencies=[Depends(require_user), Depends(require_chat)],
+)
 log = logging.getLogger(__name__)
 
 
