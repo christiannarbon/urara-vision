@@ -11,6 +11,7 @@ package api_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"urara-vision/backend/internal/api"
 	"urara-vision/backend/internal/config"
@@ -46,13 +48,37 @@ func stack(t *testing.T) string {
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	routes := api.New(cfg, pg, gs, log).Routes()
-	// Every call runs as the service, the way nginx attaches the token.
+	adminID := testAdmin(t)
+	// Every call runs as the service, the way nginx attaches the token. The
+	// service may not delete, so deletes act as an admin.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r.Header.Set("Authorization", "Bearer "+serviceToken)
+		if r.Method == http.MethodDelete {
+			r.Header.Set("X-Acting-User", adminID)
+		}
 		routes.ServeHTTP(w, r)
 	}))
 	t.Cleanup(srv.Close)
 	return srv.URL
+}
+
+func testAdmin(t *testing.T) string {
+	t.Helper()
+	ctx := harness.Context(t)
+	u, err := harness.Postgres(t).CreatePasswordUser(ctx, "admin-"+uuid.NewString()[:8], "", "admin", "")
+	if err != nil {
+		t.Fatalf("CreatePasswordUser: %v", err)
+	}
+	t.Cleanup(func() {
+		conn, err := pgx.Connect(context.Background(), harness.PostgresDSN(t))
+		if err != nil {
+			t.Errorf("cleanup connect: %v", err)
+			return
+		}
+		defer func() { _ = conn.Close(context.Background()) }()
+		_, _ = conn.Exec(context.Background(), `DELETE FROM users WHERE id = $1`, u.ID)
+	})
+	return u.ID
 }
 
 // get issues a GET and decodes the JSON body, failing on a non-200.
