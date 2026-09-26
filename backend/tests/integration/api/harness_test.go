@@ -18,6 +18,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -41,6 +42,7 @@ func stack(t *testing.T) string {
 		MaxUploadBytes: 64 << 20,
 		MaxFiles:       5000,
 		APIToken:       serviceToken,
+		SessionTTL:     time.Hour,
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	routes := api.New(cfg, pg, gs, log).Routes()

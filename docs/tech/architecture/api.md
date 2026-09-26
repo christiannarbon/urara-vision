@@ -1,7 +1,8 @@
 # HTTP API
 
-Everything under `/api/v1` is behind the bearer token when `API_TOKEN` is set;
-the probes deliberately are not, because kubelet cannot carry a credential.
+Everything under `/api/v1` except `POST /api/v1/auth/login` needs a signed-in
+session cookie or the service bearer token (see [Authentication](#authentication)).
+The probes do not, because kubelet cannot carry a credential.
 
 Every read route accepts `latest` in place of a snapshot ID.
 
@@ -38,6 +39,11 @@ Every read route accepts `latest` in place of a snapshot ID.
 | `POST` | `/api/v1/conversations/{cid}/messages` | Append a turn |
 | `GET` | `/api/v1/features` | Whether chat is deployed and switched on |
 | `PATCH` | `/api/v1/settings` | Switch chat on or off at runtime |
+| `POST` | `/api/v1/auth/login` | Sign in; sets the session cookie |
+| `POST` | `/api/v1/auth/logout` | End the current session |
+| `GET` | `/api/v1/auth/me` | The caller and their permissions |
+| `POST` | `/api/v1/auth/password` | Change your own password |
+| `GET` | `/api/v1/auth/session` | `204` with identity headers, for nginx `auth_request` |
 | `GET` | `/healthz`, `/readyz` | Liveness; readiness includes both datastores |
 
 Table IDs are `domain/table` and contain a slash, so they travel as a query
@@ -283,6 +289,50 @@ It answers `200` with the same body as `/features`. A body without
 `chatEnabled`, or with any other field, is `400`. Turning chat on while
 `CHAT_ENABLED=false` is `409`, because there is no chat service to turn on.
 
+## Authentication
+
+A request is identified in this order:
+
+1. `AUTH_DISABLED=true`: every request is an anonymous admin. Local use only.
+2. A `urara_session` cookie: the signed-in user. An unknown or expired session is
+   `401` and clears the cookie.
+3. `Authorization: Bearer <API_TOKEN>`: the service (chat). With
+   `X-Acting-User: <user id>` it acts as that user instead. `X-Acting-User`
+   without the token is ignored.
+
+A bearer token that does not match is `401`, even alongside a valid cookie.
+
+**CSRF.** Cookie-authenticated `POST`, `PUT`, `PATCH` and `DELETE` must send
+`X-Requested-With: urara`, or they get `403`. Bearer calls are exempt.
+
+### Login
+
+```bash
+curl -c jar -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"..."}' localhost:8080/api/v1/auth/login
+```
+
+`200 {"user": {...}}` and a `urara_session` cookie: `HttpOnly`,
+`SameSite=Lax`, `Path=/`, `Secure` unless `COOKIE_SECURE=false`, expiring after
+`SESSION_TTL_HOURS` (168). The token is never in the body; only its SHA-256 is
+stored.
+
+An unknown user and a wrong password both answer `401 {"error":"invalid
+username or password"}`, in the same time.
+
+**Rate limits**, on failures in a sliding 15 minutes: 5 per username and 20 per
+client IP. Past either, `429` with `Retry-After` in seconds. A successful login
+clears the username's count. Limits are per replica.
+
+### The other routes
+
+| Route | Answer |
+|---|---|
+| `POST /auth/logout` | `204`. For a cookie session, deletes it and clears the cookie |
+| `GET /auth/me` | `{"user": {...} or null, "kind": "user\|service\|anonymous", "permissions": [...]}` |
+| `POST /auth/password` | `{"current","new"}` → `204`, ending the user's other sessions. Wrong current `401` (rate-limited like login), weak new `400`, non-user `403` |
+| `GET /auth/session` | `204` with `X-User-Id` and `X-User-Role` for a user; `401` otherwise |
+
 ## Errors
 
 Failures are JSON with an `error` field and the status the outcome maps to:
@@ -290,7 +340,9 @@ Failures are JSON with an `error` field and the status the outcome maps to:
 | Status | When |
 |---|---|
 | `400` | A parameter the handler can see is wrong, a body that will not decode, a missing or invalid `projectmeta.toml`, an ingest whose manifest names a different `project`, a malformed version escape or a delete of version `latest`, no `.md` files, too many files, or an upload past `MAX_UPLOAD_BYTES` |
-| `401` | `API_TOKEN` is set and the request did not carry it as `Authorization: Bearer <token>` |
+| `401` | Not signed in, an expired session, a wrong bearer token, an unknown `X-Acting-User`, or a failed login |
+| `403` | A cookie-authenticated write without `X-Requested-With: urara`, or a password change by a non-user |
 | `404` | No such snapshot, table or project — including `latest` when nothing has been ingested yet, which says so rather than returning an empty graph |
 | `409` | Importing a version the project already has, or turning chat on while `CHAT_ENABLED=false` |
+| `429` | Too many failed logins or password checks; see `Retry-After` |
 | `500` | Anything the stores report; the detail is logged with the request ID rather than returned |
