@@ -103,6 +103,8 @@ type fakeMeta struct {
 	errSetting    error
 	settingReads  int
 	settingWrites map[string]bool
+
+	fakeUsers
 }
 
 func (f *fakeMeta) GetBoolSetting(_ context.Context, key string, def bool) (bool, error) {
@@ -334,4 +336,81 @@ func (f *fakeMeta) DeleteVersion(_ context.Context, slug, version string) (strin
 		return "", false, f.errDelVersion
 	}
 	return f.deletedSID, f.projectDeleted, nil
+}
+
+// fakeUsers backs the session and identity methods. Expiry is the real store's
+// job, so an expired session is simply one missing from sessions.
+type fakeUsers struct {
+	users     map[string]*model.User // by ID
+	sessions  map[string]string      // token hash → user ID
+	passwords map[string]string      // user ID → hash
+}
+
+func (f *fakeMeta) addUser(u model.User) {
+	if f.users == nil {
+		f.users = map[string]*model.User{}
+	}
+	f.users[u.ID] = &u
+}
+
+func (f *fakeMeta) addSession(tokenHash, userID string) {
+	if f.sessions == nil {
+		f.sessions = map[string]string{}
+	}
+	f.sessions[tokenHash] = userID
+}
+
+func (f *fakeMeta) SessionUser(ctx context.Context, tokenHash string) (*model.User, error) {
+	id, ok := f.sessions[tokenHash]
+	if !ok {
+		return nil, postgres.ErrNotFound
+	}
+	return f.GetUser(ctx, id)
+}
+
+func (f *fakeMeta) GetUser(_ context.Context, id string) (*model.User, error) {
+	u, ok := f.users[id]
+	if !ok {
+		return nil, postgres.ErrNotFound
+	}
+	return u, nil
+}
+
+func (f *fakeMeta) CreateSession(_ context.Context, tokenHash, userID string, _ time.Time) error {
+	f.addSession(tokenHash, userID)
+	return nil
+}
+
+func (f *fakeMeta) DeleteSession(_ context.Context, tokenHash string) error {
+	delete(f.sessions, tokenHash)
+	return nil
+}
+
+func (f *fakeMeta) DeleteUserSessions(_ context.Context, userID, keepHash string) error {
+	for h, id := range f.sessions {
+		if id == userID && h != keepHash {
+			delete(f.sessions, h)
+		}
+	}
+	return nil
+}
+
+func (f *fakeMeta) PasswordIdentity(_ context.Context, username string) (*model.User, string, error) {
+	for _, u := range f.users {
+		if u.Username == username {
+			return u, f.passwords[u.ID], nil
+		}
+	}
+	return nil, "", postgres.ErrNotFound
+}
+
+func (f *fakeMeta) SetPasswordHash(_ context.Context, userID, hash string) error {
+	if _, ok := f.users[userID]; !ok {
+		return postgres.ErrNotFound
+	}
+	if f.passwords == nil {
+		f.passwords = map[string]string{}
+	}
+	f.passwords[userID] = hash
+	return nil
 }
