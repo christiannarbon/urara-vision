@@ -189,7 +189,7 @@ func TestChatEnabled(t *testing.T) {
 	}
 }
 
-// An unset token is the documented way to run without authentication.
+// An unset token means no service calls; users still sign in.
 func TestAPITokenDefaultsEmpty(t *testing.T) {
 	t.Setenv("NEO4J_PASSWORD", "x")
 
@@ -199,5 +199,42 @@ func TestAPITokenDefaultsEmpty(t *testing.T) {
 	}
 	if c.APIToken != "" {
 		t.Errorf("APIToken = %q, want empty", c.APIToken)
+	}
+}
+
+func TestAuthDefaults(t *testing.T) {
+	setRequired(t)
+	for _, k := range []string{"SESSION_TTL_HOURS", "COOKIE_SECURE", "AUTH_DISABLED",
+		"BOOTSTRAP_ADMIN_USERNAME", "BOOTSTRAP_ADMIN_PASSWORD"} {
+		t.Setenv(k, "")
+	}
+	c, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load() = %v", err)
+	}
+	if c.SessionTTL != 168*time.Hour || !c.CookieSecure || c.AuthDisabled {
+		t.Errorf("ttl=%v secure=%v disabled=%v", c.SessionTTL, c.CookieSecure, c.AuthDisabled)
+	}
+}
+
+func TestBootstrapAdminConfig(t *testing.T) {
+	cases := []struct {
+		name, user, pw string
+		ok             bool
+	}{
+		{"both set", "admin", "long-enough-password", true},
+		{"short password", "admin", "short", false},
+		{"username without password", "admin", "", false},
+		{"password without username", "", "long-enough-password", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			setRequired(t)
+			t.Setenv("BOOTSTRAP_ADMIN_USERNAME", tc.user)
+			t.Setenv("BOOTSTRAP_ADMIN_PASSWORD", tc.pw)
+			if _, err := config.Load(); (err == nil) != tc.ok {
+				t.Errorf("Load() err = %v, want ok=%v", err, tc.ok)
+			}
+		})
 	}
 }
