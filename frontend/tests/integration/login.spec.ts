@@ -118,6 +118,48 @@ describe('signing in', () => {
   })
 })
 
+describe('the user menu', () => {
+  it('moves focus into the menu and back to the trigger after the dialog', async () => {
+    const w = await mountApp('/projects/x', { signedIn: false, attachTo: document.body })
+    await signIn(w, 'alice', 'alice-password-123')
+
+    const trigger = w.find('.topbar [aria-haspopup="menu"]')
+    await trigger.trigger('click')
+    await flushPromises()
+    const change = w.findAll('[role="menuitem"]').find((b) => b.text() === en['auth.password.change'])!
+    expect(document.activeElement).toBe(change.element)
+
+    await change.trigger('click')
+    await flushPromises()
+    await w.find('[role="dialog"]').trigger('keydown', { key: 'Escape' })
+    await flushPromises()
+    expect(w.find('[role="dialog"]').exists()).toBe(false)
+    expect(document.activeElement).toBe(trigger.element)
+    w.unmount()
+  })
+
+  it('keeps Tab inside the password dialog', async () => {
+    const w = await mountApp('/projects/x', { signedIn: false, attachTo: document.body })
+    await signIn(w, 'alice', 'alice-password-123')
+    await w.find('.topbar [aria-haspopup="menu"]').trigger('click')
+    await w.findAll('[role="menuitem"]').find((b) => b.text() === en['auth.password.change'])!.trigger('click')
+    await flushPromises()
+
+    const dialog = w.find('[role="dialog"]')
+    const inputs = dialog.findAll('input')
+    const cancel = dialog.findAll('button').find((b) => b.text() === en['auth.cancel'])!
+    // The submit button is disabled while the fields are empty, so Cancel is last.
+    ;(cancel.element as HTMLElement).focus()
+    await dialog.trigger('keydown', { key: 'Tab' })
+    expect(document.activeElement).toBe(inputs[0].element)
+
+    ;(inputs[0].element as HTMLElement).focus()
+    await dialog.trigger('keydown', { key: 'Tab', shiftKey: true })
+    expect(document.activeElement).toBe(cancel.element)
+    w.unmount()
+  })
+})
+
 describe('the session', () => {
   it('returns to login when a request answers 401 mid-session', async () => {
     const w = await mountApp('/projects/x', { signedIn: false })
