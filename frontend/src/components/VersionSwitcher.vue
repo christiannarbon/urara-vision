@@ -13,6 +13,21 @@ const { snapshot, versions } = storeToRefs(useWorkspace())
 
 const current = computed(() => snapshot.value?.project?.project.version ?? '')
 
+// The next-older version, or the newest when this is the oldest.
+const compareFrom = computed(() => {
+  const labels = versions.value.map((v) => v.project?.project.version ?? '')
+  const i = labels.indexOf(current.value)
+  if (i < 0 || labels.length < 2) return ''
+  return i === labels.length - 1 ? labels[0] : labels[i + 1]
+})
+
+function compare() {
+  const project = snapshot.value?.projectSlug
+  if (project && compareFrom.value) {
+    void router.push({ name: 'diff', params: { project }, query: { from: compareFrom.value, to: current.value } })
+  }
+}
+
 function choose(e: Event) {
   const version = (e.target as HTMLSelectElement).value
   const project = snapshot.value?.projectSlug
@@ -35,6 +50,14 @@ function choose(e: Event) {
       {{ i === 0 ? t('version.latest', { version: v.project?.project.version ?? '' }) : v.project?.project.version }}
     </option>
   </select>
+  <button
+    v-if="compareFrom"
+    class="btn btn--ghost btn--sm compare"
+    :title="t('version.compare.title', { from: compareFrom, to: current })"
+    @click="compare"
+  >
+    {{ t('version.compare') }}
+  </button>
 </template>
 
 <style scoped>
