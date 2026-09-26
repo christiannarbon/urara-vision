@@ -93,7 +93,9 @@ export const messages: Messages = {
   'status.loading': 'モデルを読み込んでいます…',
   'error.unknown': '問題が発生しました。',
   'project.notFound': '「{slug}」というプロジェクトはありません。',
-  'project.empty': 'このプロジェクトにはまだ取り込みがありません。',
+  'version.label': 'バージョン',
+  'version.latest': '{version}（最新）',
+  'version.notFound': 'このプロジェクトにはバージョン「{version}」がありません。',
   'error.unreachable':
     'バックエンドに接続できません。API が起動していて到達可能か確認してください。',
   'error.tokenRejected': 'この API にはトークンが必要ですが、指定されたトークンは受け付けられませんでした。',
