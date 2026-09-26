@@ -2,13 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import {
-  ApiError,
-  api,
-  clearApiToken,
-  hasApiToken,
-  setApiToken,
-} from '../../src/api/client'
+import { ApiError, api, setOnUnauthorized } from '../../src/api/client'
 
 /** The URL and init of the most recent fetch call. */
 let calls: Array<{ url: string; init?: RequestInit }> = []
@@ -40,7 +34,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
-  clearApiToken()
+  setOnUnauthorized(undefined)
 })
 
 describe('request', () => {
@@ -178,67 +172,55 @@ describe('deleteSnapshot', () => {
   })
 })
 
-
-describe('api token', () => {
-  const TOKEN = '0123456789abcdef0123456789abcdef'
-
-  /** The Authorization header of the most recent call, however init carried it. */
-  function authHeader(): string | null {
-    const init = calls.at(-1)?.init
-    return new Headers(init?.headers).get('Authorization')
+describe('session', () => {
+  function headers(): Headers {
+    return new Headers(calls.at(-1)?.init?.headers)
   }
 
-  it('sends no Authorization header when no token is set', async () => {
+  it('sends the session cookie and no Authorization header', async () => {
     stubFetch({ body: { snapshots: [] } })
     await api.listSnapshots()
-    expect(authHeader()).toBeNull()
+    expect(calls[0].init?.credentials).toBe('same-origin')
+    expect(headers().has('Authorization')).toBe(false)
   })
 
-  it('sends the token as a bearer credential once set', async () => {
-    setApiToken(TOKEN)
+  it('marks unsafe methods with X-Requested-With and leaves GETs alone', async () => {
     stubFetch({ body: { snapshots: [] } })
     await api.listSnapshots()
-    expect(authHeader()).toBe(`Bearer ${TOKEN}`)
+    expect(headers().has('X-Requested-With')).toBe(false)
+
+    stubFetch({ status: 204 })
+    await api.deleteProject('p')
+    expect(headers().get('X-Requested-With')).toBe('urara')
   })
 
-  it('trims a pasted token', async () => {
-    setApiToken(`  ${TOKEN}\n`)
-    stubFetch({ body: { snapshots: [] } })
-    await api.listSnapshots()
-    expect(authHeader()).toBe(`Bearer ${TOKEN}`)
-  })
-
-  it('keeps the caller\'s own headers alongside the token', async () => {
-    setApiToken(TOKEN)
+  it('keeps the caller\'s own headers alongside the CSRF header', async () => {
     stubFetch({ status: 201, body: { snapshot: {}, edges: 0, diagnostics: [] } })
     await api.ingest('n', 'src', [{ path: 'a.md', content: '# a' }])
-
-    const headers = new Headers(calls.at(-1)?.init?.headers)
-    expect(headers.get('Authorization')).toBe(`Bearer ${TOKEN}`)
-    expect(headers.get('Content-Type')).toBe('application/json')
+    expect(headers().get('X-Requested-With')).toBe('urara')
+    expect(headers().get('Content-Type')).toBe('application/json')
   })
 
-  it('reports a 401 as an ApiError carrying the status', async () => {
-    setApiToken(TOKEN)
-    stubFetch({ status: 401, body: { error: 'unauthorized' } })
-    await expect(api.listSnapshots()).rejects.toMatchObject({ status: 401 })
+  it('reports a 401 as not signed in and calls onUnauthorized', async () => {
+    const onUnauthorized = vi.fn()
+    setOnUnauthorized(onUnauthorized)
+    stubFetch({ status: 401, body: { error: 'not signed in' } })
+    await expect(api.listSnapshots()).rejects.toMatchObject({ status: 401, key: 'error.notSignedIn' })
+    expect(onUnauthorized).toHaveBeenCalledOnce()
   })
 
-  it('drops a rejected token so the next load prompts again', async () => {
-    setApiToken(TOKEN)
-    expect(hasApiToken()).toBe(true)
-
-    stubFetch({ status: 401, body: { error: 'unauthorized' } })
-    await expect(api.listSnapshots()).rejects.toBeInstanceOf(ApiError)
-
-    expect(hasApiToken()).toBe(false)
+  it('treats a failed login as a plain error, not a lost session', async () => {
+    const onUnauthorized = vi.fn()
+    setOnUnauthorized(onUnauthorized)
+    stubFetch({ status: 401, body: { error: 'invalid username or password' } })
+    await expect(api.login('a', 'b')).rejects.toBeInstanceOf(ApiError)
+    expect(onUnauthorized).not.toHaveBeenCalled()
   })
 
-  it('stops sending the token after it has been cleared', async () => {
-    setApiToken(TOKEN)
-    clearApiToken()
-    stubFetch({ body: { snapshots: [] } })
-    await api.listSnapshots()
-    expect(authHeader()).toBeNull()
+  it('removes a token left from before cookie sessions', async () => {
+    localStorage.setItem('relviz.apiToken', 'old')
+    vi.resetModules()
+    await import('../../src/api/client')
+    expect(localStorage.getItem('relviz.apiToken')).toBeNull()
   })
 })
