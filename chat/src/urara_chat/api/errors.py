@@ -30,6 +30,7 @@ PROVIDER_FAILED = "the language model did not answer"
 INTERNAL = "internal error"
 CHAT_TURNED_OFF = "chat is turned off"
 NOT_SIGNED_IN = "not signed in"
+NOT_ALLOWED = "not allowed"
 
 
 class ProviderError(Exception):
@@ -90,7 +91,9 @@ async def backend_failed(request: Request, exc: Exception) -> Response:
 
 
 async def backend_rejected(request: Request, exc: Exception) -> Response:
-    """500 -- the backend refused a request this service built."""
+    """403 if the backend forbids the acting user; else 500 -- it refused a request built here."""
+    if isinstance(exc, BackendError) and exc.status == 403:
+        return _body(request, 403, error=NOT_ALLOWED)
     detail = exc.message if isinstance(exc, BackendError) else str(exc)
     log.error(
         "the backend refused a request built here",
