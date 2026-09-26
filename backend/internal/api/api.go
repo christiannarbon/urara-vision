@@ -10,6 +10,7 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -75,6 +76,14 @@ type MetaStore interface {
 	LoadModel(ctx context.Context, sid string) (*model.Model, error)
 	DeleteVersion(ctx context.Context, slug, version string) (sid string, projectDeleted bool, err error)
 
+	SessionUser(ctx context.Context, tokenHash string) (*model.User, error)
+	GetUser(ctx context.Context, id string) (*model.User, error)
+	CreateSession(ctx context.Context, tokenHash, userID string, expiresAt time.Time) error
+	DeleteSession(ctx context.Context, tokenHash string) error
+	DeleteUserSessions(ctx context.Context, userID, keepHash string) error
+	PasswordIdentity(ctx context.Context, username string) (*model.User, string, error)
+	SetPasswordHash(ctx context.Context, userID, hash string) error
+
 	GetBoolSetting(ctx context.Context, key string, def bool) (bool, error)
 	SetBoolSetting(ctx context.Context, key string, v bool) error
 
@@ -112,7 +121,7 @@ func (s *Server) Routes() http.Handler {
 		// refused before the handler is reached, which shows up in the logs as
 		// nothing at all rather than as a CORS problem.
 		AllowedMethods:   []string{"GET", "POST", "PATCH", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Requested-With"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Requested-With", "X-Acting-User"},
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))
@@ -120,55 +129,57 @@ func (s *Server) Routes() http.Handler {
 	r.Get("/healthz", s.handleHealth)
 	r.Get("/readyz", s.handleReady)
 
-	// Everything under /api/v1 is behind the bearer token. The probes above
-	// deliberately are not: kubelet cannot carry a credential.
+	// Everything under /api/v1 is authenticated except what is mounted outside
+	// the group (login, 13.5). The probes are not: kubelet carries no credential.
 	r.Route("/api/v1", func(r chi.Router) {
-		r.Use(s.requireToken)
+		r.Group(func(r chi.Router) {
+			r.Use(s.Authenticated)
 
-		r.Get("/features", s.handleFeatures)
-		r.Patch("/settings", s.handlePatchSettings)
+			r.Get("/features", s.handleFeatures)
+			r.Patch("/settings", s.handlePatchSettings)
 
-		r.Post("/ingest", s.handleIngest)
-		r.Get("/snapshots", s.handleListSnapshots)
+			r.Post("/ingest", s.handleIngest)
+			r.Get("/snapshots", s.handleListSnapshots)
 
-		r.Get("/projects", s.handleListProjects)
-		r.Route("/projects/{project}", func(r chi.Router) {
-			r.Get("/", s.handleGetProject)
-			r.Delete("/", s.handleDeleteProject)
-			r.Get("/versions", s.handleListVersions)
-			r.Get("/versions/{version}", s.handleGetVersion)
-			r.Get("/diff", s.handleDiff)
-			r.Delete("/versions/{version}", s.handleDeleteVersion)
-		})
+			r.Get("/projects", s.handleListProjects)
+			r.Route("/projects/{project}", func(r chi.Router) {
+				r.Get("/", s.handleGetProject)
+				r.Delete("/", s.handleDeleteProject)
+				r.Get("/versions", s.handleListVersions)
+				r.Get("/versions/{version}", s.handleGetVersion)
+				r.Get("/diff", s.handleDiff)
+				r.Delete("/versions/{version}", s.handleDeleteVersion)
+			})
 
-		r.Route("/snapshots/{sid}", func(r chi.Router) {
-			r.Get("/", s.handleGetSnapshot)
-			r.Delete("/", s.handleDeleteSnapshot)
-			r.Get("/context", s.handleContext)
-			r.Get("/domains", s.handleListDomains)
-			r.Get("/tables", s.handleListTables)
-			r.Get("/tables/detail", s.handleTablesDetail)
-			r.Get("/table", s.handleGetTable)
-			r.Get("/graph", s.handleGraph)
-			r.Get("/neighborhood", s.handleNeighborhood)
-			r.Get("/paths", s.handlePaths)
-			r.Get("/lineage", s.handleLineage)
-			r.Get("/search", s.handleSearch)
-			r.Get("/diagnostics", s.handleDiagnostics)
-			r.Get("/sources", s.handleSources)
-		})
+			r.Route("/snapshots/{sid}", func(r chi.Router) {
+				r.Get("/", s.handleGetSnapshot)
+				r.Delete("/", s.handleDeleteSnapshot)
+				r.Get("/context", s.handleContext)
+				r.Get("/domains", s.handleListDomains)
+				r.Get("/tables", s.handleListTables)
+				r.Get("/tables/detail", s.handleTablesDetail)
+				r.Get("/table", s.handleGetTable)
+				r.Get("/graph", s.handleGraph)
+				r.Get("/neighborhood", s.handleNeighborhood)
+				r.Get("/paths", s.handlePaths)
+				r.Get("/lineage", s.handleLineage)
+				r.Get("/search", s.handleSearch)
+				r.Get("/diagnostics", s.handleDiagnostics)
+				r.Get("/sources", s.handleSources)
+			})
 
-		// Conversations sit outside /snapshots/{sid}: a thread is addressed by
-		// its own ID, and the snapshot it belongs to is fixed when it is
-		// created rather than restated on every request.
-		r.Route("/conversations", func(r chi.Router) {
-			r.Post("/", s.handleCreateConversation)
-			r.Get("/", s.handleListConversations)
-			r.Route("/{cid}", func(r chi.Router) {
-				r.Get("/", s.handleGetConversation)
-				r.Patch("/", s.handlePatchConversation)
-				r.Delete("/", s.handleDeleteConversation)
-				r.Post("/messages", s.handleAppendMessage)
+			// Conversations sit outside /snapshots/{sid}: a thread is addressed by
+			// its own ID, and the snapshot it belongs to is fixed when it is
+			// created rather than restated on every request.
+			r.Route("/conversations", func(r chi.Router) {
+				r.Post("/", s.handleCreateConversation)
+				r.Get("/", s.handleListConversations)
+				r.Route("/{cid}", func(r chi.Router) {
+					r.Get("/", s.handleGetConversation)
+					r.Patch("/", s.handlePatchConversation)
+					r.Delete("/", s.handleDeleteConversation)
+					r.Post("/messages", s.handleAppendMessage)
+				})
 			})
 		})
 	})

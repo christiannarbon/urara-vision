@@ -29,6 +29,8 @@ func newServerWithMaxFiles(t *testing.T, meta *fakeMeta, graphs *fakeGraphs, max
 		// The production default. Left at zero, every /context response through
 		// this harness would truncate, and a wrong result would look right.
 		MaxContextTables: 400,
+		// Handler tests are not about authentication; authn_test.go is.
+		AuthDisabled: true,
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return api.New(cfg, meta, graphs, log).Routes()
@@ -43,6 +45,7 @@ func newServerWithContextCap(t *testing.T, meta *fakeMeta, graphs *fakeGraphs, m
 		MaxUploadBytes:   64 << 20,
 		MaxFiles:         100,
 		MaxContextTables: maxTables,
+		AuthDisabled:     true,
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	return api.New(cfg, meta, graphs, log).Routes()
