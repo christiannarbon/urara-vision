@@ -20,12 +20,14 @@ vi.mock('../../src/api/client', async () => {
       diagnostics: vi.fn(),
       graph: vi.fn(),
       listProjects: vi.fn(),
+      ingest: vi.fn(),
     },
   }
 })
 
 const { api } = await import('../../src/api/client')
 const { mountApp } = await import('../helpers/mountApp')
+const { useWorkspace } = await import('../../src/stores/workspace')
 
 const STATS = {
   domains: 1,
@@ -132,5 +134,45 @@ describe('the version switcher', () => {
     const w = await mountApp('/projects/p/versions/0.1.0')
     await flushPromises()
     expect(w.find('select.switcher').exists()).toBe(false)
+  })
+})
+
+describe('the version list after an import', () => {
+  it('includes the new version when the import came from home', async () => {
+    vi.mocked(api.ingest).mockResolvedValue({
+      snapshot: snap('0.2.0'),
+      project: { id: 'p-id', slug: 'p' },
+      edges: 0,
+      diagnostics: [],
+    })
+    const w = await mountApp('/')
+    await flushPromises()
+    await useWorkspace().ingest('x', 'x', [])
+    await w.vm.$router.push({ name: 'version', params: { project: 'p', version: '0.2.0' } })
+    await flushPromises()
+
+    expect(useWorkspace().versions).toHaveLength(2)
+    expect(w.find('select.switcher').exists()).toBe(true)
+  })
+})
+
+describe('switching away and back mid-load', () => {
+  it('ends on the version in the URL', async () => {
+    const w = await mountApp('/projects/p/versions/0.2.0')
+    await flushPromises()
+    const held: { release?: () => void } = {}
+    vi.mocked(api.getVersion).mockImplementation(async (_s: string, v: string) => {
+      if (v === '0.1.0') await new Promise<void>((r) => (held.release = r))
+      return snap(v)
+    })
+
+    await w.vm.$router.push('/projects/p/versions/0.1.0')
+    await flushPromises()
+    await w.vm.$router.push('/projects/p/versions/0.2.0')
+    await flushPromises()
+    held.release?.()
+    await flushPromises()
+
+    expect(useWorkspace().snapshot?.project?.project.version).toBe('0.2.0')
   })
 })
