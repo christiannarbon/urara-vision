@@ -11,6 +11,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"mime"
 	"net/http"
@@ -22,6 +23,7 @@ import (
 	"urara-vision/backend/internal/graph"
 	"urara-vision/backend/internal/parser"
 	"urara-vision/backend/internal/projectmeta"
+	"urara-vision/backend/internal/store/postgres"
 )
 
 // handleIngest parses an uploaded documentation directory into a new snapshot.
@@ -65,6 +67,11 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		s.badRequest(w, err.Error())
 		return
 	}
+	slug := projectmeta.Slug(meta.Project.Name)
+	if want := strings.TrimSpace(up.project); want != "" && want != slug {
+		s.badRequest(w, fmt.Sprintf("this directory is project %s, not %s", slug, want))
+		return
+	}
 
 	files := up.files
 	if len(files) == 0 {
@@ -81,6 +88,18 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		name = defaultName(up.sourceLabel)
 	}
 
+	// Checked before parsing so a re-import is refused cheaply; the unique
+	// index still settles a race.
+	_, err = s.pg.GetVersion(ctx, slug, meta.Project.Version)
+	switch {
+	case err == nil:
+		versionConflict(w, slug, meta.Project.Version)
+		return
+	case !errors.Is(err, postgres.ErrNotFound):
+		s.fail(w, r, fmt.Errorf("check version: %w", err))
+		return
+	}
+
 	snapshotID := uuid.NewString()
 	started := time.Now()
 
@@ -89,6 +108,10 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	edges := graph.Edges(m)
 
 	if err := s.pg.SaveSnapshot(ctx, m); err != nil {
+		if errors.Is(err, postgres.ErrConflict) {
+			versionConflict(w, slug, meta.Project.Version)
+			return
+		}
 		s.fail(w, r, fmt.Errorf("save snapshot: %w", err))
 		return
 	}
@@ -116,5 +139,13 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		"project":     map[string]string{"id": m.Snapshot.ProjectID, "slug": m.Snapshot.ProjectSlug},
 		"edges":       len(edges),
 		"diagnostics": m.Diagnostics,
+	})
+}
+
+func versionConflict(w http.ResponseWriter, slug, version string) {
+	writeJSON(w, http.StatusConflict, map[string]string{
+		"error":   fmt.Sprintf("version %s of %s already exists; delete it first to re-import", version, slug),
+		"project": slug,
+		"version": version,
 	})
 }
