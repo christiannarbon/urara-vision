@@ -62,6 +62,7 @@ export const messages = {
 
   // The project list on the entry screen
   'projects.title': 'Projects',
+  'projects.askForImport': 'Ask an admin or creator to import a project.',
   'projects.versions.one': '{n} version',
   'projects.versions.other': '{n} versions',
   'projects.latest': 'latest {version}',
@@ -161,6 +162,8 @@ export const messages = {
   'import.conflict.open': 'Open it',
   'error.unreachable': 'Cannot reach the backend. Check that the API is running and reachable.',
   'error.notSignedIn': 'You are not signed in.',
+  'error.notAllowed': 'You are not allowed to do that. Your permissions may have changed.',
+  'access.denied': 'You do not have access to that page.',
   'error.requestFailed': 'Request failed with status {status}.',
 
   // The role vocabulary. Mirrors graph/roles.ts, which mirrors the backend.
@@ -386,6 +389,7 @@ export const messages = {
   'auth.tooMany.other': 'Too many attempts; try again in {n} minutes.',
   'auth.menu': 'Signed in as {name}',
   'auth.logout': 'Log out',
+  'auth.users': 'Users',
   'auth.cancel': 'Cancel',
   'auth.saving': 'Saving…',
   'auth.password.change': 'Change password',
