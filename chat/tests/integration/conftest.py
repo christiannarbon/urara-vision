@@ -114,10 +114,26 @@ def chat_url() -> str:
     return url.rstrip("/")
 
 
+@pytest.fixture(scope="session")
+def user_id(backend_url: str) -> str:
+    """The bootstrap admin's ID, logged in over HTTP as a browser would."""
+    username = os.getenv("CHAT_TEST_ADMIN_USERNAME", "admin")
+    password = os.getenv("CHAT_TEST_ADMIN_PASSWORD", "relviz-dev-admin-password")
+    with httpx.Client(base_url=backend_url, timeout=30.0) as http:
+        login = http.post("/api/v1/auth/login", json={"username": username, "password": password})
+        login.raise_for_status()
+        me = http.get("/api/v1/auth/me")
+        me.raise_for_status()
+        uid: str = me.json()["user"]["id"]
+    return uid
+
+
 @pytest.fixture
-async def chat(chat_url: str) -> AsyncIterator[httpx.AsyncClient]:
-    """An HTTP client for the chat service."""
-    async with httpx.AsyncClient(base_url=chat_url, timeout=180.0) as client:
+async def chat(chat_url: str, user_id: str) -> AsyncIterator[httpx.AsyncClient]:
+    """An HTTP client for the chat service, carrying the identity nginx would set."""
+    async with httpx.AsyncClient(
+        base_url=chat_url, timeout=180.0, headers={"X-User-Id": user_id}
+    ) as client:
         yield client
 
 
