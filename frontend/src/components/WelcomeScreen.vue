@@ -4,10 +4,13 @@ import { computed, reactive, ref } from 'vue'
 import type { Project, Snapshot } from '../api/types'
 import type { PickedDirectory } from '../composables/useDirectoryPicker'
 import { supportsNativePicker, useDirectoryPicker } from '../composables/useDirectoryPicker'
+import { Perm } from '../auth/permissions'
 import { useI18n } from '../i18n'
+import { useAuth } from '../stores/auth'
 import VersionList from './VersionList.vue'
 
 const { t, tn, locale } = useI18n()
+const auth = useAuth()
 
 const props = defineProps<{
   projects: Project[]
@@ -101,7 +104,12 @@ function formatDate(iso: string): string {
         <p class="muted">{{ t('welcome.intro') }}</p>
       </header>
 
+      <p v-if="!auth.can(Perm.ProjectImport) && !projects.length" class="muted ask">
+        {{ t('projects.askForImport') }}
+      </p>
+
       <div
+        v-if="auth.can(Perm.ProjectImport)"
         class="dropzone"
         :class="{ 'dropzone--busy': disabled, 'dropzone--drag': dragging }"
         @dragover.prevent="dragging = true"
@@ -171,6 +179,7 @@ function formatDate(iso: string): string {
                 {{ expanded.has(p.slug) ? t('versions.hide') : t('versions.show') }}
               </button>
               <button
+                v-if="auth.can(Perm.ProjectDelete)"
                 class="btn btn--ghost btn--sm"
                 :disabled="disabled"
                 :title="t('projects.delete.named', { name: p.name })"
