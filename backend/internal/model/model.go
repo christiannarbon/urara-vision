@@ -248,3 +248,13 @@ const (
 func ValidRole(r string) bool {
 	return r == RoleUser || r == RoleAssistant || r == RoleSystem
 }
+
+// User is a person who can log in. It never carries a password hash.
+type User struct {
+	ID          string    `json:"id"`
+	Username    string    `json:"username"`
+	DisplayName string    `json:"displayName"`
+	Role        string    `json:"role"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
