@@ -72,6 +72,8 @@ type fakeMeta struct {
 	patchedTitle  string
 	appendedTo    string
 	appendedMsg   model.Message
+	// gotOwner is the owner the last conversation call was scoped to.
+	gotOwner string
 
 	projects         []model.ProjectSummary
 	project          *model.ProjectSummary
@@ -211,7 +213,8 @@ func (f *fakeMeta) ListSourceTables(context.Context, string) ([]model.SourceTabl
 
 func (f *fakeMeta) Ping(context.Context) error { return f.errPing }
 
-func (f *fakeMeta) CreateConversation(_ context.Context, snapshotID, title string) (*model.Conversation, error) {
+func (f *fakeMeta) CreateConversation(_ context.Context, owner, snapshotID, title string) (*model.Conversation, error) {
+	f.gotOwner = owner
 	f.createdFor, f.createdTitle = snapshotID, title
 	if f.errConversation != nil {
 		return nil, f.errConversation
@@ -222,12 +225,14 @@ func (f *fakeMeta) CreateConversation(_ context.Context, snapshotID, title strin
 	return &model.Conversation{ID: "conv-1", SnapshotID: snapshotID, Title: title}, nil
 }
 
-func (f *fakeMeta) ListConversations(_ context.Context, snapshotID string, limit int) ([]model.Conversation, error) {
+func (f *fakeMeta) ListConversations(_ context.Context, owner, snapshotID string, limit int) ([]model.Conversation, error) {
+	f.gotOwner = owner
 	f.listedFor, f.listedLimit = snapshotID, limit
 	return f.conversations, f.errConversation
 }
 
-func (f *fakeMeta) GetConversation(_ context.Context, id string) (*model.Conversation, error) {
+func (f *fakeMeta) GetConversation(_ context.Context, owner, id string) (*model.Conversation, error) {
+	f.gotOwner = owner
 	f.convID = id
 	if f.errConversation != nil {
 		return nil, f.errConversation
@@ -241,7 +246,8 @@ func (f *fakeMeta) GetConversation(_ context.Context, id string) (*model.Convers
 // UpdateConversationTitle echoes the conversation the test set with the new
 // title and a fresh updated_at, which is what a real UPDATE ... RETURNING does.
 // A nil conversation is a missing one, matching GetConversation.
-func (f *fakeMeta) UpdateConversationTitle(_ context.Context, id, title string) (*model.Conversation, error) {
+func (f *fakeMeta) UpdateConversationTitle(_ context.Context, owner, id, title string) (*model.Conversation, error) {
+	f.gotOwner = owner
 	f.convID, f.patchedTitle = id, title
 	if f.errConversation != nil {
 		return nil, f.errConversation
@@ -255,12 +261,14 @@ func (f *fakeMeta) UpdateConversationTitle(_ context.Context, id, title string) 
 	return &updated, nil
 }
 
-func (f *fakeMeta) DeleteConversation(_ context.Context, id string) error {
+func (f *fakeMeta) DeleteConversation(_ context.Context, owner, id string) error {
+	f.gotOwner = owner
 	f.convID = id
 	return f.errConversation
 }
 
-func (f *fakeMeta) AppendMessage(_ context.Context, conversationID string, m model.Message) (*model.Message, error) {
+func (f *fakeMeta) AppendMessage(_ context.Context, owner, conversationID string, m model.Message) (*model.Message, error) {
+	f.gotOwner = owner
 	f.appendedTo, f.appendedMsg = conversationID, m
 	if f.errAppend != nil {
 		return nil, f.errAppend
@@ -273,7 +281,8 @@ func (f *fakeMeta) AppendMessage(_ context.Context, conversationID string, m mod
 	return &stored, nil
 }
 
-func (f *fakeMeta) ListMessages(_ context.Context, conversationID string) ([]model.Message, error) {
+func (f *fakeMeta) ListMessages(_ context.Context, owner, conversationID string) ([]model.Message, error) {
+	f.gotOwner = owner
 	f.convID = conversationID
 	return f.messages, f.errConversation
 }
