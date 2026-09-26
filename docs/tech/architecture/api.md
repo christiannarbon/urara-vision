@@ -189,6 +189,9 @@ found"}`; an unknown version is `404 {"error": "version <v> not found"}`.
 - A table whose only changes are in its columns is `changed` with empty
   `fields`. Added and removed tables list no columns, and their columns are not
   counted in `summary.columns`.
+- `project` is the slug from the path. `toTableId` is `""` for an unresolved
+  join. Values are as stored, so `cardinality` reads as the document wrote it
+  (`Many-to-one`).
 
 ## The graph response
 
