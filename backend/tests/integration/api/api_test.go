@@ -5,6 +5,7 @@
 package api_test
 
 import (
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -208,5 +209,42 @@ func TestDeleteProjectRemovesItFromBothStores(t *testing.T) {
 	}
 	if len(g.Nodes) != 0 {
 		t.Errorf("graph still has %d nodes after the project was deleted", len(g.Nodes))
+	}
+}
+
+func TestReingestSameVersionIs409(t *testing.T) {
+	base := stack(t)
+	name := "api-conflict-" + uuid.NewString()[:8]
+	manifest := strings.Replace(fixtures.ProjectMetaTOML,
+		`name = "sample-data-modelling-project"`, `name = "`+name+`"`, 1)
+	_, slug := ingestAs(t, base, manifest)
+
+	code, raw := postIngest(t, base, manifest, "")
+	if code != http.StatusConflict {
+		t.Fatalf("second ingest = %d, want 409: %s", code, raw)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(raw, &body); err != nil {
+		t.Fatalf("409 body: %v\n%s", err, raw)
+	}
+	if body["project"] != slug || body["version"] != fixtures.ProjectMeta().Project.Version {
+		t.Errorf("409 body = %v", body)
+	}
+
+	project := get(t, base, "/api/v1/projects/"+slug)
+	if project["versionCount"] != float64(1) {
+		t.Errorf("versionCount = %v after a refused re-import, want 1", project["versionCount"])
+	}
+}
+
+func TestIngestWrongProjectIs400(t *testing.T) {
+	base := stack(t)
+	code, raw := postIngest(t, base, fixtures.ProjectMetaTOML, "not-this-one")
+	if code != http.StatusBadRequest {
+		t.Fatalf("ingest = %d, want 400: %s", code, raw)
+	}
+	if !strings.Contains(string(raw), "not-this-one") ||
+		!strings.Contains(string(raw), projectmeta.Slug(fixtures.ProjectMeta().Project.Name)) {
+		t.Errorf("error should name both slugs: %s", raw)
 	}
 }

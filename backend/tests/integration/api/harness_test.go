@@ -76,9 +76,9 @@ func ingest(t *testing.T, base string) string {
 	return sid
 }
 
-// ingestAs is ingest with its own manifest, and also returns the project slug
-// the response reports.
-func ingestAs(t *testing.T, base, manifest string) (sid, projectSlug string) {
+// postIngest uploads the star-schema fixture with manifest, optionally naming
+// the expected project, and returns the raw response.
+func postIngest(t *testing.T, base, manifest, project string) (int, []byte) {
 	t.Helper()
 
 	type file struct {
@@ -88,8 +88,9 @@ func ingestAs(t *testing.T, base, manifest string) (sid, projectSlug string) {
 	req := struct {
 		Name        string `json:"name"`
 		SourceLabel string `json:"sourceLabel"`
+		Project     string `json:"project,omitempty"`
 		Files       []file `json:"files"`
-	}{Name: "integration", SourceLabel: "fixtures"}
+	}{Name: "integration", SourceLabel: "fixtures", Project: project}
 	for _, f := range fixtures.StarSchema() {
 		req.Files = append(req.Files, file{Path: f.Path, Content: f.Content})
 	}
@@ -106,8 +107,16 @@ func ingestAs(t *testing.T, base, manifest string) (sid, projectSlug string) {
 	}
 	defer func() { _ = res.Body.Close() }()
 	raw, _ := io.ReadAll(res.Body)
-	if res.StatusCode != http.StatusCreated {
-		t.Fatalf("POST /ingest = %d: %s", res.StatusCode, raw)
+	return res.StatusCode, raw
+}
+
+// ingestAs is ingest with its own manifest, and also returns the project slug
+// the response reports.
+func ingestAs(t *testing.T, base, manifest string) (sid, projectSlug string) {
+	t.Helper()
+	code, raw := postIngest(t, base, manifest, "")
+	if code != http.StatusCreated {
+		t.Fatalf("POST /ingest = %d: %s", code, raw)
 	}
 
 	var out struct {

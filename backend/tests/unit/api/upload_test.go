@@ -6,6 +6,9 @@
 package api_test
 
 import (
+	"bytes"
+	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"strings"
 	"testing"
@@ -246,5 +249,82 @@ func TestManifestIsNotADocument(t *testing.T) {
 	}
 	if n := meta.saved.Snapshot.Stats.FilesParsed; n != 1 {
 		t.Errorf("files parsed = %d, want 1", n)
+	}
+}
+
+// projectBody is a JSON upload of one document and the fixture manifest,
+// expecting project.
+func projectBody(t *testing.T, project string) *bytes.Reader {
+	t.Helper()
+	type f struct {
+		Path    string `json:"path"`
+		Content string `json:"content"`
+	}
+	b, err := json.Marshal(map[string]any{
+		"project": project,
+		"files": []f{
+			{"d/fact_x.md", fixtures.Doc("fact_x", "Fact", "D", []string{"id"}, "")},
+			{projectmeta.FileName, fixtures.ProjectMetaTOML},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return bytes.NewReader(b)
+}
+
+func TestIngestWrongProjectIs400(t *testing.T) {
+	meta := &fakeMeta{}
+	h := newServer(t, meta, &fakeGraphs{})
+
+	rec := do(t, h, http.MethodPost, "/api/v1/ingest", projectBody(t, "not-jaffle"), "application/json")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body)
+	}
+	msg, _ := decode(t, rec.Body.Bytes())["error"].(string)
+	if !strings.Contains(msg, fixtureSlug) || !strings.Contains(msg, "not-jaffle") {
+		t.Errorf("error = %q; it should name both slugs", msg)
+	}
+	if meta.saved != nil {
+		t.Error("a mismatched project was saved")
+	}
+}
+
+func TestIngestMatchingProjectProceeds(t *testing.T) {
+	meta := &fakeMeta{}
+	h := newServer(t, meta, &fakeGraphs{})
+
+	rec := do(t, h, http.MethodPost, "/api/v1/ingest", projectBody(t, " "+fixtureSlug+" "), "application/json")
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body)
+	}
+}
+
+func TestIngestMultipartReadsProject(t *testing.T) {
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	if err := mw.WriteField("project", "not-jaffle"); err != nil {
+		t.Fatal(err)
+	}
+	for path, content := range map[string]string{
+		"d/fact_x.md":        fixtures.Doc("fact_x", "Fact", "D", []string{"id"}, ""),
+		projectmeta.FileName: fixtures.ProjectMetaTOML,
+	} {
+		part, err := mw.CreateFormFile(path, path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := part.Write([]byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := mw.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	h := newServer(t, &fakeMeta{}, &fakeGraphs{})
+	rec := do(t, h, http.MethodPost, "/api/v1/ingest", bytes.NewReader(buf.Bytes()), mw.FormDataContentType())
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 from the multipart project field: %s", rec.Code, rec.Body)
 	}
 }
