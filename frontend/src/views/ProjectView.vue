@@ -45,23 +45,19 @@ const { chatEnabled } = storeToRefs(useFeatures())
 
 const canvas = ref<InstanceType<typeof GraphCanvas> | null>(null)
 
-const loadedVersion = () => snapshot.value?.project?.project.version
-
 watch(
   () => [route.params.project, route.params.version] as const,
   async ([project, version]) => {
     if (typeof project !== 'string') return
     if (typeof version !== 'string') {
       await store.openVersion(project, 'latest')
-      const v = snapshot.value?.projectSlug === project ? loadedVersion() : undefined
+      const v = snapshot.value?.projectSlug === project ? snapshot.value.project?.project.version : undefined
       // Replace, so Back does not return to the bare URL.
       if (v && route.name === 'project' && route.params.project === project) {
         void router.replace({ name: 'version', params: { project, version: v } })
       }
       return
     }
-    // The replace above lands here with its snapshot already loaded.
-    if (snapshot.value?.projectSlug === project && loadedVersion() === version) return
     void store.openVersion(project, version)
   },
   { immediate: true },

@@ -63,11 +63,20 @@ func (s *Store) DeleteVersion(ctx context.Context, slug, version string) (sid st
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	// Locked first, as DeleteProject does: a save already holding the row is
+	// waited for, so the empty check below sees its snapshot.
 	var projectID string
+	err = tx.QueryRow(ctx, `SELECT id FROM projects WHERE slug = $1 FOR UPDATE`, slug).Scan(&projectID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, ErrNotFound
+	}
+	if err != nil {
+		return "", false, err
+	}
+
 	err = tx.QueryRow(ctx,
-		`DELETE FROM snapshots s USING projects p
-		 WHERE p.id = s.project_id AND p.slug = $1 AND s.project_version = $2
-		 RETURNING s.id, s.project_id`, slug, version).Scan(&sid, &projectID)
+		`DELETE FROM snapshots WHERE project_id = $1 AND project_version = $2 RETURNING id`,
+		projectID, version).Scan(&sid)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", false, ErrNotFound
 	}
@@ -75,14 +84,23 @@ func (s *Store) DeleteVersion(ctx context.Context, slug, version string) (sid st
 		return "", false, fmt.Errorf("delete snapshot: %w", err)
 	}
 
-	tag, err := tx.Exec(ctx,
-		`DELETE FROM projects WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM snapshots WHERE project_id = $1)`,
-		projectID)
+	projectDeleted, err = deleteEmptyProject(ctx, tx, projectID)
 	if err != nil {
-		return "", false, fmt.Errorf("delete empty project: %w", err)
+		return "", false, err
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return "", false, err
 	}
-	return sid, tag.RowsAffected() > 0, nil
+	return sid, projectDeleted, nil
+}
+
+// deleteEmptyProject removes the project if it has no snapshots left.
+func deleteEmptyProject(ctx context.Context, tx pgx.Tx, projectID string) (bool, error) {
+	tag, err := tx.Exec(ctx,
+		`DELETE FROM projects WHERE id = $1 AND NOT EXISTS (SELECT 1 FROM snapshots WHERE project_id = $1)`,
+		projectID)
+	if err != nil {
+		return false, fmt.Errorf("delete empty project: %w", err)
+	}
+	return tag.RowsAffected() > 0, nil
 }

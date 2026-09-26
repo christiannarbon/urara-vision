@@ -109,7 +109,7 @@ export const messages = {
   'version.notFound': 'This project has no version “{version}”.',
   'import.version': 'Import version',
   'import.version.title': 'Import a new version of this project from a directory',
-  'import.conflict': 'Version {version} already exists.',
+  'import.conflict': 'Version {version} of {project} already exists.',
   'import.conflict.open': 'Open it',
   'error.unreachable': 'Cannot reach the backend. Check that the API is running and reachable.',
   'error.tokenRejected': 'This API needs a token, and the one supplied was not accepted.',

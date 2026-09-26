@@ -14,7 +14,7 @@ vi.mock('../../src/api/client', async () => {
         get: (_, prop) =>
           prop === 'features'
             ? vi.fn().mockResolvedValue({ chat: { available: true, enabled: true } })
-            : vi.fn().mockResolvedValue({ snapshots: [], projects: [] }),
+            : vi.fn().mockResolvedValue({ snapshots: [], projects: [], versions: [] }),
       },
     ),
   }

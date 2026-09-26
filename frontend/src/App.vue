@@ -220,7 +220,7 @@ function backToPicker() {
     </p>
 
     <p v-if="conflict" class="banner banner--notice" role="alert">
-      <span>{{ t('import.conflict', { version: conflict.version }) }}</span>
+      <span>{{ t('import.conflict', { version: conflict.version, project: conflict.project }) }}</span>
       <span class="banner-actions">
         <RouterLink
           class="btn btn--ghost btn--sm"

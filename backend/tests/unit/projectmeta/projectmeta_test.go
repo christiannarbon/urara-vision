@@ -84,6 +84,11 @@ func TestParseRejects(t *testing.T) {
 			want: "project.version is required",
 		},
 		{
+			name: "version named like the alias",
+			toml: "[project]\nname = \"p\"\nversion = \"latest\"\n[internationalization]\nprimary = \"EN\"\nsupported = [\"EN\"]\ntype = \"inline\"\n",
+			want: "cannot be \"latest\"",
+		},
+		{
 			name: "no languages",
 			toml: "[project]\nname = \"p\"\nversion = \"1\"\n[internationalization]\nprimary = \"EN\"\nsupported = []\ntype = \"inline\"\n",
 			want: "must list at least one language",

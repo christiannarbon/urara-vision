@@ -21,9 +21,8 @@ func TestLatestAliasOverTheRealStore(t *testing.T) {
 	}
 }
 
-// TestReingestReplacesNothing: a second ingest of the same documents is a
-// separate snapshot, so the previous one stays readable.
-func TestReingestCreatesASeparateSnapshot(t *testing.T) {
+// A new version is a separate snapshot; the earlier one stays readable.
+func TestIngestKeepsEarlierVersions(t *testing.T) {
 	base := stack(t)
 	first := ingest(t, base)
 	second := ingest(t, base)

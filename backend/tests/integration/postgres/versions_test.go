@@ -195,3 +195,102 @@ func TestDeleteVersion(t *testing.T) {
 		t.Errorf("GetProject after last delete err = %v, want ErrNotFound", err)
 	}
 }
+
+func TestDeleteSnapshotRemovesAnEmptyProject(t *testing.T) {
+	t.Parallel()
+	ctx := harness.Context(t)
+	pg := harness.Postgres(t)
+
+	only := savedUnder(t, ctx, pg, uniqueProject(), "1.0.0", past(0))
+	if err := pg.DeleteSnapshot(ctx, only.Snapshot.ID); err != nil {
+		t.Fatalf("DeleteSnapshot: %v", err)
+	}
+	if _, err := pg.GetProject(ctx, only.Snapshot.ProjectSlug); !errors.Is(err, postgres.ErrNotFound) {
+		t.Errorf("GetProject after deleting the only snapshot err = %v, want ErrNotFound", err)
+	}
+
+	name := uniqueProject()
+	first := savedUnder(t, ctx, pg, name, "1.0.0", past(0))
+	savedUnder(t, ctx, pg, name, "2.0.0", past(time.Minute))
+	if err := pg.DeleteSnapshot(ctx, first.Snapshot.ID); err != nil {
+		t.Fatalf("DeleteSnapshot: %v", err)
+	}
+	p, err := pg.GetProject(ctx, first.Snapshot.ProjectSlug)
+	if err != nil {
+		t.Fatalf("GetProject with one version left: %v", err)
+	}
+	if p.VersionCount != 1 {
+		t.Errorf("VersionCount = %d, want 1", p.VersionCount)
+	}
+
+	if err := pg.DeleteSnapshot(ctx, "no-such-snapshot"); !errors.Is(err, postgres.ErrNotFound) {
+		t.Errorf("unknown ID err = %v, want ErrNotFound", err)
+	}
+}
+
+// Not parallel: it waits for a lock, and counts waiters to know when.
+func TestDeleteLastVersionKeepsAConcurrentSave(t *testing.T) {
+	ctx := harness.Context(t)
+	pg := harness.Postgres(t)
+	m := savedUnder(t, ctx, pg, uniqueProject(), "v1", past(0))
+	slug, projectID := m.Snapshot.ProjectSlug, m.Snapshot.ProjectID
+	racing := harness.SnapshotID()
+
+	conn, err := pgx.Connect(ctx, harness.PostgresDSN(t))
+	if err != nil {
+		t.Fatalf("connect postgres: %v", err)
+	}
+	defer func() { _ = conn.Close(context.Background()) }()
+	// An import mid-save: its snapshot is in, uncommitted, holding a key-share
+	// lock on the project row.
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if _, err := tx.Exec(ctx,
+		`INSERT INTO snapshots (id, name, project_version, project_id) VALUES ($1, 'racing', 'v2', $2)`,
+		racing, projectID); err != nil {
+		t.Fatalf("insert racing snapshot: %v", err)
+	}
+
+	type result struct {
+		projectDeleted bool
+		err            error
+	}
+	done := make(chan result, 1)
+	go func() {
+		_, deleted, err := pg.DeleteVersion(ctx, slug, "v1")
+		done <- result{deleted, err}
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var waiting int
+		queryRow(t, `SELECT count(*) FROM pg_stat_activity
+			WHERE wait_event_type = 'Lock' AND query LIKE '%projects%'`, nil, &waiting)
+		if waiting > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("DeleteVersion never waited on the project lock")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		t.Fatalf("commit racing snapshot: %v", err)
+	}
+
+	res := <-done
+	if res.err != nil {
+		t.Fatalf("DeleteVersion: %v", res.err)
+	}
+	if res.projectDeleted {
+		t.Error("projectDeleted = true, but a second version had just been saved")
+	}
+	var n int
+	queryRow(t, `SELECT count(*) FROM snapshots WHERE id = $1`, []any{racing}, &n)
+	if n != 1 {
+		t.Errorf("the concurrently saved snapshot was deleted with the project")
+	}
+}
