@@ -124,8 +124,11 @@ func TestSaveAndReadBackSnapshot(t *testing.T) {
 	// The manifest is the one thing the documentation states rather than the
 	// parser infers, so it has to survive the round trip intact -- including
 	// the language list, which is the only field stored as a document.
-	if got, want := snap.Project, fixtures.ProjectMeta(); !reflect.DeepEqual(got, want) {
-		t.Errorf("project = %+v, want %+v", got, want)
+	// SavedModel gives each save its own version.
+	wantMeta := fixtures.ProjectMeta()
+	wantMeta.Project.Version = m.Snapshot.Project.Project.Version
+	if got := snap.Project; !reflect.DeepEqual(got, wantMeta) {
+		t.Errorf("project = %+v, want %+v", got, wantMeta)
 	}
 
 	// The snapshot must be findable in the list and as the newest entry.
@@ -137,8 +140,8 @@ func TestSaveAndReadBackSnapshot(t *testing.T) {
 	for _, s := range all {
 		if s.ID == m.Snapshot.ID {
 			found = true
-			if got, want := s.Project, fixtures.ProjectMeta(); !reflect.DeepEqual(got, want) {
-				t.Errorf("listed project = %+v, want %+v", got, want)
+			if got := s.Project; !reflect.DeepEqual(got, wantMeta) {
+				t.Errorf("listed project = %+v, want %+v", got, wantMeta)
 			}
 		}
 	}
