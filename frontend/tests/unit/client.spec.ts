@@ -217,6 +217,14 @@ describe('session', () => {
     expect(onUnauthorized).not.toHaveBeenCalled()
   })
 
+  it('treats a wrong current password as a plain error, not a lost session', async () => {
+    const onUnauthorized = vi.fn()
+    setOnUnauthorized(onUnauthorized)
+    stubFetch({ status: 401, body: { error: 'current password is incorrect' } })
+    await expect(api.changePassword('a', 'b')).rejects.toMatchObject({ status: 401 })
+    expect(onUnauthorized).not.toHaveBeenCalled()
+  })
+
   it('removes a token left from before cookie sessions', async () => {
     localStorage.setItem('relviz.apiToken', 'old')
     vi.resetModules()
