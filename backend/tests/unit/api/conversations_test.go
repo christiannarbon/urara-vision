@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"urara-vision/backend/internal/auth"
 	"urara-vision/backend/internal/model"
 	"urara-vision/backend/internal/store/postgres"
 )
@@ -390,4 +391,54 @@ func TestAppendMessageRejectsBadInput(t *testing.T) {
 			t.Fatalf("status = %d, want 404", rec.Code)
 		}
 	})
+}
+
+// ownerCalls hits every conversation route; each reaches the store once.
+var ownerCalls = []struct{ method, target, body string }{
+	{http.MethodPost, "/api/v1/conversations", `{"snapshotId":"latest"}`},
+	{http.MethodGet, "/api/v1/conversations?snapshot=latest", ""},
+	{http.MethodGet, "/api/v1/conversations/c1", ""},
+	{http.MethodPatch, "/api/v1/conversations/c1", `{"title":"t"}`},
+	{http.MethodDelete, "/api/v1/conversations/c1", ""},
+	{http.MethodPost, "/api/v1/conversations/c1/messages", `{"role":"user","content":"hi"}`},
+}
+
+func ownerMeta() *fakeMeta {
+	return &fakeMeta{latest: "s1", conversation: &model.Conversation{ID: "c1"}, gotOwner: "unset"}
+}
+
+func TestConversationOwnerIsTheUser(t *testing.T) {
+	for _, c := range ownerCalls {
+		meta := ownerMeta()
+		h := roleServer(t, meta)
+		rec := asRole(t, h, auth.RoleViewer, c.method, c.target, strings.NewReader(c.body))
+		if rec.Code >= 300 {
+			t.Fatalf("%s %s: status = %d: %s", c.method, c.target, rec.Code, rec.Body)
+		}
+		if meta.gotOwner != "viewer" {
+			t.Errorf("%s %s: owner = %q, want viewer", c.method, c.target, meta.gotOwner)
+		}
+	}
+}
+
+func TestConversationOwnerIsEmptyForTheService(t *testing.T) {
+	for _, c := range ownerCalls {
+		meta := ownerMeta()
+		h := roleServer(t, meta)
+		rec := asService(h, c.method, c.target, strings.NewReader(c.body))
+		if rec.Code >= 300 {
+			t.Fatalf("%s %s: status = %d: %s", c.method, c.target, rec.Code, rec.Body)
+		}
+		if meta.gotOwner != "" {
+			t.Errorf("%s %s: owner = %q, want empty", c.method, c.target, meta.gotOwner)
+		}
+	}
+}
+
+func TestStrangersConversationIs404(t *testing.T) {
+	h := roleServer(t, &fakeMeta{errConversation: postgres.ErrNotFound})
+	rec := asRole(t, h, auth.RoleViewer, http.MethodGet, "/api/v1/conversations/c1", nil)
+	if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "conversation not found") {
+		t.Errorf("status = %d: %s", rec.Code, rec.Body)
+	}
 }
