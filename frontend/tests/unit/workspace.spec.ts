@@ -557,3 +557,31 @@ describe('dismissError', () => {
     expect(ws.error).toBeNull()
   })
 })
+
+describe('selectAfterOpen', () => {
+  const at = (slug: string, v: string): Snapshot => ({ ...snapshot, id: `${slug}@${v}`, projectSlug: slug })
+
+  beforeEach(() => {
+    stubHappyPath()
+    vi.mocked(api.listVersions).mockResolvedValue({ versions: [] })
+    vi.mocked(api.getVersion).mockImplementation(async (slug: string, v: string) => at(slug, v))
+    vi.mocked(api.table).mockResolvedValue({} as never)
+  })
+
+  it('selects the table once that version opens', async () => {
+    const ws = useWorkspace()
+    ws.selectAfterOpen('shop', '2.0.0', 'domain_one/fact_primary')
+    await ws.openVersion('shop', '2.0.0')
+    expect(api.table).toHaveBeenCalledWith('s1', 'domain_one/fact_primary')
+  })
+
+  it('does not leak into another project after an abandoned open', async () => {
+    const ws = useWorkspace()
+    ws.selectAfterOpen('shop', '2.0.0', 'domain_one/fact_primary')
+    const abandoned = ws.openVersion('shop', '2.0.0')
+    ws.clearSnapshot()
+    await abandoned
+    await ws.openVersion('other', '1.0.0')
+    expect(ws.selectedId).toBeNull()
+  })
+})
