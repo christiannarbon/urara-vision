@@ -160,7 +160,7 @@ export const messages: Messages = {
   'import.conflict.open': '開く',
   'error.unreachable':
     'バックエンドに接続できません。API が起動していて到達可能か確認してください。',
-  'error.tokenRejected': 'この API にはトークンが必要ですが、指定されたトークンは受け付けられませんでした。',
+  'error.notSignedIn': 'サインインしていません。',
   'error.requestFailed': 'リクエストが失敗しました（ステータス {status}）。',
 
   // The role vocabulary
@@ -378,19 +378,27 @@ export const messages: Messages = {
   'diagnostic.empty_document.blurb':
     '内容が空の Markdown ファイルです。すべてスキップされました。',
 
-  // API token gate
-  'gate.title': 'このインスタンスにはトークンが必要です',
-  'gate.intro.before':
-    'API は共有トークンで保護されています。このデプロイの運用担当者に問い合わせてください。バックエンドの起動時に指定した',
-  'gate.intro.after': 'です。',
-  'gate.field': 'API トークン',
-  'gate.placeholder': 'トークンを貼り付けてください',
-  'gate.rejected':
-    'このトークンは受け付けられませんでした。文字の欠落や余分な文字がないか確認してください。',
-  'gate.checking': '確認中…',
-  'gate.continue': '続ける',
-  'gate.storage':
-    'トークンはこのブラウザのローカルストレージに保存されるため、毎回入力する必要はありません。',
+  // Sign-in
+  'auth.title': 'Urara Vision にサインイン',
+  'auth.username': 'ユーザー名',
+  'auth.password': 'パスワード',
+  'auth.signIn': 'サインイン',
+  'auth.signingIn': 'サインインしています…',
+  'auth.invalid': 'ユーザー名またはパスワードが正しくありません。',
+  'auth.tooMany.one': '試行回数が多すぎます。{n} 分後にもう一度お試しください。',
+  'auth.tooMany.other': '試行回数が多すぎます。{n} 分後にもう一度お試しください。',
+  'auth.menu': '{name} としてサインイン中',
+  'auth.logout': 'ログアウト',
+  'auth.cancel': 'キャンセル',
+  'auth.saving': '保存中…',
+  'auth.password.change': 'パスワードを変更',
+  'auth.password.current': '現在のパスワード',
+  'auth.password.new': '新しいパスワード',
+  'auth.password.confirm': '新しいパスワード（確認）',
+  'auth.password.save': 'パスワードを変更',
+  'auth.password.mismatch': '新しいパスワードが一致しません。',
+  'auth.password.wrongCurrent': '現在のパスワードが正しくありません。',
+  'auth.password.changed': 'パスワードを変更しました。ほかのセッションはサインアウトされました。',
 }
 
 /** Japanese has no plural forms: one table and forty tables read alike. */
