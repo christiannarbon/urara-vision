@@ -281,12 +281,6 @@ func (f *fakeMeta) AppendMessage(_ context.Context, owner, conversationID string
 	return &stored, nil
 }
 
-func (f *fakeMeta) ListMessages(_ context.Context, owner, conversationID string) ([]model.Message, error) {
-	f.gotOwner = owner
-	f.convID = conversationID
-	return f.messages, f.errConversation
-}
-
 func (f *fakeMeta) ListProjects(context.Context) ([]model.ProjectSummary, error) {
 	return f.projects, f.errProject
 }
