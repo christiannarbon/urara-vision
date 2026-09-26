@@ -113,6 +113,14 @@ export const messages = {
   'diff.section.lineage': 'Column lineage',
   'diff.value.empty': '(empty)',
   'diff.expand': 'Click to show in full',
+  'diff.showOnGraph': 'Show on graph',
+  'diff.legend.label': 'Changes marked on the graph',
+  'diff.legend.title': 'Changes since {version}',
+  'diff.legend.added': 'Added',
+  'diff.legend.changed': 'Changed',
+  'diff.legend.removedNote': 'Removed items are listed on the diff page.',
+  'diff.legend.full': 'Full diff',
+  'diff.legend.clear': 'Clear',
 
   // Confirmation dialog
   'confirm.cancel': 'Cancel',
