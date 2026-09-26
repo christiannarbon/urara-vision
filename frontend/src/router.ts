@@ -1,9 +1,10 @@
 import { createRouter, createWebHistory, type Router, type RouterHistory } from 'vue-router'
 
 import { ApiError, setOnForbidden, setOnUnauthorized } from './api/client'
-import type { Perm } from './auth/permissions'
+import { Perm } from './auth/permissions'
 import { useAuth } from './stores/auth'
 import { useWorkspace } from './stores/workspace'
+import AdminUsersView from './views/AdminUsersView.vue'
 import DiffView from './views/DiffView.vue'
 import HomeView from './views/HomeView.vue'
 import LoginView from './views/LoginView.vue'
@@ -26,6 +27,12 @@ export function createAppRouter(history: RouterHistory = createWebHistory()) {
       { path: '/projects/:project', name: 'project', component: ProjectView },
       { path: '/projects/:project/versions/:version', name: 'version', component: ProjectView },
       { path: '/projects/:project/diff', name: 'diff', component: DiffView },
+      {
+        path: '/admin/users',
+        name: 'admin-users',
+        component: AdminUsersView,
+        meta: { permission: Perm.UserManage },
+      },
       { path: '/:pathMatch(.*)*', redirect: '/' },
     ],
   })
