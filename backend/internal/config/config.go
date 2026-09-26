@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"urara-vision/backend/internal/auth"
 )
 
 // minAPITokenLen is the shortest token Load will accept. 24 characters is
@@ -33,6 +35,13 @@ type Config struct {
 	LogLevel         string
 	// ChatEnabled is the deploy-time chat switch.
 	ChatEnabled bool
+
+	SessionTTL             time.Duration
+	CookieSecure           bool
+	BootstrapAdminUsername string
+	BootstrapAdminPassword string
+	// AuthDisabled makes every request an anonymous admin. Local use only.
+	AuthDisabled bool
 }
 
 // Load builds a Config from the environment, applying defaults that work with
@@ -52,15 +61,27 @@ func Load() (*Config, error) {
 		ShutdownTimeout:  time.Duration(envInt64("SHUTDOWN_TIMEOUT_SECONDS", 20)) * time.Second,
 		LogLevel:         env("LOG_LEVEL", "info"),
 		ChatEnabled:      envBool("CHAT_ENABLED", true),
+
+		SessionTTL:             time.Duration(envInt64("SESSION_TTL_HOURS", 168)) * time.Hour,
+		CookieSecure:           envBool("COOKIE_SECURE", true),
+		BootstrapAdminUsername: env("BOOTSTRAP_ADMIN_USERNAME", ""),
+		BootstrapAdminPassword: os.Getenv("BOOTSTRAP_ADMIN_PASSWORD"),
+		AuthDisabled:           envBool("AUTH_DISABLED", false),
 	}
 	if c.Neo4jPassword == "" {
 		return nil, fmt.Errorf("NEO4J_PASSWORD must be set")
 	}
-	// An unset token disables authentication, which is the documented way to
-	// run locally. A short one is worse than that: it looks like a control
-	// while being trivially guessable, so it is refused outright.
+	// A short token looks like a control while being trivially guessable.
 	if c.APIToken != "" && len(c.APIToken) < minAPITokenLen {
-		return nil, fmt.Errorf("API_TOKEN must be at least %d characters (leave it unset to disable authentication)", minAPITokenLen)
+		return nil, fmt.Errorf("API_TOKEN must be at least %d characters (leave it unset to disable service calls)", minAPITokenLen)
+	}
+	if (c.BootstrapAdminUsername == "") != (c.BootstrapAdminPassword == "") {
+		return nil, fmt.Errorf("BOOTSTRAP_ADMIN_USERNAME and BOOTSTRAP_ADMIN_PASSWORD must be set together")
+	}
+	if c.BootstrapAdminPassword != "" {
+		if err := auth.CheckPasswordPolicy(c.BootstrapAdminPassword); err != nil {
+			return nil, fmt.Errorf("BOOTSTRAP_ADMIN_PASSWORD: %w", err)
+		}
 	}
 	return c, nil
 }
