@@ -213,6 +213,7 @@ type Model struct {
 type Conversation struct {
 	ID         string    `json:"id"`
 	SnapshotID string    `json:"snapshotId"`
+	UserID     string    `json:"userId,omitempty"`
 	Title      string    `json:"title"`
 	CreatedAt  time.Time `json:"createdAt"`
 	UpdatedAt  time.Time `json:"updatedAt"`
