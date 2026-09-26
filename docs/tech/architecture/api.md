@@ -44,6 +44,11 @@ Every read route accepts `latest` in place of a snapshot ID.
 | `GET` | `/api/v1/auth/me` | The caller and their permissions |
 | `POST` | `/api/v1/auth/password` | Change your own password |
 | `GET` | `/api/v1/auth/session` | `204` with identity headers, for nginx `auth_request` |
+| `GET` | `/api/v1/users` | List users, by username |
+| `POST` | `/api/v1/users` | Create a password user |
+| `PATCH` | `/api/v1/users/{id}` | Change a user's role or display name |
+| `POST` | `/api/v1/users/{id}/password` | Set a user's password and end their sessions |
+| `DELETE` | `/api/v1/users/{id}` | Delete a user |
 | `GET` | `/healthz`, `/readyz` | Liveness; readiness includes both datastores |
 
 Table IDs are `domain/table` and contain a slash, so they travel as a query
@@ -334,6 +339,20 @@ clears the username's count. Limits are per replica.
 | `POST /auth/password` | `{"current","new"}` → `204`, ending the user's other sessions. Wrong current `401` (rate-limited like login), weak new `400`, non-user `403` |
 | `GET /auth/session` | `204` with `X-User-Id` and `X-User-Role` for a user; `401` otherwise |
 
+## Users
+
+Admin only: `user.manage` for all but `DELETE`, which needs `user.delete`.
+Responses never carry password hashes or identities, and a username cannot be
+changed.
+
+| Route | Body | Answer |
+|---|---|---|
+| `GET /users` | — | `{"users": [...]}` in username order |
+| `POST /users` | `{username, displayName, password, role}` | `201` with the user. Invalid username, unknown role, weak password or a display name over 100 characters `400`; taken username `409 {"error":"username already exists"}` |
+| `PATCH /users/{id}` | `{role?, displayName?}` | `200` with the user. Neither field `400`; unknown user `404`; demoting the last admin `409 {"error":"at least one admin must remain"}` |
+| `POST /users/{id}/password` | `{password}` | `204`, ending all that user's sessions. Weak password `400`; unknown user `404` |
+| `DELETE /users/{id}` | — | `204`; sessions and identities go with the user. Yourself `409 {"error":"you cannot delete your own account"}`; the last admin `409 {"error":"at least one admin must remain"}`; unknown user `404` |
+
 ## Errors
 
 Failures are JSON with an `error` field and the status the outcome maps to:
@@ -342,8 +361,8 @@ Failures are JSON with an `error` field and the status the outcome maps to:
 |---|---|
 | `400` | A parameter the handler can see is wrong, a body that will not decode, a missing or invalid `projectmeta.toml`, an ingest whose manifest names a different `project`, a malformed version escape or a delete of version `latest`, no `.md` files, too many files, or an upload past `MAX_UPLOAD_BYTES` |
 | `401` | Not signed in, an expired session, a wrong bearer token, an unknown `X-Acting-User`, or a failed login |
-| `403` | A cookie-authenticated write without `X-Requested-With: urara`, or a password change by a non-user |
+| `403` | A cookie-authenticated write without `X-Requested-With: urara`, a password change by a non-user, or a caller without the route's permission (`{"error":"not allowed"}`) |
 | `404` | No such snapshot, table or project — including `latest` when nothing has been ingested yet, which says so rather than returning an empty graph |
-| `409` | Importing a version the project already has, or turning chat on while `CHAT_ENABLED=false` |
+| `409` | Importing a version the project already has, turning chat on while `CHAT_ENABLED=false`, a taken username, deleting yourself, or removing the last admin |
 | `429` | Too many failed logins or password checks; see `Retry-After` |
 | `500` | Anything the stores report; the detail is logged with the request ID rather than returned |

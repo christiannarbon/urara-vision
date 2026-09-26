@@ -7,6 +7,8 @@ package api_test
 import (
 	"context"
 	"errors"
+	"slices"
+	"strings"
 	"time"
 
 	"urara-vision/backend/internal/model"
@@ -345,6 +347,9 @@ type fakeUsers struct {
 	sessions     map[string]string      // token hash → user ID
 	passwords    map[string]string      // user ID → hash
 	getUserCalls int
+
+	deleteUserCalls    int
+	sessionsDeletedFor [][2]string // (user ID, keep hash)
 }
 
 func (f *fakeMeta) addUser(u model.User) {
@@ -393,6 +398,7 @@ func (f *fakeMeta) DeleteSession(_ context.Context, tokenHash string) error {
 }
 
 func (f *fakeMeta) DeleteUserSessions(_ context.Context, userID, keepHash string) error {
+	f.sessionsDeletedFor = append(f.sessionsDeletedFor, [2]string{userID, keepHash})
 	for h, id := range f.sessions {
 		if id == userID && h != keepHash {
 			delete(f.sessions, h)
@@ -419,4 +425,67 @@ func (f *fakeMeta) SetPasswordHash(_ context.Context, userID, hash string) error
 	}
 	f.passwords[userID] = hash
 	return nil
+}
+
+func (f *fakeMeta) CreatePasswordUser(_ context.Context, username, displayName, role, hash string) (*model.User, error) {
+	for _, u := range f.users {
+		if u.Username == username {
+			return nil, postgres.ErrConflict
+		}
+	}
+	u := model.User{ID: "id-" + username, Username: username, DisplayName: displayName, Role: role}
+	f.addUser(u)
+	if f.passwords == nil {
+		f.passwords = map[string]string{}
+	}
+	f.passwords[u.ID] = hash
+	return &u, nil
+}
+
+func (f *fakeMeta) ListUsers(context.Context) ([]model.User, error) {
+	out := []model.User{}
+	for _, u := range f.users {
+		out = append(out, *u)
+	}
+	slices.SortFunc(out, func(a, b model.User) int { return strings.Compare(a.Username, b.Username) })
+	return out, nil
+}
+
+func (f *fakeMeta) UpdateUser(_ context.Context, id string, role, displayName *string) (*model.User, error) {
+	u, ok := f.users[id]
+	if !ok {
+		return nil, postgres.ErrNotFound
+	}
+	if role != nil && *role != "admin" && f.lastAdmin(id) {
+		return nil, postgres.ErrLastAdmin
+	}
+	if role != nil {
+		u.Role = *role
+	}
+	if displayName != nil {
+		u.DisplayName = *displayName
+	}
+	return u, nil
+}
+
+func (f *fakeMeta) DeleteUser(_ context.Context, id string) error {
+	f.deleteUserCalls++
+	if _, ok := f.users[id]; !ok {
+		return postgres.ErrNotFound
+	}
+	if f.lastAdmin(id) {
+		return postgres.ErrLastAdmin
+	}
+	delete(f.users, id)
+	return nil
+}
+
+func (f *fakeMeta) lastAdmin(id string) bool {
+	n := 0
+	for _, u := range f.users {
+		if u.Role == "admin" {
+			n++
+		}
+	}
+	return n == 1 && f.users[id].Role == "admin"
 }
