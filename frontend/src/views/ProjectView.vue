@@ -13,9 +13,7 @@ import SearchOverlay from '../components/SearchOverlay.vue'
 import TableDetail from '../components/TableDetail.vue'
 import { api } from '../api/client'
 import type { DiffResult } from '../api/types'
-import { Perm } from '../auth/permissions'
 import { buildDiffMarks } from '../graph/diff-marks'
-import { useAuth } from '../stores/auth'
 import { useChat } from '../stores/chat'
 import { useFeatures } from '../stores/features'
 import { useUi } from '../stores/ui'
@@ -47,9 +45,7 @@ const {
 const ui = useUi()
 const { searchOpen, diagnosticsOpen } = storeToRefs(ui)
 const { open: chatOpen } = storeToRefs(useChat())
-const { chatEnabled: featureOn } = storeToRefs(useFeatures())
-const auth = useAuth()
-const chatEnabled = computed(() => featureOn.value && auth.can(Perm.ChatUse))
+const { chatUsable } = storeToRefs(useFeatures())
 
 const canvas = ref<InstanceType<typeof GraphCanvas> | null>(null)
 
@@ -153,7 +149,7 @@ async function focusOn(id: string) {
       <DiffLegend v-if="diffResult" :result="diffResult" @clear="clearDiff" />
     </div>
 
-    <ChatPanel v-if="chatEnabled && chatOpen" class="pane pane--right" />
+    <ChatPanel v-if="chatUsable && chatOpen" class="pane pane--right" />
 
     <DiagnosticsPanel
       v-else-if="diagnosticsOpen"
