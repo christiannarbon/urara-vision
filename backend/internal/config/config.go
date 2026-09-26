@@ -42,6 +42,9 @@ type Config struct {
 	BootstrapAdminPassword string
 	// AuthDisabled makes every request an anonymous admin. Local use only.
 	AuthDisabled bool
+	// TrustedProxyHops is how many proxies append to X-Forwarded-For in front
+	// of the backend; 0 means use the TCP peer.
+	TrustedProxyHops int
 }
 
 // Load builds a Config from the environment, applying defaults that work with
@@ -67,6 +70,7 @@ func Load() (*Config, error) {
 		BootstrapAdminUsername: env("BOOTSTRAP_ADMIN_USERNAME", ""),
 		BootstrapAdminPassword: os.Getenv("BOOTSTRAP_ADMIN_PASSWORD"),
 		AuthDisabled:           envBool("AUTH_DISABLED", false),
+		TrustedProxyHops:       int(envInt64("TRUSTED_PROXY_HOPS", 1)),
 	}
 	if c.Neo4jPassword == "" {
 		return nil, fmt.Errorf("NEO4J_PASSWORD must be set")
@@ -82,6 +86,12 @@ func Load() (*Config, error) {
 		if err := auth.CheckPasswordPolicy(c.BootstrapAdminPassword); err != nil {
 			return nil, fmt.Errorf("BOOTSTRAP_ADMIN_PASSWORD: %w", err)
 		}
+	}
+	if c.SessionTTL <= 0 {
+		return nil, fmt.Errorf("SESSION_TTL_HOURS must be at least 1")
+	}
+	if c.TrustedProxyHops < 0 {
+		return nil, fmt.Errorf("TRUSTED_PROXY_HOPS must not be negative")
 	}
 	return c, nil
 }
