@@ -7,6 +7,7 @@ from typing import Any
 
 import httpx
 
+from urara_chat.api.identity import ACTING_USER_HEADER, current_user_id
 from urara_chat.api.middleware import REQUEST_ID_HEADER, current_request_id
 from urara_chat.backend.errors import (
     BackendError,
@@ -96,10 +97,14 @@ class BackendClient:
         # The request ID is forwarded on every call, which is what makes one ID span both
         # services: the Go side reads this header rather than minting its own, so a turn's log
         # lines here and there carry the same value.
-        request_id = current_request_id()
-        headers = {REQUEST_ID_HEADER: request_id} if request_id else None
+        headers: dict[str, str] = {}
+        if request_id := current_request_id():
+            headers[REQUEST_ID_HEADER] = request_id
+        # The backend trusts this only alongside the service token.
+        if user_id := current_user_id():
+            headers[ACTING_USER_HEADER] = user_id
         try:
-            return await self._client.request(method, path, headers=headers, **kwargs)
+            return await self._client.request(method, path, headers=headers or None, **kwargs)
         except httpx.HTTPError as exc:
             raise BackendUnavailable(502, f"backend unreachable: {exc}") from exc
 
