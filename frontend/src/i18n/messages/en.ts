@@ -114,6 +114,8 @@ export const messages = {
   'diff.section.relationships': 'Joins',
   'diff.section.lineage': 'Column lineage',
   'diff.value.empty': '(empty)',
+  'diff.value.true': 'yes',
+  'diff.value.false': 'no',
   'diff.expand': 'Click to show in full',
   'diff.showOnGraph': 'Show on graph',
   'diff.legend.label': 'Changes marked on the graph',
