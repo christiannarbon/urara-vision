@@ -144,12 +144,13 @@ func TestDeletingUserCascades(t *testing.T) {
 	}
 }
 
-// Needs an empty users table, so it runs in a schema of its own.
-func TestBootstrapAdminCreatesExactlyOne(t *testing.T) {
-	ctx := harness.Context(t)
+// freshStore is a migrated store in a schema of its own, for tests that need an
+// empty users table. It also returns a DSN for that schema.
+func freshStore(t *testing.T, ctx context.Context, prefix string) (*postgres.Store, string) {
+	t.Helper()
 	dsn := harness.PostgresDSN(t)
 
-	schema := "bootstrap_race_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	schema := prefix + strings.ReplaceAll(uuid.NewString(), "-", "")
 	admin, err := pgx.Connect(ctx, dsn)
 	if err != nil {
 		t.Fatalf("connect postgres: %v", err)
@@ -164,7 +165,8 @@ func TestBootstrapAdminCreatesExactlyOne(t *testing.T) {
 		}
 	})
 
-	pg, err := postgres.New(ctx, inSchema(t, dsn, schema))
+	schemaDSN := inSchema(t, dsn, schema)
+	pg, err := postgres.New(ctx, schemaDSN)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,6 +174,12 @@ func TestBootstrapAdminCreatesExactlyOne(t *testing.T) {
 	if err := pg.Migrate(ctx); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
+	return pg, schemaDSN
+}
+
+func TestBootstrapAdminCreatesExactlyOne(t *testing.T) {
+	ctx := harness.Context(t)
+	pg, _ := freshStore(t, ctx, "bootstrap_race_")
 
 	const starters = 5
 	var wg sync.WaitGroup
