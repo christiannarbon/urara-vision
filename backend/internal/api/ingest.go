@@ -33,6 +33,11 @@ import (
 // include the directory's projectmeta.toml.
 func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
+	// The body is not read for a caller who can import nothing.
+	if p, _ := auth.PrincipalFrom(ctx); !p.Can(auth.PermProjectImport) && !p.Can(auth.PermVersionImport) {
+		s.allowed(w, r, ingestRoute, auth.PermProjectImport)
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, s.cfg.MaxUploadBytes)
 
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
