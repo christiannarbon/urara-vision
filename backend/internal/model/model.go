@@ -259,3 +259,28 @@ type User struct {
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
+
+// Note is a comment pinned to one anchor in a snapshot. Replies have ParentID set.
+type Note struct {
+	ID             string     `json:"id"`
+	SnapshotID     string     `json:"snapshotId"`
+	ParentID       string     `json:"parentId,omitempty"`
+	AnchorKind     string     `json:"anchorKind"`
+	AnchorID       string     `json:"anchorId"`
+	Body           string     `json:"body"`
+	AuthorID       string     `json:"authorId,omitempty"`
+	AuthorName     string     `json:"authorName"`
+	ResolvedAt     *time.Time `json:"resolvedAt,omitempty"`
+	ResolvedByName string     `json:"resolvedByName,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
+	Replies        []Note     `json:"replies,omitempty"`
+}
+
+// NoteCount is the number of top-level notes on one anchor.
+type NoteCount struct {
+	AnchorKind string `json:"anchorKind"`
+	AnchorID   string `json:"anchorId"`
+	Open       int    `json:"open"`
+	Resolved   int    `json:"resolved"`
+}
