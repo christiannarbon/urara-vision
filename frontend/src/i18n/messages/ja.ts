@@ -112,6 +112,14 @@ export const messages: Messages = {
   'diff.section.lineage': 'カラムリネージ',
   'diff.value.empty': '（空）',
   'diff.expand': 'クリックして全文を表示',
+  'diff.showOnGraph': 'グラフで表示',
+  'diff.legend.label': 'グラフ上の変更',
+  'diff.legend.title': '{version} からの変更',
+  'diff.legend.added': '追加',
+  'diff.legend.changed': '変更',
+  'diff.legend.removedNote': '削除された項目は差分ページに表示されます。',
+  'diff.legend.full': '差分を表示',
+  'diff.legend.clear': 'クリア',
 
   // Confirmation dialog
   'confirm.cancel': 'キャンセル',

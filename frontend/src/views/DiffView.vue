@@ -10,6 +10,7 @@ import { api, ApiError } from '../api/client'
 import type { Snapshot } from '../api/types'
 import { useI18n } from '../i18n'
 import { useDiff } from '../stores/diff'
+import { useWorkspace } from '../stores/workspace'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -67,6 +68,15 @@ function swap() {
   void router.replace({ query: { ...route.query, from: to.value, to: from.value } })
 }
 
+function showOnGraph() {
+  void router.push({ name: 'version', params: { project: project.value, version: to.value }, query: { diffFrom: from.value } })
+}
+
+function openTable(id: string) {
+  useWorkspace().selectAfterOpen(id)
+  showOnGraph()
+}
+
 const shownError = computed(() => {
   const e = versionsError.value ?? error.value
   if (!e) return ''
@@ -108,8 +118,11 @@ const shownError = computed(() => {
         <span class="muted">{{ t('diff.loading') }}</span>
       </div>
       <template v-else>
-        <DiffSummary :summary="result.summary" />
-        <DiffChangeList :result="result" />
+        <div class="summary-row">
+          <DiffSummary :summary="result.summary" />
+          <button class="btn btn--sm show-graph" @click="showOnGraph">{{ t('diff.showOnGraph') }}</button>
+        </div>
+        <DiffChangeList :result="result" @open-table="openTable" />
       </template>
     </div>
   </main>
@@ -123,6 +136,7 @@ const shownError = computed(() => {
 .pickers { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; }
 .picker { display: flex; flex-direction: column; gap: 2px; }
 .tiny { font-size: 11px; }
+.summary-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .banner {
   margin: 0;
   padding: 8px 12px;

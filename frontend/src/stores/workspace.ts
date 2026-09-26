@@ -219,6 +219,13 @@ export const useWorkspace = defineStore('workspace', () => {
 
   /** Loads one version of a project; `latest` is the newest. Also refreshes
    *  the project's version list. */
+  // Set from outside the workspace (the diff page) and applied once the next open settles.
+  let pendingSelect: string | null = null
+
+  function selectAfterOpen(id: string) {
+    pendingSelect = id
+  }
+
   async function openVersion(slug: string, version: string) {
     clearError()
     const started = ++opening
@@ -240,9 +247,14 @@ export const useWorkspace = defineStore('workspace', () => {
     versions.value = list.value.versions
     if (snap.status === 'rejected') return failOpen(snap.reason, 'version.notFound', { version })
     if (!open) await loadSnapshot(snap.value.id, stale)
+    if (stale() || !pendingSelect) return
+    const id = pendingSelect
+    pendingSelect = null
+    await select(id)
   }
 
   function failOpen(e: unknown, key: MessageKey, params: Record<string, string>) {
+    pendingSelect = null
     if (e instanceof ApiError && e.status === 404) {
       clearSnapshot()
       clearError()
@@ -464,6 +476,7 @@ export const useWorkspace = defineStore('workspace', () => {
   }
 
   return {
+    selectAfterOpen,
     snapshot,
     snapshots,
     projects,

@@ -1,15 +1,19 @@
 <script setup lang="ts">
 /** The workspace for one project: filters, canvas and the right-hand pane. */
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoute, useRouter } from 'vue-router'
 
 import ChatPanel from '../components/ChatPanel.vue'
+import DiffLegend from '../components/DiffLegend.vue'
 import DiagnosticsPanel from '../components/DiagnosticsPanel.vue'
 import FilterSidebar from '../components/FilterSidebar.vue'
 import GraphCanvas from '../components/GraphCanvas.vue'
 import SearchOverlay from '../components/SearchOverlay.vue'
 import TableDetail from '../components/TableDetail.vue'
+import { api } from '../api/client'
+import type { DiffResult } from '../api/types'
+import { buildDiffMarks } from '../graph/diff-marks'
 import { useChat } from '../stores/chat'
 import { useFeatures } from '../stores/features'
 import { useUi } from '../stores/ui'
@@ -69,6 +73,31 @@ onBeforeUnmount(() => {
   ui.searchOpen = false
 })
 
+// `?diffFrom=` marks what changed since that version. A failed diff just shows no marks.
+const diffResult = ref<DiffResult | null>(null)
+let diffGeneration = 0
+watch(
+  () => [route.params.project, route.params.version, route.query.diffFrom] as const,
+  async ([project, version, diffFrom]) => {
+    const started = ++diffGeneration
+    diffResult.value = null
+    if (typeof project !== 'string' || typeof version !== 'string' || typeof diffFrom !== 'string' || !diffFrom) return
+    try {
+      const res = await api.diff(project, diffFrom, version)
+      if (started === diffGeneration) diffResult.value = res
+    } catch {
+      // No marks; the diff page is where errors are shown.
+    }
+  },
+  { immediate: true },
+)
+const diffMarks = computed(() => (diffResult.value ? buildDiffMarks(diffResult.value, graph.value) : null))
+
+function clearDiff() {
+  const { diffFrom: _, ...query } = route.query
+  void router.replace({ query })
+}
+
 async function navigate(id: string) {
   await store.select(id)
   canvas.value?.panTo(id)
@@ -113,9 +142,11 @@ async function focusOn(id: string) {
         :selected-id="selectedId"
         :loading="graphLoading"
         :layout-mode="layoutMode"
+        :diff-marks="diffMarks"
         @select="store.select"
         @focus="focusOn"
       />
+      <DiffLegend v-if="diffResult" :result="diffResult" @clear="clearDiff" />
     </div>
 
     <ChatPanel v-if="chatEnabled && chatOpen" class="pane pane--right" />
@@ -164,6 +195,7 @@ async function focusOn(id: string) {
 .workspace--wide { grid-template-columns: 250px 1fr 400px; }
 
 .pane { min-width: 0; min-height: 0; overflow: hidden; }
+.pane--graph { position: relative; }
 
 @media (max-width: 1180px) {
   .workspace, .workspace--wide { grid-template-columns: 210px 1fr 300px; }
