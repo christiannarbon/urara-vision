@@ -28,6 +28,8 @@ import (
 	"urara-vision/backend/tests/integration/harness"
 )
 
+const serviceToken = "integration-service-token-0123456789"
+
 // stack starts a test server over both real stores and returns its base URL.
 func stack(t *testing.T) string {
 	t.Helper()
@@ -38,9 +40,15 @@ func stack(t *testing.T) string {
 		CORSOrigins:    []string{"http://localhost:5173"},
 		MaxUploadBytes: 64 << 20,
 		MaxFiles:       5000,
+		APIToken:       serviceToken,
 	}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv := httptest.NewServer(api.New(cfg, pg, gs, log).Routes())
+	routes := api.New(cfg, pg, gs, log).Routes()
+	// Every call runs as the service, the way nginx attaches the token.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Header.Set("Authorization", "Bearer "+serviceToken)
+		routes.ServeHTTP(w, r)
+	}))
 	t.Cleanup(srv.Close)
 	return srv.URL
 }
