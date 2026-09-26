@@ -72,6 +72,7 @@ type MetaStore interface {
 	DeleteProject(ctx context.Context, slug string) ([]string, error)
 	ListVersions(ctx context.Context, slug string) ([]model.Snapshot, error)
 	GetVersion(ctx context.Context, slug, version string) (*model.Snapshot, error)
+	LoadModel(ctx context.Context, sid string) (*model.Model, error)
 	DeleteVersion(ctx context.Context, slug, version string) (sid string, projectDeleted bool, err error)
 
 	GetBoolSetting(ctx context.Context, key string, def bool) (bool, error)
@@ -136,6 +137,7 @@ func (s *Server) Routes() http.Handler {
 			r.Delete("/", s.handleDeleteProject)
 			r.Get("/versions", s.handleListVersions)
 			r.Get("/versions/{version}", s.handleGetVersion)
+			r.Get("/diff", s.handleDiff)
 			r.Delete("/versions/{version}", s.handleDeleteVersion)
 		})
 
