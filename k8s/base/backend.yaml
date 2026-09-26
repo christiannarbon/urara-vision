@@ -64,15 +64,27 @@ spec:
                 secretKeyRef:
                   name: relviz-neo4j
                   key: password
-            # The shared bearer token for /api/v1. The dev overlay generates
-            # one; prod expects the secret to exist already. Removing this
-            # block leaves the API unauthenticated, which the server logs a
-            # warning about on startup.
+            # The service bearer token (chat, CI imports). The dev overlay
+            # generates one; prod expects the secret to exist already.
             - name: API_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: relviz-api
                   key: token
+            # The first admin, created only on an empty users table. Optional:
+            # once an admin exists the secret can be deleted.
+            - name: BOOTSTRAP_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: relviz-bootstrap-admin
+                  key: username
+                  optional: true
+            - name: BOOTSTRAP_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: relviz-bootstrap-admin
+                  key: password
+                  optional: true
           # The process waits for both datastores on startup, so a generous
           # startup probe keeps a cold cluster from crash-looping while the
           # liveness probe stays tight once it is serving.
@@ -123,6 +135,7 @@ data:
   # The frontend proxies /api to this service, so requests arrive same-origin
   # and CORS never applies. The list is kept for direct-access debugging.
   CORS_ORIGINS: "http://localhost:5173,http://localhost:8081"
+  COOKIE_SECURE: "true"
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
