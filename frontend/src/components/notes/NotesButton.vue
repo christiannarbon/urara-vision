@@ -6,11 +6,14 @@ import { Perm } from '../../auth/permissions'
 import { useI18n } from '../../i18n'
 import { useAuth } from '../../stores/auth'
 import { useNotes } from '../../stores/notes'
+import { useWorkspace } from '../../stores/workspace'
 import NotesThread from './NotesThread.vue'
 import type { Anchor } from '../../notes/anchors'
 
 const POPOVER_WIDTH = 320
 const MARGIN = 8
+const GAP = 4
+const MIN_HEIGHT = 200
 
 const props = defineProps<{ anchor: Anchor; label?: string }>()
 const emit = defineEmits<{ (e: 'open', anchor: Anchor): void }>()
@@ -18,6 +21,7 @@ const emit = defineEmits<{ (e: 'open', anchor: Anchor): void }>()
 const { t, tn } = useI18n()
 const auth = useAuth()
 const notes = useNotes()
+const workspace = useWorkspace()
 
 const count = computed(() => notes.countFor(props.anchor))
 const visible = computed(() => count.value.open + count.value.resolved > 0 || auth.can(Perm.NoteWrite))
@@ -30,16 +34,33 @@ const title = computed(() => {
 const open = ref(false)
 const root = ref<HTMLElement | null>(null)
 const trigger = ref<HTMLButtonElement | null>(null)
-const pos = ref({ top: 0, left: 0, width: POPOVER_WIDTH, maxHeight: 400 })
+const style = ref<Record<string, string>>({})
 
-// Fixed and clamped to the viewport, so a narrow pane cannot clip it.
+const px = (n: number) => `${n}px`
+
+// Fixed and kept inside the window, so a narrow or scrolled pane cannot clip it.
+// Opens upward when there is too little room below.
 function place() {
   const r = trigger.value?.getBoundingClientRect()
   if (!r) return
   const width = Math.min(POPOVER_WIDTH, window.innerWidth - 2 * MARGIN)
   const left = Math.min(Math.max(MARGIN, r.left), window.innerWidth - width - MARGIN)
-  const top = r.bottom + 4
-  pos.value = { top, left, width, maxHeight: Math.max(200, window.innerHeight - top - MARGIN) }
+  const below = window.innerHeight - r.bottom - GAP - MARGIN
+  const above = r.top - GAP - MARGIN
+  const base = { left: px(left), width: px(width) }
+  style.value =
+    below < MIN_HEIGHT && above > below
+      ? { ...base, bottom: px(window.innerHeight - r.top + GAP), maxHeight: px(above) }
+      : { ...base, top: px(r.bottom + GAP), maxHeight: px(below) }
+}
+
+// Capture, so scrolling any pane (not only the window) re-places the popover.
+const SCROLL = { capture: true, passive: true }
+
+function removeListeners() {
+  document.removeEventListener('pointerdown', onDocPointer)
+  window.removeEventListener('resize', place)
+  window.removeEventListener('scroll', place, SCROLL)
 }
 
 function onDocPointer(e: PointerEvent) {
@@ -63,16 +84,16 @@ watch(open, (v) => {
   if (v) {
     document.addEventListener('pointerdown', onDocPointer)
     window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, SCROLL)
   } else {
-    document.removeEventListener('pointerdown', onDocPointer)
-    window.removeEventListener('resize', place)
+    removeListeners()
   }
 })
 
-onBeforeUnmount(() => {
-  document.removeEventListener('pointerdown', onDocPointer)
-  window.removeEventListener('resize', place)
-})
+// A thread belongs to one version.
+watch(() => workspace.snapshot?.id, close)
+
+onBeforeUnmount(removeListeners)
 </script>
 
 <template>
@@ -97,7 +118,7 @@ onBeforeUnmount(() => {
     <div
       v-if="open"
       class="popover"
-      :style="{ top: `${pos.top}px`, left: `${pos.left}px`, width: `${pos.width}px`, maxHeight: `${pos.maxHeight}px` }"
+      :style="style"
     >
       <NotesThread :anchor="anchor" @close="close" />
     </div>
