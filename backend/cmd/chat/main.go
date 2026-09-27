@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"urara-vision/backend/internal/chat/apiclient"
 	"urara-vision/backend/internal/chat/config"
 	"urara-vision/backend/internal/chat/httpapi"
 	"urara-vision/backend/internal/chat/logging"
@@ -36,7 +37,12 @@ func run() int {
 		"run one replica or expect interleaved transcripts",
 		"max_concurrent_turns", cfg.MaxConcurrentTurns)
 
-	handler := httpapi.New(httpapi.Deps{Settings: cfg, Log: log}).Handler()
+	handler := httpapi.New(httpapi.Deps{
+		Settings:  cfg,
+		Log:       log,
+		Backend:   apiclient.New(cfg.BackendBaseURL, cfg.BackendAPIToken, cfg.BackendTimeout),
+		ModelInfo: httpapi.ModelInfo(cfg),
+	}).Handler()
 	srv := &http.Server{Addr: cfg.AppAddr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
