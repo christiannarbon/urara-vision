@@ -1,8 +1,9 @@
 /** The detail pane, mounted, in both languages. */
 
 import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import TableDetail from '../../src/components/TableDetail.vue'
 import type { TableResponse } from '../../src/api/types'
@@ -45,6 +46,9 @@ function pane(res: TableResponse | null, loading = false) {
     props: { detail: res, loading, selectedId: res?.table.id ?? null },
   })
 }
+
+// The pane's notes buttons read the notes and auth stores.
+beforeEach(() => setActivePinia(createPinia()))
 
 afterEach(() => {
   setLocale('en')

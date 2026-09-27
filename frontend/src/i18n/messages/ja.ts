@@ -281,6 +281,8 @@ export const messages: Messages = {
   'detail.lineage.columns.one': 'カラム {n} 件',
   'detail.lineage.columns.other': 'カラム {n} 件',
   'detail.lineage.more': '他 {n} 件',
+  'detail.lineage.byColumn': 'カラム単位のリネージ',
+  'detail.tab.openNotes': '未解決のメモあり',
   'detail.siblings': 'ソースを共有しているテーブル',
   'detail.siblings.note':
     'これらのテーブルは少なくとも 1 つの上流モデルを共有しているため、上流の変更はこれらにも影響する可能性があります。',
