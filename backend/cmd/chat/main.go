@@ -14,18 +14,22 @@ import (
 	"urara-vision/backend/internal/chat/apiclient"
 	"urara-vision/backend/internal/chat/config"
 	"urara-vision/backend/internal/chat/httpapi"
+	"urara-vision/backend/internal/chat/llm"
 	"urara-vision/backend/internal/chat/logging"
 )
 
-// Replaced by the provider registry in Phase 17.
-var allowedProviders = []string{"vertex"}
+// registerProviders is the one place adapters are wired in.
+func registerProviders() {
+	// 17.3 registers "vertex", 17.4 "vertex-anthropic".
+}
 
 func main() {
 	os.Exit(run())
 }
 
 func run() int {
-	cfg, err := config.Load(allowedProviders)
+	registerProviders()
+	cfg, err := config.Load(llm.Names())
 	if err != nil {
 		logging.New("error").Error("configuration is invalid, refusing to start: " + err.Error())
 		return 1
@@ -33,6 +37,15 @@ func run() int {
 	log := logging.New(cfg.LogLevel)
 	slog.SetDefault(log)
 	log.Info("starting, backend at " + cfg.BackendBaseURL)
+
+	// Built once here: a model per request would add latency to every turn.
+	model, err := llm.New(context.Background(), *cfg, log)
+	if err != nil {
+		log.Error("language model configuration is invalid, refusing to start: " + err.Error())
+		return 1
+	}
+	_ = model // served from /debug/llm in 17.5
+	log.Info("language model configured", "llm", llm.Describe(*cfg))
 	log.Info("conversation turns are serialised per process, not across replicas; "+
 		"run one replica or expect interleaved transcripts",
 		"max_concurrent_turns", cfg.MaxConcurrentTurns)
