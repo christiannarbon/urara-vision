@@ -51,8 +51,11 @@ func TestDebugLLMAnswers(t *testing.T) {
 	}
 }
 
-func TestDebugLLMProviderErrorIs502AndNotLogged(t *testing.T) {
-	model := llmtest.NewScripted(llmtest.Step{Err: errors.New("secret prompt echoed")})
+// The reason is logged redacted: no prompt, no key.
+func TestDebugLLMProviderErrorIs502AndLoggedRedacted(t *testing.T) {
+	model := llmtest.NewScripted(llmtest.Step{
+		Err: errors.New("429 quota exceeded; prompt was Reply with exactly: pong; key AIzaSyA0123456789abcdef"),
+	})
 	body, code, l := probe(t, model, 0)
 
 	want := map[string]any{
@@ -62,29 +65,40 @@ func TestDebugLLMProviderErrorIs502AndNotLogged(t *testing.T) {
 	if code != http.StatusBadGateway || !reflect.DeepEqual(body, want) {
 		t.Errorf("%d %v", code, body)
 	}
-	var failed map[string]any
-	for _, line := range l.lines(t) {
-		for k, v := range line {
-			if s, ok := v.(string); ok && strings.Contains(s, "secret") {
-				t.Errorf("provider error logged under %s: %v", k, line)
-			}
-		}
-		if line["msg"] == "llm probe failed" {
-			failed = line
+	failed := probeFailure(t, l)
+	for k, v := range failed {
+		if s, ok := v.(string); ok && (strings.Contains(s, "Reply with exactly") || strings.Contains(s, "AIza")) {
+			t.Errorf("unredacted %s: %q", k, s)
 		}
 	}
-	if failed == nil || failed["provider"] != "vertex" || failed["model"] != "gemini-2.5-flash" {
+	reason, _ := failed["reason"].(string)
+	if failed["provider"] != "vertex" || failed["model"] != "gemini-2.5-flash" || failed["timeout"] != false ||
+		!strings.Contains(reason, "429 quota exceeded") || !strings.Contains(reason, "[question]") {
 		t.Errorf("probe failure log = %v", failed)
 	}
+}
+
+func probeFailure(t *testing.T, l *logs) map[string]any {
+	t.Helper()
+	for _, line := range l.lines(t) {
+		if line["msg"] == "llm probe failed" {
+			return line
+		}
+	}
+	t.Fatal("no llm probe failed log")
+	return nil
 }
 
 func TestDebugLLMGivesUpAtTheProbeTimeout(t *testing.T) {
 	model := llmtest.NewScripted(llmtest.Step{Wait: 20 * time.Second, Response: llm.Response{Text: "late"}})
 	start := time.Now()
-	body, code, _ := probe(t, model, 20*time.Millisecond)
+	body, code, l := probe(t, model, 20*time.Millisecond)
 
 	if code != http.StatusBadGateway || body["detail"] == nil {
 		t.Errorf("%d %v", code, body)
+	}
+	if failed := probeFailure(t, l); failed["timeout"] != true {
+		t.Errorf("probe failure log = %v", failed)
 	}
 	if took := time.Since(start); took > 2*time.Second {
 		t.Errorf("took %s", took)
