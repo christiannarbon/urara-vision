@@ -63,6 +63,12 @@ func (f *fakeBackend) calls() int {
 	return f.featureCalls
 }
 
+func (f *fakeBackend) health() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.healthCalls
+}
+
 type clock struct {
 	mu sync.Mutex
 	t  time.Time
