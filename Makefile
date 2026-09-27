@@ -37,6 +37,10 @@ up: ## Build and start the whole stack
 up-without-chat: ## Build and start the stack with chat left out
 	CHAT_ENABLED=false $(COMPOSE) up -d --build --scale chat=0
 
+.PHONY: up-go-chat
+up-go-chat: ## Build and start the stack plus the Go chat service on :8091
+	$(COMPOSE) --profile go-chat up -d --build
+
 .PHONY: down
 down: ## Stop the stack, keeping volumes
 	$(COMPOSE) down

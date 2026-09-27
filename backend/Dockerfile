@@ -18,7 +18,18 @@ RUN --mount=type=cache,target=/go/pkg/mod \
       -trimpath \
       -ldflags="-s -w -X main.version=${VERSION}" \
       -o /out/server ./cmd/server && \
-    CGO_ENABLED=0 GOOS=linux go build -trimpath -o /out/uraractl ./cmd/uraractl
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -o /out/uraractl ./cmd/uraractl && \
+    CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/chat ./cmd/chat
+
+# --- chat runtime --------------------------------------------------------
+# Before the server stage, so a build with no --target still ends at the server.
+FROM gcr.io/distroless/static-debian12:nonroot AS chat
+WORKDIR /app
+COPY --from=build /out/chat /app/chat
+USER nonroot:nonroot
+EXPOSE 8090
+ENV APP_ADDR=:8090
+ENTRYPOINT ["/app/chat"]
 
 # --- runtime -------------------------------------------------------------
 FROM gcr.io/distroless/static-debian12:nonroot
