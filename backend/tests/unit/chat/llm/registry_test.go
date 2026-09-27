@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"reflect"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -76,10 +77,23 @@ func TestUsageMapUsesTheStoredKeys(t *testing.T) {
 	}
 }
 
+var generatedID = regexp.MustCompile(`^call_[0-9a-f]{12}$`)
+
 func TestFillIDsKeepsProviderIDs(t *testing.T) {
 	calls := []llm.ToolCall{{Name: "a"}, {ID: "toolu_9", Name: "b"}, {Name: "c"}}
 	llm.FillIDs(calls)
-	if calls[0].ID != "call_1" || calls[1].ID != "toolu_9" || calls[2].ID != "call_3" {
+	if calls[1].ID != "toolu_9" || !generatedID.MatchString(calls[0].ID) || !generatedID.MatchString(calls[2].ID) ||
+		calls[0].ID == calls[2].ID {
 		t.Errorf("ids = %q, %q, %q", calls[0].ID, calls[1].ID, calls[2].ID)
+	}
+}
+
+// Gemini 2.5 sends no IDs, so every round would otherwise get the same one.
+func TestFillIDsDifferAcrossRounds(t *testing.T) {
+	first, second := []llm.ToolCall{{Name: "a"}}, []llm.ToolCall{{Name: "a"}}
+	llm.FillIDs(first)
+	llm.FillIDs(second)
+	if first[0].ID == second[0].ID {
+		t.Errorf("both rounds got %q", first[0].ID)
 	}
 }
