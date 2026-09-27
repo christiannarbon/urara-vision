@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"strings"
 
 	"urara-vision/backend/internal/chat/config"
 )
@@ -10,7 +11,7 @@ import (
 // describe_model. Phase 17 replaces it with the provider's own description.
 func ModelInfo(s *config.Settings) map[string]string {
 	info := map[string]string{"provider": s.LLMProvider, "model": s.LLMModel}
-	if s.LLMProvider == "vertex" {
+	if strings.HasPrefix(s.LLMProvider, "vertex") {
 		info["location"] = s.VertexLocation
 	}
 	return info
