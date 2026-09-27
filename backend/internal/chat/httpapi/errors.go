@@ -43,6 +43,24 @@ func WriteError(w http.ResponseWriter, r *http.Request, status int, fields map[s
 	writeJSON(w, status, body)
 }
 
+// ProviderError is a turn that failed on the model's side. Reason is already redacted.
+type ProviderError struct {
+	Reason string
+}
+
+func (e *ProviderError) Error() string { return "the language model did not answer: " + e.Reason }
+
+// RenderTurnError maps a failed turn: the provider's side is a 502, the rest as backend errors.
+func (s *Server) RenderTurnError(w http.ResponseWriter, r *http.Request, err error) {
+	var provErr *ProviderError
+	if errors.As(err, &provErr) {
+		s.log.Error("language model call failed", "request_id", reqctx.RequestID(r.Context()), "reason", provErr.Reason)
+		WriteError(w, r, http.StatusBadGateway, map[string]any{"error": MsgProviderFailed})
+		return
+	}
+	s.RenderBackendError(w, r, err)
+}
+
 // RenderBackendError maps a backend client error onto a response. The
 // backend's own message is logged, never returned.
 func (s *Server) RenderBackendError(w http.ResponseWriter, r *http.Request, err error) {
