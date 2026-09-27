@@ -56,9 +56,12 @@ GO_IMAGE    := golang:1.27-alpine
 # /docs/demo once /src is the module root -- so the same path works inside the
 # container and out, and the suites need no build tag or environment variable to
 # find them. Read-only: the suites parse the samples, they never write them.
+# The chat manifest suite reads the compose file and chat manifest the same way.
 GO_RUN      := docker run --rm \
                  -v "$(PWD)/backend":/src \
                  -v "$(PWD)/docs":/docs:ro \
+                 -v "$(PWD)/docker-compose.yml":/docker-compose.yml:ro \
+                 -v "$(PWD)/k8s/base/chat.yaml":/k8s/base/chat.yaml:ro \
                  -w /src $(GO_IMAGE)
 # Integration tests connect to the compose stack over its own network, so they
 # address the services by container name rather than through published ports.
