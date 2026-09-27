@@ -1,0 +1,11 @@
+{
+  "status": 401,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": {
+    "error": "not signed in",
+    "requestId": "<request-id>"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "status": 200,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": {
+    "conversations": [
+      {
+        "id": "<uuid>",
+        "snapshotId": "<uuid>",
+        "title": "golden",
+        "createdAt": "<time>",
+        "updatedAt": "<time>",
+        "messages": []
+      }
+    ]
+  }
+}

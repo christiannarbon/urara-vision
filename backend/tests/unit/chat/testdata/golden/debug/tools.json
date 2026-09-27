@@ -1,0 +1,222 @@
+{
+  "status": 200,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": [
+    {
+      "name": "list_domains",
+      "description": "List the subject areas the model is divided into, with a short description and table count for each. Use this first when the reader asks what the model covers, or when you need a domain ID to narrow a later call. Returns one entry per domain.",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "NoArgs",
+        "type": "object"
+      }
+    },
+    {
+      "name": "list_tables",
+      "description": "List tables, optionally within one domain, with their kind, grain and column count. Use this to find out what exists before reading anything in full, or to answer questions about how many tables of a kind there are. Returns summaries, not documents: call get_tables for the detail. The optional 'domain' argument is a domain ID such as 'ordering'.",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Optional domain ID to restrict the list to, e.g. 'ordering'. Omit to list every table in the model.",
+            "title": "Domain"
+          }
+        },
+        "title": "ListTablesArgs",
+        "type": "object"
+      }
+    },
+    {
+      "name": "get_tables",
+      "description": "Read up to eight table documents in full: columns with types and descriptions, declared relationships, column-level lineage and documented caveats. This is the tool that answers questions about what a table contains or means. Ask for every table you need in one call rather than one at a time. IDs are full 'domain/table' identifiers, e.g. 'ordering/fact_orders'; call search_model or list_tables first if you only have a name. IDs that do not exist come back in 'missing' rather than failing the call.",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "ids": {
+            "description": "Between one and eight full table IDs in 'domain/table' form, e.g. ['ordering/fact_orders']. Use search_model or list_tables first if you only have a name.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "title": "Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "ids"
+        ],
+        "title": "GetTablesArgs",
+        "type": "object"
+      }
+    },
+    {
+      "name": "search_model",
+      "description": "Full-text search over table names, grains, and column names and descriptions. Use this when the reader names something in their own words rather than by ID -- 'where do we store refunds' -- and to turn a name into the 'domain/table' ID the other tools need. Returns ranked hits with the field that matched, not the documents themselves.",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "query": {
+            "description": "Words to search for in table and column names and prose.",
+            "title": "Query",
+            "type": "string"
+          },
+          "limit": {
+            "default": 20,
+            "description": "Maximum hits to return, 1 to 50.",
+            "maximum": 50,
+            "minimum": 1,
+            "title": "Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "SearchArgs",
+        "type": "object"
+      }
+    },
+    {
+      "name": "get_neighbourhood",
+      "description": "Show what a table joins to, out to a given number of hops. Use this when the reader asks what surrounds a table, what it connects to, or what else they would need to answer a question from it. Returns the nearby tables and the joins between them, with the columns joined on. 'table_id' is a full 'domain/table' ID; 'depth' is 1 to 3, and 1 is usually enough.",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "table_id": {
+            "description": "Full table ID in 'domain/table' form.",
+            "title": "Table Id",
+            "type": "string"
+          },
+          "depth": {
+            "default": 1,
+            "description": "How many joins to follow out, 1 to 3.",
+            "maximum": 3,
+            "minimum": 1,
+            "title": "Depth",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "table_id"
+        ],
+        "title": "NeighbourhoodArgs",
+        "type": "object"
+      }
+    },
+    {
+      "name": "find_join_paths",
+      "description": "Find how to get from one table to another by following declared joins. Use this when the reader asks how two tables relate or what the join path between them is. Returns each path as an ordered list of hops with the columns joined at each step. Both arguments are full table IDs in 'domain/table' form; call search_model first if you only have a name.",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "from_table": {
+            "description": "Full table ID to start from, in 'domain/table' form.",
+            "title": "From Table",
+            "type": "string"
+          },
+          "to_table": {
+            "description": "Full table ID to reach, in 'domain/table' form.",
+            "title": "To Table",
+            "type": "string"
+          },
+          "max_depth": {
+            "default": 4,
+            "description": "Longest path to consider, 1 to 6.",
+            "maximum": 6,
+            "minimum": 1,
+            "title": "Max Depth",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "from_table",
+          "to_table"
+        ],
+        "title": "JoinPathsArgs",
+        "type": "object"
+      }
+    },
+    {
+      "name": "get_lineage",
+      "description": "Trace where a table's data comes from, or what is built on it. Use 'upstream' to find the source models feeding a table, and 'downstream' on a source model to find every table built from it -- the tool to reach for when the reader asks what breaks if something upstream changes. Returns the entries and the columns each contributes. 'table_id' is a full 'domain/table' ID, or a source model ID such as 'warehouse.stg_orders' when going downstream.",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "table_id": {
+            "description": "Full table ID in 'domain/table' form.",
+            "title": "Table Id",
+            "type": "string"
+          },
+          "direction": {
+            "default": "upstream",
+            "description": "'upstream' for the sources feeding this table, 'downstream' for what is fed by it.",
+            "enum": [
+              "upstream",
+              "downstream"
+            ],
+            "title": "Direction",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table_id"
+        ],
+        "title": "LineageArgs",
+        "type": "object"
+      }
+    },
+    {
+      "name": "list_diagnostics",
+      "description": "List the problems found in the documentation itself: unresolved references, missing grains, ambiguous joins. Use this when the reader asks about the quality or completeness of the documentation, or when a table looks wrong and you want to know whether it is already known to be. Returns each with its severity, code, message and where it points. Filter with 'severity' as 'error', 'warning' or 'info'.",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {
+          "severity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "error",
+                  "warning",
+                  "info"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Restrict to one severity. Omit for all of them.",
+            "title": "Severity"
+          }
+        },
+        "title": "DiagnosticsArgs",
+        "type": "object"
+      }
+    },
+    {
+      "name": "list_source_models",
+      "description": "List the upstream models the documented tables are built from, with how many tables reference each. Use this to answer what the model is sourced from, or to find the most depended-upon inputs. Returns source IDs such as 'warehouse.stg_orders'; pass one to get_lineage with direction 'downstream' to see what is built on it.",
+      "schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "title": "NoArgs",
+        "type": "object"
+      }
+    }
+  ]
+}

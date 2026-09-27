@@ -1,0 +1,17 @@
+{
+  "status": 503,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": {
+    "status": "unready",
+    "backend": "unreachable",
+    "llm": {
+      "provider": "vertex",
+      "model": "gemini-2.5-flash",
+      "location": "us-central1"
+    },
+    "reason": "backend is not reachable or not ready"
+  }
+}

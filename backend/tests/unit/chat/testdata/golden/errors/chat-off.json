@@ -1,0 +1,11 @@
+{
+  "status": 503,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": {
+    "error": "chat is turned off",
+    "requestId": "<request-id>"
+  }
+}

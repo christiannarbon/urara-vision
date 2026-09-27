@@ -1,0 +1,10 @@
+{
+  "status": 200,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": {
+    "status": "ok"
+  }
+}

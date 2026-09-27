@@ -1,0 +1,11 @@
+{
+  "status": 404,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": {
+    "error": "not found",
+    "requestId": "<request-id>"
+  }
+}

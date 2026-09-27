@@ -1,0 +1,11 @@
+{
+  "status": 400,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": {
+    "detail": "unknown tool 'nope'; expected one of ['find_join_paths', 'get_lineage', 'get_neighbourhood', 'get_tables', 'list_diagnostics', 'list_domains', 'list_source_models', 'list_tables', 'search_model']",
+    "requestId": "<request-id>"
+  }
+}

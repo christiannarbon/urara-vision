@@ -1,0 +1,15 @@
+{
+  "status": 201,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": {
+    "id": "<uuid>",
+    "snapshotId": "<uuid>",
+    "title": "golden",
+    "createdAt": "<time>",
+    "updatedAt": "<time>",
+    "messages": []
+  }
+}

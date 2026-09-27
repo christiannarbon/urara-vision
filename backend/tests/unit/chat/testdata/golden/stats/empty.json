@@ -1,0 +1,20 @@
+{
+  "status": 200,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": {
+    "snapshotId": "<uuid>",
+    "conversations": 0,
+    "conversationsCapped": false,
+    "turns": 0,
+    "promptTokens": null,
+    "completionTokens": null,
+    "estimatedTokenTurns": null,
+    "meanLatencyMs": null,
+    "p95LatencyMs": null,
+    "truncatedTurns": null,
+    "byModel": {}
+  }
+}
