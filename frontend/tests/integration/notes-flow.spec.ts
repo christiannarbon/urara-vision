@@ -186,4 +186,20 @@ describe('the notes flow', () => {
     expect(useNotes().threads.size).toBe(0)
     expect(w.find('.thread').exists()).toBe(false)
   })
+
+  it('closes an open domain thread when the version changes', async () => {
+    vi.mocked(api.domains).mockResolvedValue({
+      domains: [{ id: 'sales', name: 'sales', title: 'Sales', description: '', docPath: '', tableCount: 1 }],
+    })
+    const w = await mountApp('/projects/p/versions/1.0.0', { attachTo: document.body })
+    mounted.push(w)
+    await flushPromises()
+    await w.find('.domain-row .notes-button button').trigger('click')
+    await flushPromises()
+    expect(w.find('.thread').exists()).toBe(true)
+
+    await w.vm.$router.push('/projects/p/versions/2.0.0')
+    await flushPromises()
+    expect(w.find('.thread').exists()).toBe(false)
+  })
 })
