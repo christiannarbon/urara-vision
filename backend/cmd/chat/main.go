@@ -52,11 +52,13 @@ func run() int {
 		"run one replica or expect interleaved transcripts",
 		"max_concurrent_turns", cfg.MaxConcurrentTurns)
 
+	backend := apiclient.New(cfg.BackendBaseURL, cfg.BackendAPIToken, cfg.BackendTimeout)
 	handler := httpapi.New(httpapi.Deps{
 		Settings: cfg,
 		Log:      log,
-		Backend:  apiclient.New(cfg.BackendBaseURL, cfg.BackendAPIToken, cfg.BackendTimeout),
+		Backend:  backend,
 		Model:    model,
+		Tools:    backend,
 	}).Handler()
 	srv := &http.Server{
 		Addr:              cfg.AppAddr,
