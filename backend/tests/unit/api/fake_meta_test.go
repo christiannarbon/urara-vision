@@ -501,6 +501,10 @@ type fakeNotes struct {
 	notes   map[string]*model.Note
 	anchors map[string]bool // "kind:id" that AnchorExists accepts
 	nextID  int
+
+	errResolve error
+	// noteCalls counts the reads an agent-facing handler must never make.
+	noteCalls int
 }
 
 func (f *fakeMeta) addNote(n model.Note) *model.Note {
@@ -512,6 +516,7 @@ func (f *fakeMeta) addNote(n model.Note) *model.Note {
 }
 
 func (f *fakeMeta) AnchorExists(_ context.Context, _ string, kind notes.Kind, id string) (bool, error) {
+	f.noteCalls++
 	return f.anchors[string(kind)+":"+id], nil
 }
 
@@ -532,6 +537,7 @@ func (f *fakeMeta) CreateNote(_ context.Context, n model.Note) (*model.Note, err
 }
 
 func (f *fakeMeta) GetNote(_ context.Context, id string) (*model.Note, error) {
+	f.noteCalls++
 	if n, ok := f.notes[id]; ok {
 		return n, nil
 	}
@@ -539,6 +545,7 @@ func (f *fakeMeta) GetNote(_ context.Context, id string) (*model.Note, error) {
 }
 
 func (f *fakeMeta) ListNotes(_ context.Context, sid string, kind notes.Kind, anchorID string) ([]model.Note, error) {
+	f.noteCalls++
 	out := []model.Note{}
 	for _, n := range f.notes {
 		if n.SnapshotID == sid && n.AnchorKind == string(kind) && n.AnchorID == anchorID && n.ParentID == "" {
@@ -549,6 +556,7 @@ func (f *fakeMeta) ListNotes(_ context.Context, sid string, kind notes.Kind, anc
 }
 
 func (f *fakeMeta) CountNotes(context.Context, string) ([]model.NoteCount, error) {
+	f.noteCalls++
 	return []model.NoteCount{}, nil
 }
 
@@ -562,6 +570,9 @@ func (f *fakeMeta) UpdateNoteBody(_ context.Context, id, body string) (*model.No
 }
 
 func (f *fakeMeta) SetNoteResolved(_ context.Context, id string, resolved bool, byName string) (*model.Note, error) {
+	if f.errResolve != nil {
+		return nil, f.errResolve
+	}
 	n, ok := f.notes[id]
 	if !ok {
 		return nil, postgres.ErrNotFound
