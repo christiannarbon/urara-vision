@@ -316,3 +316,6 @@ CREATE TABLE IF NOT EXISTS notes (
 );
 CREATE INDEX IF NOT EXISTS notes_anchor_idx ON notes (snapshot_id, anchor_kind, anchor_id, created_at);
 CREATE INDEX IF NOT EXISTS notes_parent_idx ON notes (parent_id);
+
+-- The user-delete SET NULL looks notes up by author.
+CREATE INDEX IF NOT EXISTS notes_author_idx ON notes (author_id);
