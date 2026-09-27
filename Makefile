@@ -157,6 +157,17 @@ test-chat-integration: ## Chat service tests against the compose stack
 	  -w /src $(UV_IMAGE) \
 	  uv run --frozen pytest tests/integration -q -m integration
 
+# Costs money: calls real models. Never part of test, test-all or CI.
+.PHONY: test-llm
+test-llm: ## Live smoke tests against each LLM provider (costs money; needs ADC and VERTEX_PROJECT)
+	docker run --rm -v "$(PWD)/backend":/src -w /src \
+	  -v "$(HOME)/.config/gcloud/application_default_credentials.json":/gcloud/adc.json:ro \
+	  -e GOOGLE_APPLICATION_CREDENTIALS=/gcloud/adc.json \
+	  -e VERTEX_PROJECT -e LLM_SMOKE_PROVIDERS \
+	  -e LLM_SMOKE_MODEL_VERTEX -e LLM_SMOKE_MODEL_VERTEX_ANTHROPIC \
+	  -e LLM_SMOKE_LOCATION_VERTEX -e LLM_SMOKE_LOCATION_VERTEX_ANTHROPIC \
+	  $(GO_IMAGE) go test -tags llm -count=1 -v ./tests/llm/...
+
 # Never add eval to test, test-all or any CI workflow: it calls a real model and costs money.
 # --init and exec let a SIGTERM reach the runner, so an interrupted run still deletes its snapshots.
 EVAL_ARGS := $(if $(SET),--set $(SET)) $(if $(CATEGORY),--category $(CATEGORY)) \
