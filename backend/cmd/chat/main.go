@@ -15,12 +15,13 @@ import (
 	"urara-vision/backend/internal/chat/config"
 	"urara-vision/backend/internal/chat/httpapi"
 	"urara-vision/backend/internal/chat/llm"
+	"urara-vision/backend/internal/chat/llm/gemini"
 	"urara-vision/backend/internal/chat/logging"
 )
 
 // registerProviders is the one place adapters are wired in.
 func registerProviders() {
-	// 17.3 registers "vertex", 17.4 "vertex-anthropic".
+	llm.Register("vertex", gemini.New)
 }
 
 func main() {
