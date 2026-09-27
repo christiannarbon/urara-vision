@@ -7,6 +7,9 @@ import { useRolePalette } from '../composables/useRolePalette'
 import { roleSpec } from '../graph/roles'
 import { useI18n } from '../i18n'
 import { useDocumentText } from '../i18n/content'
+import { columnAnchor, lineageAnchor, relationshipAnchor, tableAnchor } from '../notes/anchors'
+import { useNotes } from '../stores/notes'
+import NotesButton from './notes/NotesButton.vue'
 
 const { t, tn } = useI18n()
 // The documents' own words, in whichever language the reader is reading.
@@ -110,6 +113,30 @@ const resolvedRelationships = computed(
     ) ?? [],
 )
 
+/** Column lineage rows grouped by column, in document order; each group gets one notes button. */
+const lineageGroups = computed(() => {
+  const groups = new Map<string, TableResponse['table']['columnLineage']>()
+  for (const l of table.value?.columnLineage ?? []) {
+    const g = groups.get(l.column)
+    if (g) g.push(l)
+    else groups.set(l.column, [l])
+  }
+  return [...groups]
+})
+
+const notes = useNotes()
+
+const openNotesByTab = computed(() => {
+  const t = table.value
+  if (!t) return {}
+  const open = (a: Parameters<typeof notes.countFor>[0]) => notes.countFor(a).open > 0
+  return {
+    columns: t.columns.some((c) => open(columnAnchor(t.id, c.name))),
+    relationships: t.relationships.some((r) => open(relationshipAnchor(r.id))),
+    lineage: lineageGroups.value.some(([col]) => open(lineageAnchor(t.id, col))),
+  } as Partial<Record<Tab, boolean>>
+})
+
 function shortId(id: string): string {
   const i = id.indexOf('/')
   return i >= 0 ? id.slice(i + 1) : id
@@ -158,6 +185,7 @@ function domainOf(id: string): string {
               <span class="tag tag--muted">{{ table.domainId }}</span>
             </div>
           </div>
+          <NotesButton :anchor="tableAnchor(table.id)" :label="table.name" />
           <button
             class="btn btn--ghost btn--sm close"
             :aria-label="t('detail.close')"
@@ -189,6 +217,12 @@ function domainOf(id: string): string {
           <span v-else-if="item.id === 'lineage'" class="count">
             {{ table.columnLineage.length }}
           </span>
+          <span
+            v-if="openNotesByTab[item.id]"
+            class="notes-dot"
+            :title="t('detail.tab.openNotes')"
+            :aria-label="t('detail.tab.openNotes')"
+          />
         </button>
       </nav>
 
@@ -272,6 +306,7 @@ function domainOf(id: string): string {
                 <span v-if="c.isPk" class="tag tag--muted">PK</span>
                 <span v-else-if="c.isFk" class="tag tag--muted">FK</span>
                 <span class="faint mono col-type">{{ c.type }}</span>
+                <NotesButton :anchor="columnAnchor(table.id, c.name)" :label="c.name" />
               </div>
               <p v-if="c.description" class="col-desc">{{ dt(c.description) }}</p>
               <p v-if="lineageByColumn.get(c.name)" class="col-src faint tiny">
@@ -303,6 +338,7 @@ function domainOf(id: string): string {
               <span v-if="r.resolution === 'conformed'" class="tag tag--warning">
                 {{ t('detail.joins.crossDomain') }}
               </span>
+              <NotesButton class="row-notes" :anchor="relationshipAnchor(r.id)" @click.stop />
               <div class="rel-meta mono faint">
                 {{ r.fromColumn }} → {{ r.toColumn }}
                 <span class="sep">·</span>{{ r.cardinality }}
@@ -330,6 +366,7 @@ function domainOf(id: string): string {
                       : t('detail.joins.prose')
                   }}
                 </span>
+                <NotesButton class="row-notes" :anchor="relationshipAnchor(r.id)" @click.stop />
                 <div class="rel-meta mono faint">{{ r.joinKeyRaw || '—' }}</div>
               </li>
             </ul>
@@ -375,6 +412,20 @@ function domainOf(id: string): string {
               </div>
             </li>
           </ul>
+
+          <template v-if="lineageGroups.length">
+            <h3 class="section-label">{{ t('detail.lineage.byColumn') }}</h3>
+            <ul class="lin-cols">
+              <template v-for="[col, rows] in lineageGroups" :key="col">
+                <li v-for="(l, i) in rows" :key="i" class="lin-col">
+                  <code>{{ col }}</code>
+                  <span class="faint mono tiny">← {{ l.sourceTable }}.{{ l.sourceColumn }}</span>
+                  <span v-if="l.derived" class="tag tag--info">{{ t('detail.columns.derived') }}</span>
+                  <NotesButton v-if="i === 0" class="row-notes" :anchor="lineageAnchor(table.id, col)" :label="col" />
+                </li>
+              </template>
+            </ul>
+          </template>
 
           <template v-if="detail?.siblings.length">
             <h3 class="section-label">{{ t('detail.siblings') }}</h3>
@@ -583,6 +634,30 @@ function domainOf(id: string): string {
 .lineage li:last-child { border-bottom: none; }
 .lin-head { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .cols { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.lin-cols { list-style: none; margin: 0; padding: 0; }
+.lin-col {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0;
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.row-notes { margin-left: auto; }
+.rels li .row-notes { float: right; }
+
+.notes-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+
 .pill {
   padding: 1px 6px;
   border-radius: var(--radius-sm);
