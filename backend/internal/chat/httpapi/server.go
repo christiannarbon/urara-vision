@@ -12,6 +12,7 @@ import (
 
 	"urara-vision/backend/internal/chat/apiclient"
 	"urara-vision/backend/internal/chat/config"
+	"urara-vision/backend/internal/chat/llm"
 )
 
 // Backend is the part of apiclient.Client the handlers call.
@@ -21,23 +22,31 @@ type Backend interface {
 }
 
 type Deps struct {
-	Settings  *config.Settings
-	Log       *slog.Logger
-	Backend   Backend
-	ModelInfo map[string]string // for /readyz
-	Clock     func() time.Time  // nil: time.Now
+	Settings     *config.Settings
+	Log          *slog.Logger
+	Backend      Backend
+	Model        llm.Model
+	ProbeTimeout time.Duration    // /debug/llm; 0: 15s
+	Clock        func() time.Time // nil: time.Now
 }
 
 type Server struct {
-	settings  *config.Settings
-	log       *slog.Logger
-	backend   Backend
-	modelInfo map[string]string
-	gate      *FeatureGate // nil without a backend, so tests of the shell run ungated
+	settings     *config.Settings
+	log          *slog.Logger
+	backend      Backend
+	model        llm.Model
+	probeTimeout time.Duration
+	gate         *FeatureGate // nil without a backend, so tests of the shell run ungated
 }
 
 func New(deps Deps) *Server {
-	s := &Server{settings: deps.Settings, log: deps.Log, backend: deps.Backend, modelInfo: deps.ModelInfo}
+	s := &Server{
+		settings: deps.Settings, log: deps.Log, backend: deps.Backend,
+		model: deps.Model, probeTimeout: deps.ProbeTimeout,
+	}
+	if s.probeTimeout == 0 {
+		s.probeTimeout = defaultProbeTimeout
+	}
 	if deps.Backend != nil {
 		s.gate = NewFeatureGate(deps.Backend, deps.Settings.FeaturesCache, deps.Clock, deps.Log)
 	}
@@ -57,6 +66,7 @@ func (s *Server) Handler() http.Handler {
 	// Probes and /debug/* are outside identity and the gate.
 	r.Get("/healthz", s.healthz)
 	r.Get("/readyz", s.readyz)
+	r.Get("/debug/llm", s.debugLLM)
 
 	// Identity first, so an anonymous caller cannot learn whether chat is on.
 	r.Route("/api/chat", func(r chi.Router) {

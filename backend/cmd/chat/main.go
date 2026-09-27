@@ -47,17 +47,16 @@ func run() int {
 		log.Error("language model configuration is invalid, refusing to start: " + err.Error())
 		return 1
 	}
-	_ = model // served from /debug/llm in 17.5
 	log.Info("language model configured", "llm", llm.Describe(*cfg))
 	log.Info("conversation turns are serialised per process, not across replicas; "+
 		"run one replica or expect interleaved transcripts",
 		"max_concurrent_turns", cfg.MaxConcurrentTurns)
 
 	handler := httpapi.New(httpapi.Deps{
-		Settings:  cfg,
-		Log:       log,
-		Backend:   apiclient.New(cfg.BackendBaseURL, cfg.BackendAPIToken, cfg.BackendTimeout),
-		ModelInfo: httpapi.ModelInfo(cfg),
+		Settings: cfg,
+		Log:      log,
+		Backend:  apiclient.New(cfg.BackendBaseURL, cfg.BackendAPIToken, cfg.BackendTimeout),
+		Model:    model,
 	}).Handler()
 	srv := &http.Server{
 		Addr:              cfg.AppAddr,
