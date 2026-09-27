@@ -2,40 +2,68 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"urara-vision/backend/internal/chat/apiclient"
 	"urara-vision/backend/internal/chat/config"
 )
 
+// Backend is the part of apiclient.Client the handlers call.
+type Backend interface {
+	Health(ctx context.Context) bool
+	Features(ctx context.Context) (apiclient.Features, error)
+}
+
 type Deps struct {
-	Settings *config.Settings
-	Log      *slog.Logger
+	Settings  *config.Settings
+	Log       *slog.Logger
+	Backend   Backend
+	ModelInfo map[string]string // for /readyz
+	Clock     func() time.Time  // nil: time.Now
 }
 
 type Server struct {
-	settings *config.Settings
-	log      *slog.Logger
+	settings  *config.Settings
+	log       *slog.Logger
+	backend   Backend
+	modelInfo map[string]string
+	gate      *FeatureGate // nil without a backend, so tests of the shell run ungated
 }
 
 func New(deps Deps) *Server {
-	return &Server{settings: deps.Settings, log: deps.Log}
+	s := &Server{settings: deps.Settings, log: deps.Log, backend: deps.Backend, modelInfo: deps.ModelInfo}
+	if deps.Backend != nil {
+		s.gate = NewFeatureGate(deps.Backend, deps.Settings.FeaturesCache, deps.Clock, deps.Log)
+	}
+	return s
 }
 
 func (s *Server) Handler() http.Handler {
 	r := chi.NewRouter()
-	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
 	// FastAPI's own bodies for these.
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, http.StatusNotFound, map[string]any{"detail": "Not Found"})
 	})
 	r.MethodNotAllowed(func(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, r, http.StatusMethodNotAllowed, map[string]any{"detail": "Method Not Allowed"})
+	})
+
+	// Probes and /debug/* are outside identity and the gate.
+	r.Get("/healthz", s.healthz)
+	r.Get("/readyz", s.readyz)
+
+	// Identity first, so an anonymous caller cannot learn whether chat is on.
+	r.Route("/api/chat", func(r chi.Router) {
+		r.Use(s.identity, s.requireChat)
+		r.Get("/conversations", func(w http.ResponseWriter, r *http.Request) {
+			WriteError(w, r, http.StatusNotImplemented, map[string]any{"detail": "Not Implemented"}) // until 19.1
+		})
 	})
 	return s.Wrap(r)
 }
