@@ -15,6 +15,7 @@ import (
 	"urara-vision/backend/internal/chat/config"
 	"urara-vision/backend/internal/chat/httpapi"
 	"urara-vision/backend/internal/chat/llm"
+	"urara-vision/backend/internal/chat/llm/anthropic"
 	"urara-vision/backend/internal/chat/llm/gemini"
 	"urara-vision/backend/internal/chat/logging"
 )
@@ -22,6 +23,7 @@ import (
 // registerProviders is the one place adapters are wired in.
 func registerProviders() {
 	llm.Register("vertex", gemini.New)
+	llm.Register("vertex-anthropic", anthropic.New)
 }
 
 func main() {
