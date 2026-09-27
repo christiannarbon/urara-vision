@@ -66,6 +66,7 @@ const props = defineProps<{
   loading: boolean
   layoutMode: LayoutMode
   diffMarks?: DiffMarks | null
+  notedTableIds?: Set<string>
 }>()
 
 const emit = defineEmits<{
@@ -158,6 +159,7 @@ function buildStyle(): cytoscape.StylesheetJson {
   const danger = token('--danger', '#b91c1c')
   const ok = token('--ok', '#15803d')
   const warning = token('--warning', '#a16207')
+  const info = token('--info', '#1d4ed8')
 
   return [
     {
@@ -284,6 +286,12 @@ function buildStyle(): cytoscape.StylesheetJson {
     // Underlays ignore element opacity, so a dimmed mark is faded separately.
     { selector: '.diff-added.is-dimmed, .diff-changed.is-dimmed', style: { 'underlay-opacity': 0.06 } },
     { selector: 'node.is-orphan', style: { 'border-color': danger, 'border-style': 'dotted' } },
+    // Notes use the outline: the underlay is taken by diff marks and the border by selection.
+    {
+      selector: 'node.has-notes',
+      style: { 'outline-color': info, 'outline-width': 2, 'outline-offset': 2, 'outline-style': 'dashed', 'outline-opacity': 1 },
+    },
+    { selector: 'node.has-notes.is-dimmed', style: { 'outline-opacity': 0.12 } },
   ] as unknown as cytoscape.StylesheetJson
 }
 
@@ -404,6 +412,15 @@ function applyDiffMarks() {
   })
 }
 
+function applyNoteMarks() {
+  if (!cy) return
+  const ids = props.notedTableIds
+  cy.batch(() => {
+    cy!.nodes().removeClass('has-notes')
+    for (const id of ids ?? []) cy!.getElementById(id).addClass('has-notes')
+  })
+}
+
 function render(data: GraphData, relayout: boolean) {
   if (!cy) return
   const els = toElements(data)
@@ -420,6 +437,7 @@ function render(data: GraphData, relayout: boolean) {
     runLayout(data.nodes.length)
   }
   applyDiffMarks()
+  applyNoteMarks()
   applyHighlight()
 }
 
@@ -769,6 +787,7 @@ watch(
 )
 
 watch(() => props.diffMarks, applyDiffMarks)
+watch(() => props.notedTableIds, applyNoteMarks)
 
 watch(domainSlot, () => drawHulls())
 

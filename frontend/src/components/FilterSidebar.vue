@@ -9,6 +9,8 @@ import { canvasTheme, domainColor, domainIndex, paletteFamily } from '../graph/p
 import { roleSpec, rolesPresent } from '../graph/roles'
 import { useI18n } from '../i18n'
 import { useDocumentText } from '../i18n/content'
+import { domainAnchor } from '../notes/anchors'
+import NotesButton from './notes/NotesButton.vue'
 
 const { t } = useI18n()
 // Domain titles and table grains are the documents' words, not the app's.
@@ -218,19 +220,20 @@ function toggleGroup(id: string) {
       </div>
 
       <div class="chips domains">
-        <button
-          v-for="d in domains"
-          :key="d.id"
-          class="chip chip--domain"
-          :class="{ 'chip--on': activeDomains.includes(d.id) }"
-          :style="{ '--swatch': domainSwatch.get(d.id) }"
-          :title="dt(d.title)"
-          @click="emit('toggle-domain', d.id)"
-        >
-          <i class="swatch" />
-          {{ d.id }}
-          <span class="chip-count">{{ d.tableCount }}</span>
-        </button>
+        <span v-for="d in domains" :key="d.id" class="domain-row">
+          <button
+            class="chip chip--domain"
+            :class="{ 'chip--on': activeDomains.includes(d.id) }"
+            :style="{ '--swatch': domainSwatch.get(d.id) }"
+            :title="dt(d.title)"
+            @click="emit('toggle-domain', d.id)"
+          >
+            <i class="swatch" />
+            {{ d.id }}
+            <span class="chip-count">{{ d.tableCount }}</span>
+          </button>
+          <NotesButton :anchor="domainAnchor(d.id)" :label="d.id" @click.stop />
+        </span>
       </div>
     </section>
 
@@ -416,6 +419,7 @@ function toggleGroup(id: string) {
 .swatch--angular { border-radius: 0; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
 .chip-count { margin-left: 4px; opacity: 0.65; }
 .domains { max-height: 132px; overflow-y: auto; }
+.domain-row { display: inline-flex; align-items: center; gap: 1px; }
 
 .list { flex: 1; overflow-y: auto; margin-top: 8px; min-height: 0; }
 .group { margin-bottom: 2px; }
