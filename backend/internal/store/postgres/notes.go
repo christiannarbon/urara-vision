@@ -46,32 +46,25 @@ func collectNotes(rows pgx.Rows) ([]model.Note, error) {
 }
 
 // AnchorExists reports whether the anchor names something in the snapshot.
-// A malformed column or lineage anchor names nothing, so it is false, not an error.
+// Column and lineage IDs are matched whole: table and column names may both contain '#'.
 func (s *Store) AnchorExists(ctx context.Context, sid string, kind notes.Kind, id string) (bool, error) {
 	var query string
-	args := []any{sid}
 	switch kind {
 	case notes.KindDomain:
-		query, args = `SELECT 1 FROM domains WHERE snapshot_id = $1 AND id = $2`, append(args, id)
+		query = `SELECT 1 FROM domains WHERE snapshot_id = $1 AND id = $2`
 	case notes.KindTable:
-		query, args = `SELECT 1 FROM tables WHERE snapshot_id = $1 AND id = $2`, append(args, id)
+		query = `SELECT 1 FROM tables WHERE snapshot_id = $1 AND id = $2`
 	case notes.KindRelationship:
-		query, args = `SELECT 1 FROM relationships WHERE snapshot_id = $1 AND id = $2`, append(args, id)
-	case notes.KindColumn, notes.KindLineage:
-		table, column, err := notes.SplitColumnAnchor(id)
-		if err != nil {
-			return false, nil
-		}
-		query = `SELECT 1 FROM columns WHERE snapshot_id = $1 AND table_id = $2 AND name = $3`
-		if kind == notes.KindLineage {
-			query = `SELECT 1 FROM column_lineage WHERE snapshot_id = $1 AND table_id = $2 AND column_name = $3`
-		}
-		args = append(args, table, column)
+		query = `SELECT 1 FROM relationships WHERE snapshot_id = $1 AND id = $2`
+	case notes.KindColumn:
+		query = `SELECT 1 FROM columns WHERE snapshot_id = $1 AND table_id || '#' || name = $2`
+	case notes.KindLineage:
+		query = `SELECT 1 FROM column_lineage WHERE snapshot_id = $1 AND table_id || '#' || column_name = $2`
 	default:
 		return false, fmt.Errorf("unknown anchor kind %q", kind)
 	}
 	var exists bool
-	err := s.pool.QueryRow(ctx, `SELECT EXISTS (`+query+`)`, args...).Scan(&exists)
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS (`+query+`)`, sid, id).Scan(&exists)
 	return exists, err
 }
 
@@ -163,16 +156,18 @@ func (s *Store) ListNotes(ctx context.Context, sid string, kind notes.Kind, anch
 	return top, nil
 }
 
-// CountNotes counts open and resolved top-level notes per anchor.
+// CountNotes counts open and resolved top-level notes per anchor, naming a relationship's table.
 func (s *Store) CountNotes(ctx context.Context, sid string) ([]model.NoteCount, error) {
 	rows, err := s.pool.Query(ctx,
-		`SELECT anchor_kind, anchor_id,
-		        count(*) FILTER (WHERE resolved_at IS NULL),
-		        count(*) FILTER (WHERE resolved_at IS NOT NULL)
-		   FROM notes
-		  WHERE snapshot_id = $1 AND parent_id IS NULL
-		  GROUP BY anchor_kind, anchor_id
-		  ORDER BY anchor_kind, anchor_id`, sid)
+		`SELECT n.anchor_kind, n.anchor_id, COALESCE(r.from_table_id, ''),
+		        count(*) FILTER (WHERE n.resolved_at IS NULL),
+		        count(*) FILTER (WHERE n.resolved_at IS NOT NULL)
+		   FROM notes n
+		   LEFT JOIN relationships r
+		     ON n.anchor_kind = 'relationship' AND r.snapshot_id = n.snapshot_id AND r.id = n.anchor_id
+		  WHERE n.snapshot_id = $1 AND n.parent_id IS NULL
+		  GROUP BY 1, 2, 3
+		  ORDER BY 1, 2`, sid)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +175,7 @@ func (s *Store) CountNotes(ctx context.Context, sid string) ([]model.NoteCount, 
 	out := []model.NoteCount{}
 	for rows.Next() {
 		var c model.NoteCount
-		if err := rows.Scan(&c.AnchorKind, &c.AnchorID, &c.Open, &c.Resolved); err != nil {
+		if err := rows.Scan(&c.AnchorKind, &c.AnchorID, &c.TableID, &c.Open, &c.Resolved); err != nil {
 			return nil, err
 		}
 		out = append(out, c)
