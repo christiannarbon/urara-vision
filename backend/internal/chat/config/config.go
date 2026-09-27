@@ -4,6 +4,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"slices"
 	"sort"
@@ -124,7 +125,16 @@ func (l *loader) float(name string) float64 {
 }
 
 func (l *loader) seconds(name string) time.Duration {
-	return time.Duration(l.float(name) * float64(time.Second))
+	v := l.float(name)
+	ns := v * float64(time.Second)
+	if math.IsNaN(ns) || math.Abs(ns) >= math.MaxInt64 {
+		if !l.bad[name] {
+			l.fail("%s is too large, got %q", name, l.str(name))
+			l.bad[name] = true
+		}
+		return 0
+	}
+	return time.Duration(ns)
 }
 
 // Load reads and validates the settings, reporting every problem at once.
@@ -179,12 +189,12 @@ func Load(allowedProviders []string) (*Settings, error) {
 		}
 	}
 
-	switch features := l.float("FEATURES_CACHE_SECONDS"); {
+	switch features := l.seconds("FEATURES_CACHE_SECONDS"); {
 	case l.bad["FEATURES_CACHE_SECONDS"]:
-	case features < 1:
-		l.fail("FEATURES_CACHE_SECONDS must be at least 1, got %g", features)
+	case features < time.Second:
+		l.fail("FEATURES_CACHE_SECONDS must be at least 1, got %g", features.Seconds())
 	default:
-		s.FeaturesCache = time.Duration(features * float64(time.Second))
+		s.FeaturesCache = features
 	}
 	switch wait := l.seconds("TURN_ADMISSION_WAIT_SECONDS"); {
 	case l.bad["TURN_ADMISSION_WAIT_SECONDS"]:
@@ -200,6 +210,25 @@ func Load(allowedProviders []string) (*Settings, error) {
 		l.fail("ANSWER_TIMEOUT_SECONDS must be greater than zero, got %g", answer.Seconds())
 	default:
 		s.AnswerTimeout = min(answer, MaxAnswerTimeout)
+	}
+
+	// Zero means no timeout in Go.
+	for _, c := range []struct {
+		name string
+		v    time.Duration
+	}{
+		{"BACKEND_TIMEOUT_SECONDS", s.BackendTimeout},
+		{"LLM_TIMEOUT_SECONDS", s.LLMTimeout},
+	} {
+		if c.v <= 0 && !l.bad[c.name] {
+			l.fail("%s must be greater than zero, got %g", c.name, c.v.Seconds())
+		}
+	}
+	if s.MaxRequestBytes < 1 && !l.bad["MAX_REQUEST_BYTES"] {
+		l.fail("MAX_REQUEST_BYTES must be at least 1, got %d", s.MaxRequestBytes)
+	}
+	if s.ContextCacheTTL < 0 && !l.bad["CONTEXT_CACHE_TTL_SECONDS"] {
+		l.fail("CONTEXT_CACHE_TTL_SECONDS must not be negative, got %g", s.ContextCacheTTL.Seconds())
 	}
 
 	if len(l.problems) > 0 {
