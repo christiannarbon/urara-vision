@@ -26,6 +26,7 @@ type Deps struct {
 	Log          *slog.Logger
 	Backend      Backend
 	Model        llm.Model
+	Tools        ToolBackend
 	ProbeTimeout time.Duration    // /debug/llm; 0: 15s
 	Clock        func() time.Time // nil: time.Now
 }
@@ -35,6 +36,7 @@ type Server struct {
 	log          *slog.Logger
 	backend      Backend
 	model        llm.Model
+	tools        ToolBackend
 	probeTimeout time.Duration
 	gate         *FeatureGate // nil without a backend, so tests of the shell run ungated
 }
@@ -42,7 +44,7 @@ type Server struct {
 func New(deps Deps) *Server {
 	s := &Server{
 		settings: deps.Settings, log: deps.Log, backend: deps.Backend,
-		model: deps.Model, probeTimeout: deps.ProbeTimeout,
+		model: deps.Model, tools: deps.Tools, probeTimeout: deps.ProbeTimeout,
 	}
 	if s.probeTimeout == 0 {
 		s.probeTimeout = defaultProbeTimeout
@@ -67,6 +69,8 @@ func (s *Server) Handler() http.Handler {
 	r.Get("/healthz", s.healthz)
 	r.Get("/readyz", s.readyz)
 	r.Get("/debug/llm", s.debugLLM)
+	r.Get("/debug/tools", s.debugTools)
+	r.Post("/debug/tool", s.debugTool)
 
 	// Identity first, so an anonymous caller cannot learn whether chat is on.
 	r.Route("/api/chat", func(r chi.Router) {
