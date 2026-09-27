@@ -189,6 +189,13 @@ func TestVertexWithoutAProjectIsRefused(t *testing.T) {
 	}
 }
 
+// An empty value falls back to the default, so only a blank one reaches the check.
+func TestVertexWithABlankLocationIsRefused(t *testing.T) {
+	clean(t)
+	t.Setenv("VERTEX_LOCATION", "  ")
+	refused(t, "VERTEX_LOCATION must be set when LLM_PROVIDER is 'vertex'")
+}
+
 func TestProjectAndLocationAreTrimmed(t *testing.T) {
 	clean(t)
 	t.Setenv("VERTEX_PROJECT", "  my-project\n")
