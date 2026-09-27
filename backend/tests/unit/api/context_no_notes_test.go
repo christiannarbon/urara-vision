@@ -32,7 +32,8 @@ func withNotes(meta *fakeMeta, sid string) *fakeMeta {
 }
 
 func TestContextCarriesNoNotes(t *testing.T) {
-	h := newServerWithContextCap(t, withNotes(contextMeta(), "snap-1"), &fakeGraphs{}, 400)
+	meta := withNotes(contextMeta(), "snap-1")
+	h := newServerWithContextCap(t, meta, &fakeGraphs{}, 400)
 	rec := do(t, h, http.MethodGet, "/api/v1/snapshots/snap-1/context", nil, "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
@@ -40,10 +41,14 @@ func TestContextCarriesNoNotes(t *testing.T) {
 	if strings.Contains(rec.Body.String(), secretNote) {
 		t.Errorf("/context leaked a note body: %s", rec.Body)
 	}
+	if meta.noteCalls != 0 {
+		t.Errorf("/context made %d notes reads", meta.noteCalls)
+	}
 }
 
 func TestTablesDetailCarriesNoNotes(t *testing.T) {
-	h := newServer(t, withNotes(batchMeta(), "s1"), batchGraphs())
+	meta := withNotes(batchMeta(), "s1")
+	h := newServer(t, meta, batchGraphs())
 	rec := do(t, h, http.MethodGet, "/api/v1/snapshots/s1/tables/detail?ids=domain_one/fact_primary,domain_one/dim_alpha", nil, "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
@@ -51,6 +56,9 @@ func TestTablesDetailCarriesNoNotes(t *testing.T) {
 	body := rec.Body.String()
 	if strings.Contains(body, secretNote) {
 		t.Errorf("/tables/detail leaked a note body: %s", body)
+	}
+	if meta.noteCalls != 0 {
+		t.Errorf("/tables/detail made %d notes reads", meta.noteCalls)
 	}
 	// The documents' own notes still come through.
 	if !strings.Contains(body, "a documented caveat") {
