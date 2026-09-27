@@ -103,11 +103,10 @@ func gated(t *testing.T, f *fakeBackend, c *clock) http.Handler {
 	t.Helper()
 	settings := chatSettings()
 	return httpapi.New(httpapi.Deps{
-		Settings:  settings,
-		Log:       slog.New(slog.NewJSONHandler(&logs{}, nil)),
-		Backend:   f,
-		ModelInfo: httpapi.ModelInfo(settings),
-		Clock:     c.now,
+		Settings: settings,
+		Log:      slog.New(slog.NewJSONHandler(&logs{}, nil)),
+		Backend:  f,
+		Clock:    c.now,
 	}).Handler()
 }
 
