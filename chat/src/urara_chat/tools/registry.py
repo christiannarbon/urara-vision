@@ -357,7 +357,8 @@ def build_tools(client: BackendClient, snapshot_id: str) -> list[ToolSpec]:
             name="get_tables",
             description=(
                 "Read up to eight table documents in full: columns with types and "
-                "descriptions, declared relationships, column-level lineage and notes. "
+                "descriptions, declared relationships, column-level lineage and documented "
+                "caveats. "
                 "This is the tool that answers questions about what a table contains or "
                 "means. Ask for every table you need in one call rather than one at a "
                 "time. IDs are full 'domain/table' identifiers, e.g. "

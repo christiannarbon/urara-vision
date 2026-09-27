@@ -141,6 +141,37 @@ looking touched.
 no `CHECK` constraint — it is validated in the API instead, so an invalid role
 is a `400` with a message rather than a driver error a handler has to interpret.
 
+### Notes
+
+A note belongs to one snapshot and goes with it: `notes.snapshot_id` cascades,
+and notes are never copied into a new version. Replies are rows with
+`parent_id` set, one level deep, and cascade with their parent.
+
+| Column | |
+|---|---|
+| `anchor_kind`, `anchor_id` | What the note is pinned to. Replies copy their parent's |
+| `body` | Plain text, trimmed, at most 4000 characters |
+| `author_id` | `ON DELETE SET NULL`: a deleted user's notes stay |
+| `author_name` | Display name, or username, at write time; kept after the user goes |
+| `resolved_at`, `resolved_by_name` | Top-level notes only; cleared on reopen |
+
+| `anchor_kind` | `anchor_id` | Checked against |
+|---|---|---|
+| `domain` | domain ID | `domains.id` |
+| `table` | table ID | `tables.id` |
+| `column` | `<table id>#<column name>` | `columns (table_id, name)` |
+| `relationship` | relationship ID | `relationships.id` |
+| `lineage` | `<table id>#<column name>` | any `column_lineage (table_id, column_name)` row |
+
+Column and lineage IDs split on the last `#`. Anchors are checked when a note is
+created, not enforced by foreign keys: the anchored rows have composite keys
+and live only as long as the snapshot, which the cascade already covers.
+`notes_anchor_idx (snapshot_id, anchor_kind, anchor_id, created_at)` serves both
+the thread read and the counts.
+
+Notes are never read by anything the chat service calls; see
+[auth.md](auth.md#notes).
+
 ## Neo4j — the graph projection
 
 ```cypher

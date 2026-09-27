@@ -94,6 +94,26 @@ against the real server and fails when a routed permission has no case.
 allowed"}`. Something that exists but belongs to another user, such as a
 conversation, is `404`, so its existence is not revealed.
 
+## Notes
+
+Route permissions follow the table: reading notes needs `project.view`;
+posting, editing, resolving and deleting need `note.write`. Authorship is
+checked in the handler, because it depends on the note:
+
+- Only a user principal can post. The service token (without
+  `X-Acting-User`) and `AUTH_DISABLED` have no author and get `403`.
+- Editing a body or deleting needs the author (`author_id` equals the caller)
+  or `note.moderate`. Otherwise `403`: notes are visible to every viewer, so a
+  `404` would hide nothing.
+- Anyone with `note.write` can resolve or reopen a top-level note.
+
+Notes never reach the agent. They are user-written text, so putting them in the
+prompt would let anyone who can write a note inject instructions. The chat
+backend client has no notes method and no tool mentions notes
+(`chat/tests/unit/test_notes_isolation.py`), and `/context` and
+`/tables/detail` never carry a note body
+(`backend/tests/unit/api/context_no_notes_test.go`).
+
 ## Chat and permissions
 
 nginx establishes who the caller is, chat forwards it as `X-Acting-User`, and
