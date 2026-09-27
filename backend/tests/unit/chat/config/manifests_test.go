@@ -99,7 +99,7 @@ func configMap(t *testing.T) map[string]string {
 	return find(t, "ConfigMap", "relviz-chat-config").Data
 }
 
-func composeEnv(t *testing.T) map[string]string {
+func composeEnv(t *testing.T, service string) map[string]string {
 	t.Helper()
 	var f struct {
 		Services map[string]struct {
@@ -109,9 +109,9 @@ func composeEnv(t *testing.T) map[string]string {
 	if err := yaml.Unmarshal(read(t, composePath), &f); err != nil {
 		t.Fatalf("parsing %s: %v", composePath, err)
 	}
-	env := f.Services["chat"].Environment
+	env := f.Services[service].Environment
 	if env == nil {
-		t.Fatalf("no chat service environment in %s", composePath)
+		t.Fatalf("no %s service environment in %s", service, composePath)
 	}
 	return env
 }
@@ -163,7 +163,7 @@ func TestGracePeriodCoversAWholeTurn(t *testing.T) {
 var composeDefault = regexp.MustCompile(`^\$\{[A-Z0-9_]+:-(.*)\}$`)
 
 func TestEverySettingIsInCompose(t *testing.T) {
-	env := composeEnv(t)
+	env := composeEnv(t, "chat")
 	for _, name := range config.EnvNames() {
 		value, ok := env[name]
 		switch {
@@ -176,7 +176,7 @@ func TestEverySettingIsInCompose(t *testing.T) {
 }
 
 func TestComposeDefaultsMatchTheCode(t *testing.T) {
-	env := composeEnv(t)
+	env := composeEnv(t, "chat")
 	for _, name := range config.EnvNames() {
 		m := composeDefault.FindStringSubmatch(env[name])
 		if m == nil || composeDiffers[name] != "" {
@@ -184,6 +184,23 @@ func TestComposeDefaultsMatchTheCode(t *testing.T) {
 		}
 		if !agrees(m[1], config.Default(name)) {
 			t.Errorf("%s: compose says %q, code says %q", name, m[1], config.Default(name))
+		}
+	}
+}
+
+// chat-go copies chat's block; the two must not drift.
+func TestChatGoEnvironmentMatchesChat(t *testing.T) {
+	chat, goChat := composeEnv(t, "chat"), composeEnv(t, "chat-go")
+	if _, ok := goChat["GOOGLE_API_KEY"]; ok {
+		t.Error("chat-go declares GOOGLE_API_KEY, which Go does not read")
+	}
+	for _, name := range config.EnvNames() {
+		value, ok := goChat[name]
+		switch {
+		case !ok:
+			t.Errorf("%s is absent from chat-go's environment", name)
+		case name != "LLM_PROVIDER" && value != chat[name]:
+			t.Errorf("%s: chat-go says %q, chat says %q", name, value, chat[name])
 		}
 	}
 }
