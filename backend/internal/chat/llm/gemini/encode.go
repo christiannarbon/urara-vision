@@ -16,6 +16,9 @@ const resultKey = "output"
 
 // Encode turns a neutral request into genai contents and config. Pure.
 func Encode(req llm.Request) ([]*genai.Content, *genai.GenerateContentConfig, error) {
+	if req.ToolChoice == llm.ToolChoiceAny && len(req.Tools) == 0 {
+		return nil, nil, errors.New("tool choice any needs at least one tool")
+	}
 	cfg := &genai.GenerateContentConfig{}
 	if req.System != "" {
 		cfg.SystemInstruction = &genai.Content{Parts: []*genai.Part{{Text: req.System}}}
@@ -62,8 +65,14 @@ func Encode(req llm.Request) ([]*genai.Content, *genai.GenerateContentConfig, er
 					ThoughtSignature: call.Opaque,
 				})
 			}
+			if len(c.Parts) == 0 {
+				return nil, nil, fmt.Errorf("message %d: assistant has no text or tool calls", i)
+			}
 			contents = append(contents, c)
 		case llm.RoleTool:
+			if m.ToolName == "" {
+				return nil, nil, fmt.Errorf("message %d: tool result has no tool name", i)
+			}
 			part := &genai.Part{FunctionResponse: &genai.FunctionResponse{
 				ID: m.ToolCallID, Name: m.ToolName, Response: map[string]any{resultKey: m.Text},
 			}}
@@ -120,6 +129,12 @@ func Decode(resp *genai.GenerateContentResponse) (llm.Response, error) {
 		}
 	}
 	out.Text = text.String()
+	if out.Text == "" && len(out.ToolCalls) == 0 {
+		if cand.FinishReason == genai.FinishReasonMaxTokens {
+			return llm.Response{}, errors.New("gemini hit the output token limit before answering")
+		}
+		return llm.Response{}, fmt.Errorf("gemini returned no text or tool calls (finish reason %s)", cand.FinishReason)
+	}
 	llm.FillIDs(out.ToolCalls)
 
 	if u := resp.UsageMetadata; u != nil {
