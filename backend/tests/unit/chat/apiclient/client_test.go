@@ -575,3 +575,13 @@ func TestNotFoundOnConversationRoutes(t *testing.T) {
 		}
 	}
 }
+
+func TestACancelledCallKeepsItsCause(t *testing.T) {
+	c, _ := serve(t, 200, `{"sources":[]}`)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := c.Sources(ctx, sid)
+	if !errors.Is(err, apiclient.ErrUnavailable) || !errors.Is(err, context.Canceled) {
+		t.Errorf("err = %v; want both ErrUnavailable and context.Canceled", err)
+	}
+}
