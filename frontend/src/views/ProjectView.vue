@@ -16,6 +16,7 @@ import type { DiffResult } from '../api/types'
 import { buildDiffMarks } from '../graph/diff-marks'
 import { useChat } from '../stores/chat'
 import { useFeatures } from '../stores/features'
+import { useNotes } from '../stores/notes'
 import { useUi } from '../stores/ui'
 import { useWorkspace } from '../stores/workspace'
 
@@ -43,6 +44,7 @@ const {
 } = storeToRefs(store)
 
 const ui = useUi()
+const notes = useNotes()
 const { searchOpen, diagnosticsOpen } = storeToRefs(ui)
 const { open: chatOpen } = storeToRefs(useChat())
 const { chatUsable } = storeToRefs(useFeatures())
@@ -143,6 +145,7 @@ async function focusOn(id: string) {
         :loading="graphLoading"
         :layout-mode="layoutMode"
         :diff-marks="diffMarks"
+        :noted-table-ids="notes.openTablesWithNotes"
         @select="store.select"
         @focus="focusOn"
       />
