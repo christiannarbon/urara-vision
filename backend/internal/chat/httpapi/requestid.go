@@ -37,20 +37,15 @@ func SanitiseRequestID(raw string) string {
 	return b.String()
 }
 
-// statusWriter records the status and adds the request ID header unless a
-// handler already set it.
+// statusWriter records the status for the request log line.
 type statusWriter struct {
 	http.ResponseWriter
-	id     string
 	status int
 }
 
 func (w *statusWriter) WriteHeader(status int) {
 	if w.status == 0 {
 		w.status = status
-		if w.Header().Get(requestIDHeader) == "" {
-			w.Header().Set(requestIDHeader, w.id)
-		}
 	}
 	w.ResponseWriter.WriteHeader(status)
 }
@@ -64,13 +59,16 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 
 func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
+func (w *statusWriter) written() bool { return w.status != 0 }
+
 // Probes hit these on a timer; a success is logged at debug only.
 var quietPaths = map[string]bool{"/healthz": true, "/readyz": true}
 
 func (s *Server) requestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := SanitiseRequestID(r.Header.Get(requestIDHeader))
-		sw := &statusWriter{ResponseWriter: w, id: id}
+		w.Header().Set(requestIDHeader, id)
+		sw := &statusWriter{ResponseWriter: w}
 		started := time.Now()
 
 		defer func() {
