@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -56,6 +57,10 @@ func (s *Server) RenderBackendError(w http.ResponseWriter, r *http.Request, err 
 		// A 4xx means this service built a bad request.
 		s.log.Error("the backend refused a request built here", "request_id", id, "backend_error", err.Error())
 		WriteError(w, r, http.StatusInternalServerError, map[string]any{"error": MsgInternal})
+	case errors.Is(err, context.Canceled):
+		// Nobody reads this 502; it gives the request log line a status.
+		s.log.Info("request cancelled by the caller", "request_id", id)
+		WriteError(w, r, http.StatusBadGateway, map[string]any{"error": MsgBackendUnavailable})
 	case errors.As(err, &apiErr):
 		s.log.Error("backend call failed", "request_id", id, "backend_error", err.Error())
 		WriteError(w, r, http.StatusBadGateway, map[string]any{"error": MsgBackendUnavailable})
@@ -79,6 +84,9 @@ func (s *Server) recoverer(next http.Handler) http.Handler {
 			s.log.Error("unhandled exception",
 				"request_id", reqctx.RequestID(r.Context()),
 				"error", fmt.Sprint(rec), "stack", string(debug.Stack()))
+			if sw, ok := w.(interface{ written() bool }); ok && sw.written() {
+				return // headers are out; a second response would corrupt the first
+			}
 			WriteError(w, r, http.StatusInternalServerError, map[string]any{"error": MsgInternal})
 		}()
 		next.ServeHTTP(w, r)
