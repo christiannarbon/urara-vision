@@ -1,0 +1,22 @@
+PROJECT: jaffle-shop-ddd (v0.1.0)
+COUNTS: 6 domains, 10 tables, 80 columns, 16 relationships, 16 diagnostics (1 error, 11 warning, 4 info)
+
+DOMAINS
+  customer_identity — 2 tables
+  delivery_logistics — (no tables documented)
+  ordering — 2 tables
+  product_catalog — 3 tables
+  shared_kernel — 1 table
+  store_operations — 2 tables
+
+TABLES  (id | kind | grain | columns)
+  customer_identity/dim_customers | dimension | One row per customer. | 8
+  customer_identity/dim_date | dimension | One row per calendar date. | 6 | conformed
+  ordering/fact_order_items | fact | One row per product on an order. | 8
+  ordering/fact_orders | fact | One row per order. | 15
+  product_catalog/dim_products | dimension | One row per product in the catalog. | 7
+  product_catalog/dim_supplies | dimension | One row per supply per product. | 6
+  product_catalog/fact_supply_cost_snapshot | fact | One row per product per supply per day. | 7
+  shared_kernel/dim_date | dimension | One row per calendar date. | 10 | conformed
+  store_operations/dim_locations | dimension | One row per store. | 4
+  store_operations/fact_location_daily_sales | fact | One row per store per day. | 9

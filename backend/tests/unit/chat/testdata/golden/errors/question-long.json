@@ -1,0 +1,11 @@
+{
+  "status": 400,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": {
+    "detail": "\"question\" is 4001 characters, over the 4000 character limit",
+    "requestId": "<request-id>"
+  }
+}

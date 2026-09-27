@@ -1,0 +1,16 @@
+{
+  "status": 200,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": {
+    "status": "ok",
+    "backend": "ok",
+    "llm": {
+      "provider": "vertex",
+      "model": "gemini-2.5-flash",
+      "location": "us-central1"
+    }
+  }
+}

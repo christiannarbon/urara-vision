@@ -1,0 +1,43 @@
+{
+  "status": 200,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": {
+    "items": [
+      {
+        "tableId": "customer_identity/dim_customers",
+        "name": "dim_customers",
+        "domainId": "customer_identity",
+        "kind": "dimension",
+        "grain": "One row per customer.",
+        "matchedOn": [
+          "customer_id",
+          "customer_name",
+          "customer_type"
+        ]
+      },
+      {
+        "tableId": "customer_identity/dim_date",
+        "name": "dim_date",
+        "domainId": "customer_identity",
+        "kind": "dimension",
+        "grain": "One row per calendar date."
+      },
+      {
+        "tableId": "ordering/fact_orders",
+        "name": "fact_orders",
+        "domainId": "ordering",
+        "kind": "fact",
+        "grain": "One row per order.",
+        "matchedOn": [
+          "customer_id",
+          "customer_order_number"
+        ]
+      }
+    ],
+    "truncated": false,
+    "total": 3
+  }
+}

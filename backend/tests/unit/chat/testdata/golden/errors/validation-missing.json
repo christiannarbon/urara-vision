@@ -1,0 +1,23 @@
+{
+  "status": 400,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": {
+    "error": "the request is invalid",
+    "fields": [
+      {
+        "field": "snapshotId",
+        "location": "body",
+        "reason": "Field required"
+      },
+      {
+        "field": "question",
+        "location": "body",
+        "reason": "Field required"
+      }
+    ],
+    "requestId": "<request-id>"
+  }
+}

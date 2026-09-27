@@ -1,0 +1,23 @@
+{
+  "status": 400,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": {
+    "detail": [
+      {
+        "type": "less_than_equal",
+        "loc": [
+          "limit"
+        ],
+        "msg": "Input should be less than or equal to 50",
+        "input": 500,
+        "ctx": {
+          "le": 50
+        }
+      }
+    ],
+    "requestId": "<request-id>"
+  }
+}

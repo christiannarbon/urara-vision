@@ -1,0 +1,29 @@
+{
+  "status": 200,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": {
+    "items": [
+      {
+        "id": "ordering/fact_order_items",
+        "name": "fact_order_items",
+        "domainId": "ordering",
+        "kind": "fact",
+        "grain": "One row per product on an order.",
+        "columnCount": 8
+      },
+      {
+        "id": "ordering/fact_orders",
+        "name": "fact_orders",
+        "domainId": "ordering",
+        "kind": "fact",
+        "grain": "One row per order.",
+        "columnCount": 15
+      }
+    ],
+    "truncated": false,
+    "total": 2
+  }
+}

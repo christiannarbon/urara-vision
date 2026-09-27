@@ -1,0 +1,18 @@
+{
+  "status": 400,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": {
+    "error": "the request is invalid",
+    "fields": [
+      {
+        "field": "bogus",
+        "location": "body",
+        "reason": "Extra inputs are not permitted"
+      }
+    ],
+    "requestId": "<request-id>"
+  }
+}

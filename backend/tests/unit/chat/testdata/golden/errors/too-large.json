@@ -1,0 +1,11 @@
+{
+  "status": 413,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": {
+    "detail": "request body is larger than the 1048576 byte limit",
+    "requestId": "<request-id>"
+  }
+}

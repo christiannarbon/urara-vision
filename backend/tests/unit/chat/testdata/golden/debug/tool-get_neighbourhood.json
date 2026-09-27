@@ -1,0 +1,90 @@
+{
+  "status": 200,
+  "headers": {
+    "Retry-After": false,
+    "X-Request-Id": true
+  },
+  "body": {
+    "items": [
+      {
+        "id": "customer_identity/dim_customers",
+        "label": "dim_customers",
+        "kind": "dimension",
+        "domainId": "customer_identity",
+        "type": "table"
+      },
+      {
+        "id": "ordering/fact_order_items",
+        "label": "fact_order_items",
+        "kind": "fact",
+        "domainId": "ordering",
+        "type": "table"
+      },
+      {
+        "id": "ordering/fact_orders",
+        "label": "fact_orders",
+        "kind": "fact",
+        "domainId": "ordering",
+        "type": "table"
+      },
+      {
+        "id": "shared_kernel/dim_date",
+        "label": "dim_date",
+        "kind": "dimension",
+        "domainId": "shared_kernel",
+        "type": "table"
+      },
+      {
+        "id": "store_operations/dim_locations",
+        "label": "dim_locations",
+        "kind": "dimension",
+        "domainId": "store_operations",
+        "type": "table"
+      }
+    ],
+    "truncated": false,
+    "total": 5,
+    "links": [
+      {
+        "source": "ordering/fact_order_items",
+        "target": "ordering/fact_orders",
+        "type": "joins",
+        "fromColumn": "order_id",
+        "toColumn": "order_id",
+        "cardinality": "Many-to-one"
+      },
+      {
+        "source": "ordering/fact_order_items",
+        "target": "shared_kernel/dim_date",
+        "type": "joins",
+        "fromColumn": "ordered_at_date_key",
+        "toColumn": "date_key",
+        "cardinality": "Many-to-one"
+      },
+      {
+        "source": "ordering/fact_orders",
+        "target": "customer_identity/dim_customers",
+        "type": "joins",
+        "fromColumn": "customer_id",
+        "toColumn": "customer_id",
+        "cardinality": "Many-to-one"
+      },
+      {
+        "source": "ordering/fact_orders",
+        "target": "shared_kernel/dim_date",
+        "type": "joins",
+        "fromColumn": "ordered_at_date_key",
+        "toColumn": "date_key",
+        "cardinality": "Many-to-one"
+      },
+      {
+        "source": "ordering/fact_orders",
+        "target": "store_operations/dim_locations",
+        "type": "joins",
+        "fromColumn": "location_id",
+        "toColumn": "location_id",
+        "cardinality": "Many-to-one"
+      }
+    ]
+  }
+}
