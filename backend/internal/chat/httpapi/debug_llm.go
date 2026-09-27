@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"math"
 	"net/http"
 	"time"
@@ -25,9 +26,11 @@ func (s *Server) debugLLM(w http.ResponseWriter, r *http.Request) {
 		Messages: []llm.Message{{Role: llm.RoleUser, Text: probePrompt}},
 	})
 	if err != nil {
-		// The provider's message can echo the prompt, so it is not logged.
+		// Redacted: the provider's message can echo the prompt.
 		s.log.Error("llm probe failed", "request_id", reqctx.RequestID(r.Context()),
-			"provider", s.settings.LLMProvider, "model", s.settings.LLMModel)
+			"provider", s.settings.LLMProvider, "model", s.settings.LLMModel,
+			"reason", llm.Redact(err.Error(), probePrompt),
+			"timeout", errors.Is(err, context.DeadlineExceeded))
 		WriteError(w, r, http.StatusBadGateway, map[string]any{
 			"detail": "the language model provider did not answer; see the service logs",
 		})
