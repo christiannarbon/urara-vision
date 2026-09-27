@@ -217,4 +217,40 @@ describe('NotesButton', () => {
     expect(w.find('.count').text()).toBe('2')
     expect(w.find('button').attributes('title')).toBe('2 open notes · 1 resolved')
   })
+
+  it('keeps the popover inside the window, and follows scrolling', async () => {
+    signIn('alice', VIEWER)
+    const w = mount(NotesButton, { props: { anchor: ANCHOR }, attachTo: document.body })
+    mounted.push(w)
+    await flushPromises()
+    const rect = (top: number) => ({ top, bottom: top + 20, left: 10, right: 40, width: 30, height: 20, x: 10, y: top, toJSON: () => ({}) })
+    const trigger = w.find('button').element
+    vi.spyOn(trigger, 'getBoundingClientRect').mockReturnValue(rect(window.innerHeight - 40) as DOMRect)
+
+    await w.find('button').trigger('click')
+    await flushPromises()
+    const style = () => (w.find('.popover').element as HTMLElement).style
+    const px = (v: string) => Number.parseFloat(v)
+    // Near the bottom it opens upward, ending above the button.
+    expect(style().top).toBe('')
+    expect(px(style().bottom) + px(style().maxHeight)).toBeLessThanOrEqual(window.innerHeight)
+    expect(window.innerHeight - px(style().bottom)).toBeLessThanOrEqual(window.innerHeight - 40)
+
+    vi.mocked(trigger.getBoundingClientRect).mockReturnValue(rect(100) as DOMRect)
+    window.dispatchEvent(new Event('scroll'))
+    await flushPromises()
+    expect(px(style().top)).toBe(124)
+    expect(px(style().top) + px(style().maxHeight)).toBeLessThanOrEqual(window.innerHeight)
+  })
+})
+
+describe('the composer limit', () => {
+  it('ignores trailing whitespace, as the server does', async () => {
+    signIn('alice', VIEWER)
+    const w = await thread([])
+    await w.find('form textarea').setValue('é'.repeat(4000) + '   \n')
+    expect(buttons(w, en['notes.composer.add'])[0].attributes('disabled')).toBeUndefined()
+    await w.find('form textarea').setValue('é'.repeat(4001))
+    expect(buttons(w, en['notes.composer.add'])[0].attributes('disabled')).toBeDefined()
+  })
 })
