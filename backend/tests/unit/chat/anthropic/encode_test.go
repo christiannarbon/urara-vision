@@ -120,8 +120,49 @@ func TestToolsSendTheRawSchema(t *testing.T) {
 	}
 }
 
+// The whole request as sent, so an SDK upgrade that changes the shape fails here.
+func TestTheWireShape(t *testing.T) {
+	p := encode(t, llm.Request{
+		System: "be brief",
+		Messages: []llm.Message{
+			{Role: llm.RoleUser, Text: "q"},
+			{Role: llm.RoleAssistant, ToolCalls: []llm.ToolCall{{ID: "toolu_1", Name: "list_domains"}}},
+			{Role: llm.RoleTool, ToolCallID: "toolu_1", Text: "none"},
+		},
+		Tools:      []llm.ToolDef{{Name: "list_domains", Description: "every domain"}},
+		ToolChoice: llm.ToolChoiceAny,
+	})
+	got, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{
+		"model": "claude-haiku-4-5@20251001",
+		"max_tokens": 2048,
+		"system": [{"type": "text", "text": "be brief"}],
+		"messages": [
+			{"role": "user", "content": [{"type": "text", "text": "q"}]},
+			{"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_1", "name": "list_domains", "input": {}}]},
+			{"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "is_error": false,
+				"content": [{"type": "text", "text": "none"}]}]}
+		],
+		"tools": [{"name": "list_domains", "description": "every domain", "input_schema": {"type": "object", "properties": {}}}],
+		"tool_choice": {"type": "any"}
+	}`
+	var g, w any
+	if err := json.Unmarshal(got, &g); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(want), &w); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(g, w) {
+		t.Errorf("request =\n%s", got)
+	}
+}
+
 func TestToolChoice(t *testing.T) {
-	if p := encode(t, llm.Request{ToolChoice: llm.ToolChoiceAny}); p.ToolChoice.OfAny == nil {
+	if p := encode(t, llm.Request{ToolChoice: llm.ToolChoiceAny, Tools: []llm.ToolDef{{Name: "t"}}}); p.ToolChoice.OfAny == nil {
 		t.Errorf("Any: %+v", p.ToolChoice)
 	}
 	if p := encode(t, llm.Request{ToolChoice: llm.ToolChoiceAuto}); !reflect.ValueOf(p.ToolChoice).IsZero() {
@@ -142,11 +183,12 @@ func TestTemperatureAndOutputLimit(t *testing.T) {
 }
 
 func TestEncodeRefuses(t *testing.T) {
-	for name, m := range map[string]llm.Message{
-		"unknown role":    {Role: "system", Text: "x"},
-		"empty assistant": {Role: llm.RoleAssistant},
+	for name, req := range map[string]llm.Request{
+		"unknown role":      {Messages: []llm.Message{{Role: "system", Text: "x"}}},
+		"empty assistant":   {Messages: []llm.Message{{Role: llm.RoleAssistant}}},
+		"any without tools": {ToolChoice: llm.ToolChoiceAny},
 	} {
-		if _, err := anthropic.Encode("m", llm.Request{Messages: []llm.Message{m}}); err == nil {
+		if _, err := anthropic.Encode("m", req); err == nil {
 			t.Errorf("%s: no error", name)
 		}
 	}
@@ -199,6 +241,12 @@ func TestDecode(t *testing.T) {
 	t.Run("max tokens with nothing", func(t *testing.T) {
 		_, err := anthropic.Decode(message(t, `{"content":[],"stop_reason":"max_tokens",`+usage+`}`))
 		if err == nil || !strings.Contains(err.Error(), "output token limit") {
+			t.Errorf("err = %v", err)
+		}
+	})
+	t.Run("refusal with nothing", func(t *testing.T) {
+		_, err := anthropic.Decode(message(t, `{"content":[],"stop_reason":"refusal",`+usage+`}`))
+		if err == nil || !strings.Contains(err.Error(), "refusal") {
 			t.Errorf("err = %v", err)
 		}
 	})
