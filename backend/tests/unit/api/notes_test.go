@@ -9,6 +9,7 @@ import (
 
 	"urara-vision/backend/internal/auth"
 	"urara-vision/backend/internal/model"
+	"urara-vision/backend/internal/store/postgres"
 )
 
 const notesPath = "/api/v1/snapshots/s1/notes"
@@ -138,4 +139,14 @@ func TestNotesDeleteAuthorship(t *testing.T) {
 	}
 	wantCode(t, "author", asRole(t, h, auth.RoleViewer, http.MethodDelete, "/api/v1/notes/r0", nil), http.StatusNoContent)
 	wantCode(t, "unknown", asRole(t, h, auth.RoleViewer, http.MethodDelete, "/api/v1/notes/r0", nil), http.StatusNotFound)
+}
+
+func TestNotesResolveRaceSaysResolved(t *testing.T) {
+	meta := notesMeta()
+	meta.errResolve = postgres.ErrReplyDepth
+	h := roleServer(t, meta)
+	code, body := noteReq(t, h, auth.RoleCreator, http.MethodPatch, "/api/v1/notes/n0", `{"resolved":true}`)
+	if code != http.StatusBadRequest || !strings.Contains(body, "replies cannot be resolved") {
+		t.Errorf("resolve race = %d: %s", code, body)
+	}
 }

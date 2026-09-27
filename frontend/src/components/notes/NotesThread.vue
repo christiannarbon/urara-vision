@@ -44,7 +44,8 @@ const pending = ref(false)
 const error = ref('')
 const composer = ref<HTMLTextAreaElement | null>(null)
 
-const runes = computed(() => [...draft.value].length)
+// Trimmed, as the server counts it.
+const runes = computed(() => [...draft.value.trim()].length)
 const canSubmit = computed(() => !pending.value && draft.value.trim() !== '' && runes.value <= MAX_RUNES)
 
 async function submit() {

@@ -34,15 +34,6 @@ func ParseKind(s string) (Kind, error) {
 	return "", fmt.Errorf("unknown anchor kind %q", s)
 }
 
-// SplitColumnAnchor splits "<table id>#<column>" on the last '#'.
-func SplitColumnAnchor(id string) (tableID, column string, err error) {
-	i := strings.LastIndexByte(id, '#')
-	if i <= 0 || i == len(id)-1 {
-		return "", "", fmt.Errorf("column anchor %q is not <table id>#<column>", id)
-	}
-	return id[:i], id[i+1:], nil
-}
-
 // CheckBody trims the body and refuses it when empty or too long.
 func CheckBody(body string) (string, error) {
 	body = strings.TrimSpace(body)

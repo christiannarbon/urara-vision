@@ -22,6 +22,8 @@ type createNoteRequest struct {
 	ParentID   string `json:"parentId"`
 }
 
+const msgResolveReply = "replies cannot be resolved"
+
 type patchNoteRequest struct {
 	Body     *string `json:"body"`
 	Resolved *bool   `json:"resolved"`
@@ -154,10 +156,14 @@ func (s *Server) handlePatchNote(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		if n.ParentID != "" {
-			s.badRequest(w, "replies cannot be resolved")
+			s.badRequest(w, msgResolveReply)
 			return
 		}
 		out, err = s.pg.SetNoteResolved(r.Context(), n.ID, *req.Resolved, authorName(p))
+		if errors.Is(err, postgres.ErrReplyDepth) {
+			s.badRequest(w, msgResolveReply)
+			return
+		}
 		if err != nil {
 			s.failNote(w, r, err)
 			return

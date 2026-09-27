@@ -10,6 +10,7 @@ import (
 	"urara-vision/backend/internal/model"
 	"urara-vision/backend/internal/notes"
 	"urara-vision/backend/internal/store/postgres"
+	"urara-vision/backend/tests/fixtures"
 	"urara-vision/backend/tests/integration/harness"
 )
 
@@ -193,5 +194,57 @@ func TestNoteCascades(t *testing.T) {
 	}
 	if c := countRows(t, `SELECT count(*) FROM notes WHERE snapshot_id = $1`, sid); c != 0 {
 		t.Errorf("%d notes left after deleting the snapshot", c)
+	}
+}
+
+func TestCountNotesNamesRelationshipTable(t *testing.T) {
+	ctx := harness.Context(t)
+	pg := harness.Postgres(t)
+	m := harness.SavedModel(t, ctx, pg)
+	sid := m.Snapshot.ID
+
+	var rel model.Relationship
+	for _, tb := range m.Tables {
+		if len(tb.Relationships) > 0 {
+			rel = tb.Relationships[0]
+			break
+		}
+	}
+	createNote(t, ctx, pg, model.Note{SnapshotID: sid, AnchorKind: "relationship", AnchorID: rel.ID})
+	createNote(t, ctx, pg, model.Note{SnapshotID: sid, AnchorKind: "table", AnchorID: m.Tables[0].ID})
+
+	counts, err := pg.CountNotes(ctx, sid)
+	if err != nil {
+		t.Fatalf("CountNotes: %v", err)
+	}
+	for _, c := range counts {
+		want := ""
+		if c.AnchorKind == "relationship" {
+			want = rel.FromTableID
+		}
+		if c.TableID != want {
+			t.Errorf("%s %s: TableID = %q, want %q", c.AnchorKind, c.AnchorID, c.TableID, want)
+		}
+	}
+}
+
+func TestAnchorExistsWithHashInColumnName(t *testing.T) {
+	ctx := harness.Context(t)
+	pg := harness.Postgres(t)
+	m := fixtures.BuildAs(harness.SnapshotID(), fixtures.StarSchema())
+	m.Snapshot.Project.Project.Version = m.Snapshot.ID
+	tb := &m.Tables[0]
+	tb.Columns = append(tb.Columns, model.Column{Name: "amount#usd", Ordinal: len(tb.Columns)})
+	tb.ColumnLineage = append(tb.ColumnLineage, model.ColumnLineage{Column: "amount#usd", SourceTable: "raw.orders", SourceColumn: "amount"})
+	if err := pg.SaveSnapshot(ctx, m); err != nil {
+		t.Fatalf("save snapshot: %v", err)
+	}
+	t.Cleanup(func() { _ = pg.DeleteSnapshot(context.Background(), m.Snapshot.ID) })
+
+	for _, kind := range []notes.Kind{notes.KindColumn, notes.KindLineage} {
+		id := tb.ID + "#amount#usd"
+		if ok, err := pg.AnchorExists(ctx, m.Snapshot.ID, kind, id); err != nil || !ok {
+			t.Errorf("AnchorExists(%s, %q) = %v, %v; want true", kind, id, ok, err)
+		}
 	}
 }

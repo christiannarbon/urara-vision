@@ -295,12 +295,12 @@ snapshot is deleted.
 | `relationship` | relationship ID |
 | `lineage` | `<table id>#<column name>`: that column's lineage |
 
-Column and lineage IDs split on the last `#`.
+A column or lineage ID is matched as a whole, since table and column names may contain `#`.
 
 | Route | Permission | Body | Answer |
 |---|---|---|---|
 | `GET …/notes` | `project.view` | — | `{"notes": [...]}` top-level notes oldest first, each with `replies`. Missing `anchorKind` or `anchorId`, or an unknown kind, `400` |
-| `GET …/notes/counts` | `project.view` | — | `{"counts": [{"anchorKind","anchorId","open","resolved"}]}`, top-level notes only |
+| `GET …/notes/counts` | `project.view` | — | `{"counts": [{"anchorKind","anchorId","tableId?","open","resolved"}]}`, top-level notes only. `tableId` is the declaring table, on relationship counts |
 | `POST …/notes` | `note.write` | `{anchorKind, anchorId, body, parentId?}` | `201` with the note. An anchor not in the snapshot `400 {"error":"<kind> <id> does not exist in this version"}`; a reply to a reply `400`; an unknown parent, or one in another snapshot, `404 note not found` |
 | `PATCH /notes/{id}` | `note.write` | exactly one of `{body}` or `{resolved}` | `200` with the note. Neither or both `400`; resolving a reply `400` |
 | `DELETE /notes/{id}` | `note.write` | — | `204`; replies go with it |

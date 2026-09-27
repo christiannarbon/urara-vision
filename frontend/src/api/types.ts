@@ -405,6 +405,8 @@ export interface Note {
 export interface NoteCount {
   anchorKind: AnchorKind
   anchorId: string
+  /** The declaring table, for relationship anchors. */
+  tableId?: string
   open: number
   resolved: number
 }

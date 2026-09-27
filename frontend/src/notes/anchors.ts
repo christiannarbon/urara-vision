@@ -11,10 +11,13 @@ export const lineageAnchor = (tableId: string, column: string): Anchor => ({ kin
 export const relationshipAnchor = (relationshipId: string): Anchor => ({ kind: 'relationship', id: relationshipId })
 export const domainAnchor = (domainId: string): Anchor => ({ kind: 'domain', id: domainId })
 
-/** The table a column or lineage anchor belongs to; splits on the last '#' as the backend does. */
-export function anchorTableId(a: Anchor): string | null {
+/** The known table a column or lineage anchor belongs to. Names may contain '#', so each split is tried, longest table first. */
+export function anchorTableId(a: Anchor, tableIds: { has(id: string): boolean }): string | null {
   if (a.kind === 'table') return a.id
   if (a.kind !== 'column' && a.kind !== 'lineage') return null
-  const i = a.id.lastIndexOf('#')
-  return i > 0 ? a.id.slice(0, i) : null
+  for (let i = a.id.lastIndexOf('#'); i > 0; i = a.id.lastIndexOf('#', i - 1)) {
+    const prefix = a.id.slice(0, i)
+    if (tableIds.has(prefix)) return prefix
+  }
+  return null
 }

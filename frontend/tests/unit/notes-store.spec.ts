@@ -4,7 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { Note, NoteCount, Snapshot, TableResponse } from '../../src/api/types'
+import type { Note, NoteCount, Snapshot, TableSummary } from '../../src/api/types'
 
 vi.mock('../../src/api/client', async () => {
   const actual = await vi.importActual<typeof import('../../src/api/client')>('../../src/api/client')
@@ -31,6 +31,10 @@ function snapshot(id: string): Snapshot {
 
 function count(anchorKind: NoteCount['anchorKind'], anchorId: string, open: number, resolved = 0): NoteCount {
   return { anchorKind, anchorId, open, resolved }
+}
+
+function summary(id: string): TableSummary {
+  return { id, name: id, domainId: 'd', kind: 'fact', grain: '', conformed: false, columnCount: 1, description: '' }
 }
 
 function note(id: string): Note {
@@ -102,25 +106,53 @@ describe('useNotes', () => {
     expect(notes.countFor(tableAnchor('d/t')).open).toBe(1)
   })
 
-  it('openTablesWithNotes counts open column notes and skips resolved ones', async () => {
+  it('add resolves when only the reload after it fails', async () => {
+    useWorkspace().snapshot = snapshot('s1')
+    const notes = useNotes()
+    await flush()
+    vi.mocked(api.createNote).mockResolvedValue(note('n1'))
+    vi.mocked(api.noteCounts).mockRejectedValue(new Error('network'))
+
+    await expect(notes.add(tableAnchor('d/t'), 'hello')).resolves.toBeUndefined()
+    expect(api.createNote).toHaveBeenCalledTimes(1)
+  })
+
+  it('add still rejects when the write fails', async () => {
+    useWorkspace().snapshot = snapshot('s1')
+    const notes = useNotes()
+    await flush()
+    vi.mocked(api.createNote).mockRejectedValue(new Error('refused'))
+
+    await expect(notes.add(tableAnchor('d/t'), 'hello')).rejects.toThrow('refused')
+  })
+
+  it('openTablesWithNotes counts open column and relationship notes and skips resolved ones', async () => {
     const workspace = useWorkspace()
     vi.mocked(api.noteCounts).mockResolvedValue({
       counts: [
         count(columnAnchor('d/open', 'id').kind, columnAnchor('d/open', 'id').id, 1),
         count('table', 'd/closed', 0, 2),
-        count(relationshipAnchor('r1').kind, 'r1', 1),
+        { ...count(relationshipAnchor('r1').kind, 'r1', 1), tableId: 'd/rel' },
       ],
     })
+    workspace.tables = [summary('d/open'), summary('d/closed'), summary('d/rel')]
     workspace.snapshot = snapshot('s1')
     const notes = useNotes()
     await flush()
 
-    expect([...notes.openTablesWithNotes]).toEqual(['d/open'])
+    // No table detail is loaded: the relationship's table comes from the counts.
+    expect([...notes.openTablesWithNotes].sort()).toEqual(['d/open', 'd/rel'])
+  })
 
-    // A relationship note counts once its table detail is loaded.
-    workspace.detail = {
-      table: { relationships: [{ id: 'r1', fromTableId: 'd/rel' }] },
-    } as unknown as TableResponse
-    expect(notes.openTablesWithNotes.has('d/rel')).toBe(true)
+
+  it('openTablesWithNotes maps a column whose name holds # to its table', async () => {
+    const workspace = useWorkspace()
+    vi.mocked(api.noteCounts).mockResolvedValue({ counts: [count('column', 'sales/fact#amount#usd', 1)] })
+    workspace.tables = [summary('sales/fact')]
+    workspace.snapshot = snapshot('s1')
+    const notes = useNotes()
+    await flush()
+
+    expect([...notes.openTablesWithNotes]).toEqual(['sales/fact'])
   })
 })

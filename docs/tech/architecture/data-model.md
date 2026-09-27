@@ -163,7 +163,8 @@ and notes are never copied into a new version. Replies are rows with
 | `relationship` | relationship ID | `relationships.id` |
 | `lineage` | `<table id>#<column name>` | any `column_lineage (table_id, column_name)` row |
 
-Column and lineage IDs split on the last `#`. Anchors are checked when a note is
+Column and lineage IDs are matched as a whole (`table_id || '#' || name`),
+since table and column names may contain `#`. Anchors are checked when a note is
 created, not enforced by foreign keys: the anchored rows have composite keys
 and live only as long as the snapshot, which the cascade already covers.
 `notes_anchor_idx (snapshot_id, anchor_kind, anchor_id, created_at)` serves both

@@ -126,7 +126,7 @@ const lineageGroups = computed(() => {
 
 const notes = useNotes()
 
-const openNotesByTab = computed(() => {
+const openNotesByTab = computed<Partial<Record<Tab, boolean>>>(() => {
   const t = table.value
   if (!t) return {}
   const open = (a: Parameters<typeof notes.countFor>[0]) => notes.countFor(a).open > 0
@@ -134,7 +134,7 @@ const openNotesByTab = computed(() => {
     columns: t.columns.some((c) => open(columnAnchor(t.id, c.name))),
     relationships: t.relationships.some((r) => open(relationshipAnchor(r.id))),
     lineage: lineageGroups.value.some(([col]) => open(lineageAnchor(t.id, col))),
-  } as Partial<Record<Tab, boolean>>
+  }
 })
 
 function shortId(id: string): string {

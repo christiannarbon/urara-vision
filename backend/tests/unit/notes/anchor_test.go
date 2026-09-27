@@ -21,24 +21,6 @@ func TestParseKind(t *testing.T) {
 	}
 }
 
-func TestSplitColumnAnchor(t *testing.T) {
-	cases := []struct{ id, table, column string }{
-		{"a/b#c", "a/b", "c"},
-		{"a/b#c#d", "a/b#c", "d"},
-	}
-	for _, c := range cases {
-		table, column, err := notes.SplitColumnAnchor(c.id)
-		if err != nil || table != c.table || column != c.column {
-			t.Errorf("SplitColumnAnchor(%q) = %q, %q, %v", c.id, table, column, err)
-		}
-	}
-	for _, id := range []string{"a/b", "", "#c", "a/b#"} {
-		if _, _, err := notes.SplitColumnAnchor(id); err == nil {
-			t.Errorf("SplitColumnAnchor(%q) accepted", id)
-		}
-	}
-}
-
 func TestCheckBody(t *testing.T) {
 	if got, err := notes.CheckBody("  hello\n"); err != nil || got != "hello" {
 		t.Errorf("CheckBody trims: %q, %v", got, err)
