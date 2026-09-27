@@ -276,3 +276,30 @@ func TestAnUnparsableValueIsReportedOnce(t *testing.T) {
 		t.Errorf("want one problem, got %q", msg)
 	}
 }
+
+// In Go a zero timeout means none, and a byte limit below 1 refuses every request.
+func TestValuesGoWouldMisreadAreRefused(t *testing.T) {
+	for _, c := range []struct{ name, value string }{
+		{"BACKEND_TIMEOUT_SECONDS", "0"},
+		{"BACKEND_TIMEOUT_SECONDS", "-5"},
+		{"BACKEND_TIMEOUT_SECONDS", "1e300"},
+		{"LLM_TIMEOUT_SECONDS", "0"},
+		{"MAX_REQUEST_BYTES", "0"},
+		{"MAX_REQUEST_BYTES", "-1"},
+		{"CONTEXT_CACHE_TTL_SECONDS", "-1"},
+		{"FEATURES_CACHE_SECONDS", "1e300"},
+	} {
+		clean(t)
+		t.Setenv(c.name, c.value)
+		msg := refused(t, c.name)
+		if strings.Count(msg, c.name) != 1 {
+			t.Errorf("%s=%s: want one problem naming it, got %q", c.name, c.value, msg)
+		}
+	}
+
+	clean(t)
+	t.Setenv("CONTEXT_CACHE_TTL_SECONDS", "0")
+	if got := load(t).ContextCacheTTL; got != 0 {
+		t.Errorf("ContextCacheTTL = %v, want 0 accepted", got)
+	}
+}

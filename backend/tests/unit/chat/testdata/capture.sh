@@ -45,8 +45,9 @@ cleanup_snapshots() {
 
 finish() {
   "${COMPOSE[@]}" start backend >/dev/null 2>&1 || true
-  wait_for "$BACKEND/healthz" 200
-  set_chat true || true
+  wait_for "$BACKEND/healthz" 200 || true
+  # Put the switch back as it was, if it was read.
+  if [ -n "${CHAT_WAS:-}" ]; then set_chat "$CHAT_WAS" || true; fi
   cleanup_snapshots || true
   rm -rf "$TMP"
 }
@@ -105,6 +106,7 @@ curl -sSf -c "$TMP/jar" -H 'Content-Type: application/json' -H 'X-Requested-With
   -d "$(jq -nc --arg u "$ADMIN_USER" --arg p "$ADMIN_PASSWORD" '{username: $u, password: $p}')" \
   "$BACKEND/api/v1/auth/login" >/dev/null
 USER_ID=$(curl -sSf -b "$TMP/jar" -H 'X-Requested-With: urara' "$BACKEND/api/v1/auth/me" | jq -r .user.id)
+CHAT_WAS=$(backend "$BACKEND/api/v1/features" | jq -r .chat.enabled)
 set_chat true
 cleanup_snapshots
 JAFFLE=$(ingest jaffle-shop-ddd)

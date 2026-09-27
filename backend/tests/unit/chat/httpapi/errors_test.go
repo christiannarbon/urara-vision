@@ -1,6 +1,7 @@
 package httpapi_test
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -156,5 +157,73 @@ func TestAnUnknownRouteIs404WithTheID(t *testing.T) {
 	want := map[string]any{"detail": "Not Found", "requestId": "trace-404"}
 	if rec.Code != 404 || !reflect.DeepEqual(decode(t, rec), want) {
 		t.Errorf("%d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestDecodeJSONRefusesTrailingDataAndHidesGoTypes(t *testing.T) {
+	wantFields(t, decodeInto(t, `{"question":"hi"} x`), "body")
+	wantFields(t, decodeInto(t, `{"question":"hi"}{"question":"b"}`), "body")
+
+	rec := decodeInto(t, `[]`)
+	wantFields(t, rec, "body")
+	if strings.Contains(rec.Body.String(), "struct") {
+		t.Errorf("a Go type reached the caller: %s", rec.Body)
+	}
+
+	rec = decodeInto(t, `{"question":"hi","limit":"x"}`)
+	wantFields(t, rec, "limit")
+	if reason := decode(t, rec)["fields"].([]any)[0].(map[string]any)["reason"]; reason != "Input should be a valid number" {
+		t.Errorf("reason = %q", reason)
+	}
+
+	if rec := decodeInto(t, "{\"question\":\"hi\"}\n"); rec.Code != http.StatusNoContent {
+		t.Errorf("trailing whitespace: %d %s", rec.Code, rec.Body)
+	}
+}
+
+// Pydantic matches keys exactly; encoding/json alone would fold case.
+func TestAKeyInTheWrongCaseIsAnExtraField(t *testing.T) {
+	rec := decodeInto(t, `{"Question":"hi"}`)
+	wantFields(t, rec, "Question")
+	if reason := decode(t, rec)["fields"].([]any)[0].(map[string]any)["reason"]; reason != "Extra inputs are not permitted" {
+		t.Errorf("reason = %q", reason)
+	}
+}
+
+// Once headers are out, a panic can only be logged.
+func TestAPanicAfterAPartialWriteDoesNotWriteAgain(t *testing.T) {
+	h, l := wrapped(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"partial":`))
+		panic("late")
+	})
+	rec := get(h, "/late", "")
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), "internal error") {
+		t.Errorf("status %d, body %q", rec.Code, rec.Body)
+	}
+	if !strings.Contains(l.buf.String(), "unhandled exception") {
+		t.Error("the panic was not logged")
+	}
+}
+
+func TestACallerHangingUpIsNotABackendFault(t *testing.T) {
+	srv := httptest.NewServer(http.NotFoundHandler())
+	t.Cleanup(srv.Close)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := apiclient.New(srv.URL, "", time.Second).Domains(ctx, "s")
+
+	s, l := newServerWith(t, 1<<20)
+	h := s.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.RenderBackendError(w, r, err)
+	}))
+	get(h, "/x", "trace-gone")
+	for _, m := range l.lines(t) {
+		if m["request_id"] == "trace-gone" && m["msg"] != "request" && m["level"] != "INFO" {
+			t.Errorf("logged %v at %v, want INFO", m["msg"], m["level"])
+		}
+	}
+	if !strings.Contains(l.buf.String(), "request cancelled by the caller") {
+		t.Errorf("log = %s", l.buf.String())
 	}
 }

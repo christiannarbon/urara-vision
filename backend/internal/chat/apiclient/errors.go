@@ -19,11 +19,14 @@ type Error struct {
 	Message string
 
 	unreachable bool
+	cause       error
 }
 
 func (e *Error) Error() string {
 	return fmt.Sprintf("backend returned %d: %s", e.Status, e.Message)
 }
+
+func (e *Error) Unwrap() error { return e.cause }
 
 func (e *Error) Is(target error) bool {
 	switch target {
@@ -41,5 +44,5 @@ func (e *Error) Is(target error) bool {
 
 // A transport failure is reported as a 502, as Python's BackendUnavailable is.
 func unreachable(err error) *Error {
-	return &Error{Status: 502, Message: "backend unreachable: " + err.Error(), unreachable: true}
+	return &Error{Status: 502, Message: "backend unreachable: " + err.Error(), unreachable: true, cause: err}
 }

@@ -302,3 +302,24 @@ func TestTheLineIsWrittenWhenTheHandlerPanics(t *testing.T) {
 		t.Errorf("lines = %v", lines)
 	}
 }
+
+func TestTrailingDataPastTheLimitIs413(t *testing.T) {
+	s, _ := newServerWith(t, 200)
+	h := s.Wrap(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var v map[string]any
+		s.DecodeJSON(w, r, &v)
+	}))
+	req := httptest.NewRequest("POST", "/x", strings.NewReader(`{"q":"x"}`+strings.Repeat(" ", 300)+"x"))
+	req.ContentLength = -1
+	if rec := serve(h, req); rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("status %d, body %s", rec.Code, rec.Body)
+	}
+}
+
+func TestAHandlerThatWritesNothingStillCarriesTheID(t *testing.T) {
+	h, _ := wrapped(t, func(http.ResponseWriter, *http.Request) {})
+	rec := get(h, "/quiet", "")
+	if rec.Code != http.StatusOK || rec.Header().Get("X-Request-Id") == "" {
+		t.Errorf("status %d, X-Request-Id %q", rec.Code, rec.Header().Get("X-Request-Id"))
+	}
+}
