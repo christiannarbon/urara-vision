@@ -43,7 +43,14 @@ func run() int {
 		Backend:   apiclient.New(cfg.BackendBaseURL, cfg.BackendAPIToken, cfg.BackendTimeout),
 		ModelInfo: httpapi.ModelInfo(cfg),
 	}).Handler()
-	srv := &http.Server{Addr: cfg.AppAddr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{
+		Addr:              cfg.AppAddr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		// No WriteTimeout: a turn may take ANSWER_TIMEOUT_SECONDS.
+		IdleTimeout: 2 * time.Minute,
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -61,6 +68,7 @@ func run() int {
 		log.Error("server failed", "error", err)
 		return 1
 	case <-ctx.Done():
+		stop() // a second signal now kills the process
 		log.Info("shutting down")
 	}
 
