@@ -4,8 +4,9 @@ package llm
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
-	"strconv"
 )
 
 type Model interface {
@@ -77,12 +78,14 @@ func (u Usage) Map() map[string]int {
 	}
 }
 
-// FillIDs gives each call without a provider ID one of the form call_<n>, n
-// counting from 1, so the loop can always match results to calls.
+// FillIDs gives each call without a provider ID a random one, so IDs stay
+// unique across rounds.
 func FillIDs(calls []ToolCall) {
 	for i := range calls {
 		if calls[i].ID == "" {
-			calls[i].ID = "call_" + strconv.Itoa(i+1)
+			b := make([]byte, 6)
+			_, _ = rand.Read(b) // never fails
+			calls[i].ID = "call_" + hex.EncodeToString(b)
 		}
 	}
 }

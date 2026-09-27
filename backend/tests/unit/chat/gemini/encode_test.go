@@ -98,13 +98,13 @@ func TestOpaqueSurvivesARoundTrip(t *testing.T) {
 
 	contents, _ := encode(t, llm.Request{Messages: []llm.Message{{Role: llm.RoleAssistant, ToolCalls: decoded.ToolCalls}}})
 	part := contents[0].Parts[0]
-	if string(part.ThoughtSignature) != string(sig) || part.FunctionCall.ID != "call_1" {
+	if string(part.ThoughtSignature) != string(sig) || part.FunctionCall.ID == "" || part.FunctionCall.ID != decoded.ToolCalls[0].ID {
 		t.Errorf("re-encoded part = %+v", part)
 	}
 }
 
 func TestToolChoice(t *testing.T) {
-	_, cfg := encode(t, llm.Request{ToolChoice: llm.ToolChoiceAny})
+	_, cfg := encode(t, llm.Request{ToolChoice: llm.ToolChoiceAny, Tools: []llm.ToolDef{{Name: "t"}}})
 	if cfg.ToolConfig == nil || cfg.ToolConfig.FunctionCallingConfig.Mode != genai.FunctionCallingConfigModeAny {
 		t.Errorf("Any: %+v", cfg.ToolConfig)
 	}
@@ -194,7 +194,7 @@ func TestDecode(t *testing.T) {
 		if c := got.ToolCalls[0]; c.ID != "call_800326" || string(c.Args) != `{"x":1}` {
 			t.Errorf("first = %+v", c)
 		}
-		if c := got.ToolCalls[1]; c.ID != "call_2" || string(c.Args) != "{}" {
+		if c := got.ToolCalls[1]; !strings.HasPrefix(c.ID, "call_") || string(c.Args) != "{}" {
 			t.Errorf("second = %+v; want a generated ID and {} args", c)
 		}
 	})
@@ -217,6 +217,20 @@ func TestDecode(t *testing.T) {
 			t.Errorf("err = %v", err)
 		}
 	})
+	t.Run("output limit hit while thinking", func(t *testing.T) {
+		resp := candidate(&genai.Part{Text: "hidden", Thought: true})
+		resp.Candidates[0].FinishReason = genai.FinishReasonMaxTokens
+		if _, err := gemini.Decode(resp); err == nil || !strings.Contains(err.Error(), "output token limit") {
+			t.Errorf("err = %v", err)
+		}
+	})
+	t.Run("no parts", func(t *testing.T) {
+		resp := candidate()
+		resp.Candidates[0].FinishReason = genai.FinishReasonSafety
+		if _, err := gemini.Decode(resp); err == nil || !strings.Contains(err.Error(), "SAFETY") {
+			t.Errorf("err = %v", err)
+		}
+	})
 	t.Run("a candidate with no content", func(t *testing.T) {
 		_, err := gemini.Decode(&genai.GenerateContentResponse{Candidates: []*genai.Candidate{{FinishReason: genai.FinishReasonSafety}}})
 		if err == nil || !strings.Contains(err.Error(), "SAFETY") {
@@ -225,8 +239,15 @@ func TestDecode(t *testing.T) {
 	})
 }
 
-func TestAnUnknownRoleIsRefused(t *testing.T) {
-	if _, _, err := gemini.Encode(llm.Request{Messages: []llm.Message{{Role: "system", Text: "x"}}}); err == nil {
-		t.Error("Encode accepted role system")
+func TestEncodeRefuses(t *testing.T) {
+	for name, req := range map[string]llm.Request{
+		"unknown role":        {Messages: []llm.Message{{Role: "system", Text: "x"}}},
+		"empty assistant":     {Messages: []llm.Message{{Role: llm.RoleAssistant}}},
+		"tool result unnamed": {Messages: []llm.Message{{Role: llm.RoleTool, ToolCallID: "c", Text: "r"}}},
+		"any without tools":   {ToolChoice: llm.ToolChoiceAny},
+	} {
+		if _, _, err := gemini.Encode(req); err == nil {
+			t.Errorf("%s: no error", name)
+		}
 	}
 }

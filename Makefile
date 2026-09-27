@@ -160,6 +160,8 @@ test-chat-integration: ## Chat service tests against the compose stack
 # Costs money: calls real models. Never part of test, test-all or CI.
 .PHONY: test-llm
 test-llm: ## Live smoke tests against each LLM provider (costs money; needs ADC and VERTEX_PROJECT)
+	@test -f "$(HOME)/.config/gcloud/application_default_credentials.json" || \
+	  { echo "run gcloud auth application-default login first"; exit 1; }
 	docker run --rm -v "$(PWD)/backend":/src -w /src \
 	  -v "$(HOME)/.config/gcloud/application_default_credentials.json":/gcloud/adc.json:ro \
 	  -e GOOGLE_APPLICATION_CREDENTIALS=/gcloud/adc.json \

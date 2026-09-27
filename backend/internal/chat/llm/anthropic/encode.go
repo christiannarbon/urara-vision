@@ -16,8 +16,14 @@ import (
 // defaultMaxTokens fills the limit this API requires.
 const defaultMaxTokens = 2048
 
+// emptySchema is sent for a tool without one: the API requires type object.
+const emptySchema = `{"type":"object","properties":{}}`
+
 // Encode turns a neutral request into Messages API params. Pure.
 func Encode(model string, req llm.Request) (anthropic.MessageNewParams, error) {
+	if req.ToolChoice == llm.ToolChoiceAny && len(req.Tools) == 0 {
+		return anthropic.MessageNewParams{}, errors.New("tool choice any needs at least one tool")
+	}
 	p := anthropic.MessageNewParams{Model: anthropic.Model(model), MaxTokens: defaultMaxTokens}
 	if req.MaxOutputTokens > 0 {
 		p.MaxTokens = int64(req.MaxOutputTokens)
@@ -26,7 +32,11 @@ func Encode(model string, req llm.Request) (anthropic.MessageNewParams, error) {
 		p.System = []anthropic.TextBlockParam{{Text: req.System}}
 	}
 	for _, t := range req.Tools {
-		tool := &anthropic.ToolParam{Name: t.Name, InputSchema: param.Override[anthropic.ToolInputSchemaParam](orEmptyObject(t.Schema))}
+		schema := t.Schema
+		if len(schema) == 0 {
+			schema = json.RawMessage(emptySchema)
+		}
+		tool := &anthropic.ToolParam{Name: t.Name, InputSchema: param.Override[anthropic.ToolInputSchemaParam](schema)}
 		if t.Description != "" {
 			tool.Description = anthropic.String(t.Description)
 		}
@@ -82,7 +92,7 @@ func appendUser(msgs []anthropic.MessageParam, b anthropic.ContentBlockParamUnio
 	return msgs
 }
 
-// orEmptyObject sends an empty schema or args as {}, not null.
+// orEmptyObject sends empty args as {}, not null.
 func orEmptyObject(raw json.RawMessage) json.RawMessage {
 	if len(raw) == 0 {
 		return json.RawMessage(`{}`)
@@ -108,8 +118,11 @@ func Decode(msg *anthropic.Message) (llm.Response, error) {
 	out.Text = text.String()
 	llm.FillIDs(out.ToolCalls)
 
-	if msg.StopReason == anthropic.StopReasonMaxTokens && out.Text == "" && len(out.ToolCalls) == 0 {
-		return llm.Response{}, errors.New("claude hit the output token limit before answering")
+	if out.Text == "" && len(out.ToolCalls) == 0 {
+		if msg.StopReason == anthropic.StopReasonMaxTokens {
+			return llm.Response{}, errors.New("claude hit the output token limit before answering")
+		}
+		return llm.Response{}, fmt.Errorf("claude returned no text or tool calls (stop reason %s)", msg.StopReason)
 	}
 	in, outTokens := int(msg.Usage.InputTokens), int(msg.Usage.OutputTokens)
 	out.Usage = &llm.Usage{InputTokens: in, OutputTokens: outTokens, TotalTokens: in + outTokens}

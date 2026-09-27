@@ -173,6 +173,9 @@ func Load(allowedProviders []string) (*Settings, error) {
 	if strings.HasPrefix(s.LLMProvider, "vertex") && s.VertexProject == "" {
 		l.fail("VERTEX_PROJECT must be set when LLM_PROVIDER is '%s'", s.LLMProvider)
 	}
+	if strings.HasPrefix(s.LLMProvider, "vertex") && s.VertexLocation == "" {
+		l.fail("VERTEX_LOCATION must be set when LLM_PROVIDER is '%s'", s.LLMProvider)
+	}
 	if !endsInPort(s.AppAddr) {
 		l.fail("APP_ADDR must end in a port, got %q", s.AppAddr)
 	}
