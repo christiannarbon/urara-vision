@@ -281,6 +281,8 @@ type Note struct {
 type NoteCount struct {
 	AnchorKind string `json:"anchorKind"`
 	AnchorID   string `json:"anchorId"`
-	Open       int    `json:"open"`
-	Resolved   int    `json:"resolved"`
+	// TableID is the declaring table, for relationship anchors.
+	TableID  string `json:"tableId,omitempty"`
+	Open     int    `json:"open"`
+	Resolved int    `json:"resolved"`
 }
