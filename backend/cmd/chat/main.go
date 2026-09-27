@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"urara-vision/backend/internal/chat/config"
+	"urara-vision/backend/internal/chat/httpapi"
 	"urara-vision/backend/internal/chat/logging"
 )
 
@@ -35,13 +36,8 @@ func run() int {
 		"run one replica or expect interleaved transcripts",
 		"max_concurrent_turns", cfg.MaxConcurrentTurns)
 
-	// Placeholder until 16.4's router.
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
-	})
-	srv := &http.Server{Addr: cfg.AppAddr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	handler := httpapi.New(httpapi.Deps{Settings: cfg, Log: log}).Handler()
+	srv := &http.Server{Addr: cfg.AppAddr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
