@@ -281,6 +281,8 @@ export const messages = {
   'detail.lineage.columns.one': '{n} col',
   'detail.lineage.columns.other': '{n} cols',
   'detail.lineage.more': '+{n} more',
+  'detail.lineage.byColumn': 'Column lineage',
+  'detail.tab.openNotes': 'Has open notes',
   'detail.siblings': 'Shares sources with',
   'detail.siblings.note':
     'These tables read from at least one of the same upstream models, so an upstream change is likely to affect them too.',
