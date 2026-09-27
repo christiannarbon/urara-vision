@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"urara-vision/backend/internal/chat/agent"
 	"urara-vision/backend/internal/chat/apiclient"
 	"urara-vision/backend/internal/chat/config"
 	"urara-vision/backend/internal/chat/httpapi"
@@ -53,12 +54,20 @@ func run() int {
 		"max_concurrent_turns", cfg.MaxConcurrentTurns)
 
 	backend := apiclient.New(cfg.BackendBaseURL, cfg.BackendAPIToken, cfg.BackendTimeout)
+	cards := agent.NewCardCache(cfg.ContextCacheTTL, agent.MaxCachedCards, nil)
+	answerer := agent.New(model, backend, cards, agent.Options{
+		ModelName:         cfg.LLMModel,
+		MaxHistory:        cfg.MaxHistoryMessages,
+		MaxToolIterations: cfg.MaxToolIterations,
+		MaxTurnTokens:     cfg.MaxTurnTokens,
+	}, log)
 	handler := httpapi.New(httpapi.Deps{
 		Settings: cfg,
 		Log:      log,
 		Backend:  backend,
 		Model:    model,
 		Tools:    backend,
+		Agent:    answerer,
 	}).Handler()
 	srv := &http.Server{
 		Addr:              cfg.AppAddr,
