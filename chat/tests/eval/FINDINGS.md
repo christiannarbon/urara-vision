@@ -245,3 +245,34 @@ Same on both: `fintech-diag-isolated-fact`, `injection-whats-wrong`, `jaffle-dia
 Go did better on `aw-traversal-product-category` (Python had one 502),
 `fintech-refusal-exchange-rates`, `jaffle-lineage-untraceable-columns` and
 `jaffle-traversal-orders-neighbours`.
+
+### Reruns after two port fixes
+
+Both fixes bring Go in line with Python (fence 14). Prompts, tools, budgets, questions and
+thresholds are unchanged.
+
+1. **Empty reply.** Go's adapters returned an error, which became a 502. Python ends the turn
+   with `NO_ANSWER_PRODUCED`. The adapters now wrap `llm.ErrEmptyReply`, and the loop falls back
+   as Python does. `fintech-traversal-account-loan` asked alone passed 3/3.
+2. **Forced first call.** LangChain sends `mode: ANY` with `allowed_function_names` set to every
+   tool. Go sent only the mode. Every Go empty reply seen had come on this call.
+
+| | fix 1 (`20260928T024945Z`) | fixes 1 + 2 (`20260928T025927Z`) |
+|---|---|---|
+| Recall per run | 0.9592 / 0.9643 / 1.0000 | 0.9830 / 0.9898 / 0.9745 |
+| Mean recall (floor 0.9632) | 0.9745 | 0.9824 |
+| Refusal accuracy per run | 1.00 / 1.00 / 1.00 | 1.00 / 1.00 / 0.875 |
+| Violations | 0 / 0 / 0 | 0 / 0 / 1 |
+| Unanswered | 0 / 0 / 0 | 0 / 0 / 0 |
+| Passes | 56 / 56 / 59 | 58 / 59 / 54 |
+| Empty replies (fallback) | 2, `sakila-traversal-rental-film` | 1, `sakila-traversal-rental-film` |
+| Gate | passed | **failed: run 3** |
+
+**Gate on the final code: failed.** Run 3 answered `sakila-refusal-category-table` with "The
+`catalog/category` table is not documented…". That is a refusal, but it names the forbidden
+string, so the scorer counts it as a violation and a missed refusal. The question passed in all
+nine earlier Python and Go runs.
+
+- Empty replies still happen on `sakila-traversal-rental-film`, always on the forced first call,
+  in 3 of 6 runs. Python had none in 195 turns. Sending the tool names did not remove them.
+- By the per-run rule, Python's "Final" runs pass 1 of 3. The three Go sets passed 0, 3 and 2 of 3, in order.

@@ -2,6 +2,7 @@ package gemini_test
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -104,9 +105,10 @@ func TestOpaqueSurvivesARoundTrip(t *testing.T) {
 }
 
 func TestToolChoice(t *testing.T) {
-	_, cfg := encode(t, llm.Request{ToolChoice: llm.ToolChoiceAny, Tools: []llm.ToolDef{{Name: "t"}}})
-	if cfg.ToolConfig == nil || cfg.ToolConfig.FunctionCallingConfig.Mode != genai.FunctionCallingConfigModeAny {
-		t.Errorf("Any: %+v", cfg.ToolConfig)
+	_, cfg := encode(t, llm.Request{ToolChoice: llm.ToolChoiceAny, Tools: []llm.ToolDef{{Name: "a"}, {Name: "b"}}})
+	if cfg.ToolConfig == nil || cfg.ToolConfig.FunctionCallingConfig.Mode != genai.FunctionCallingConfigModeAny ||
+		!reflect.DeepEqual(cfg.ToolConfig.FunctionCallingConfig.AllowedFunctionNames, []string{"a", "b"}) {
+		t.Errorf("Any: %+v", cfg.ToolConfig.FunctionCallingConfig)
 	}
 	if _, cfg := encode(t, llm.Request{ToolChoice: llm.ToolChoiceAuto}); cfg.ToolConfig != nil {
 		t.Errorf("Auto: %+v", cfg.ToolConfig)
@@ -213,27 +215,36 @@ func TestDecode(t *testing.T) {
 	})
 	t.Run("no candidates", func(t *testing.T) {
 		_, err := gemini.Decode(&genai.GenerateContentResponse{PromptFeedback: &genai.GenerateContentResponsePromptFeedback{BlockReason: genai.BlockedReasonSafety}})
-		if err == nil || !strings.Contains(err.Error(), "no candidates") || !strings.Contains(err.Error(), "SAFETY") {
+		if err == nil || !strings.Contains(err.Error(), "no candidates") || !strings.Contains(err.Error(), "SAFETY") || errors.Is(err, llm.ErrEmptyReply) {
 			t.Errorf("err = %v", err)
 		}
 	})
 	t.Run("output limit hit while thinking", func(t *testing.T) {
 		resp := candidate(&genai.Part{Text: "hidden", Thought: true})
 		resp.Candidates[0].FinishReason = genai.FinishReasonMaxTokens
-		if _, err := gemini.Decode(resp); err == nil || !strings.Contains(err.Error(), "output token limit") {
+		if _, err := gemini.Decode(resp); !errors.Is(err, llm.ErrEmptyReply) || !strings.Contains(err.Error(), "output token limit") {
 			t.Errorf("err = %v", err)
 		}
 	})
 	t.Run("no parts", func(t *testing.T) {
 		resp := candidate()
 		resp.Candidates[0].FinishReason = genai.FinishReasonSafety
-		if _, err := gemini.Decode(resp); err == nil || !strings.Contains(err.Error(), "SAFETY") {
+		if _, err := gemini.Decode(resp); !errors.Is(err, llm.ErrEmptyReply) || !strings.Contains(err.Error(), "SAFETY") {
 			t.Errorf("err = %v", err)
+		}
+	})
+	t.Run("an empty reply keeps its usage", func(t *testing.T) {
+		resp := candidate()
+		resp.Candidates[0].FinishReason = genai.FinishReasonStop
+		resp.UsageMetadata = &genai.GenerateContentResponseUsageMetadata{PromptTokenCount: 90, ThoughtsTokenCount: 10}
+		got, err := gemini.Decode(resp)
+		if !errors.Is(err, llm.ErrEmptyReply) || got.Usage == nil || *got.Usage != (llm.Usage{InputTokens: 90, OutputTokens: 10, TotalTokens: 100}) {
+			t.Errorf("got %+v, %v", got, err)
 		}
 	})
 	t.Run("a candidate with no content", func(t *testing.T) {
 		_, err := gemini.Decode(&genai.GenerateContentResponse{Candidates: []*genai.Candidate{{FinishReason: genai.FinishReasonSafety}}})
-		if err == nil || !strings.Contains(err.Error(), "SAFETY") {
+		if err == nil || !strings.Contains(err.Error(), "SAFETY") || errors.Is(err, llm.ErrEmptyReply) {
 			t.Errorf("err = %v", err)
 		}
 	})

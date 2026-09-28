@@ -7,7 +7,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 )
+
+// ErrEmptyReply is a reply with no text and no tool calls. Adapters wrap it
+// with the reason and still return the usage.
+var ErrEmptyReply = errors.New("no text or tool calls")
 
 type Model interface {
 	Generate(ctx context.Context, req Request) (Response, error)

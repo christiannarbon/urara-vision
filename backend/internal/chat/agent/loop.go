@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"strings"
 	"sync"
@@ -52,6 +53,11 @@ func (a *Agent) run(ctx context.Context, sid, language string, messages []llm.Me
 		}
 		estPrompt += estimate(system, messages)
 		reply, err := a.model.Generate(ctx, llm.Request{System: system, Messages: messages, Tools: defs, ToolChoice: choice})
+		// Python ends the turn on an empty reply and answers NoAnswerProduced (fence 14).
+		if errors.Is(err, llm.ErrEmptyReply) {
+			a.log.Warn("empty model reply", "request_id", reqctx.RequestID(ctx), "reason", err.Error())
+			err = nil
+		}
 		if err != nil {
 			return Answer{}, err
 		}

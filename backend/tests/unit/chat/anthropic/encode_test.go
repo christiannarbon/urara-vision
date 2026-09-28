@@ -2,6 +2,7 @@ package anthropic_test
 
 import (
 	"encoding/json"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -240,14 +241,15 @@ func TestDecode(t *testing.T) {
 
 	t.Run("max tokens with nothing", func(t *testing.T) {
 		_, err := anthropic.Decode(message(t, `{"content":[],"stop_reason":"max_tokens",`+usage+`}`))
-		if err == nil || !strings.Contains(err.Error(), "output token limit") {
+		if !errors.Is(err, llm.ErrEmptyReply) || !strings.Contains(err.Error(), "output token limit") {
 			t.Errorf("err = %v", err)
 		}
 	})
-	t.Run("refusal with nothing", func(t *testing.T) {
-		_, err := anthropic.Decode(message(t, `{"content":[],"stop_reason":"refusal",`+usage+`}`))
-		if err == nil || !strings.Contains(err.Error(), "refusal") {
-			t.Errorf("err = %v", err)
+	t.Run("refusal with nothing keeps its usage", func(t *testing.T) {
+		got, err := anthropic.Decode(message(t, `{"content":[],"stop_reason":"refusal",`+usage+`}`))
+		if !errors.Is(err, llm.ErrEmptyReply) || !strings.Contains(err.Error(), "refusal") ||
+			got.Usage == nil || got.Usage.TotalTokens != 42 {
+			t.Errorf("got %+v, %v", got, err)
 		}
 	})
 }

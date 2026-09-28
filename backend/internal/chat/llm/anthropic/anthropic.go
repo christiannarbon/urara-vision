@@ -85,7 +85,7 @@ func (m *model) Generate(ctx context.Context, req llm.Request) (llm.Response, er
 	}
 	out, err := Decode(msg)
 	if err != nil {
-		return llm.Response{}, fmt.Errorf("anthropic: %w", err)
+		return out, fmt.Errorf("anthropic: %w", err)
 	}
 	return out, nil
 }
