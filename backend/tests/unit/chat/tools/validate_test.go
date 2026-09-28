@@ -45,6 +45,7 @@ func TestValidateEnforcesEveryBound(t *testing.T) {
 		{"search_model", `{"query":"x","limit":0}`, "limit: must be between 1 and 50, got 0"},
 		{"search_model", `{"query":"x","limit":2.5}`, "limit: must be a whole number"},
 		{"search_model", `{"query":"x","limit":"5"}`, "limit: must be a whole number"},
+		{"search_model", `{"query":"x","limit":5.0}`, "limit: must be written as a whole number, e.g. 5"},
 		{"search_model", `{"query":null}`, "query: must be a string"},
 		{"search_model", `{"query":"x","limt":5}`, "limt: not an argument of search_model"},
 		{"get_neighbourhood", `{"table_id":"d/t","depth":0}`, "depth: must be between 1 and 3, got 0"},
@@ -150,6 +151,97 @@ func TestValidateCoversEverySchemaProperty(t *testing.T) {
 				strings.Contains(err.Error(), "not an argument") {
 				t.Errorf("%s.%s is not validated: %v", s.Name, name, err)
 			}
+		}
+	}
+}
+
+// The model is shown the schemas; validation must enforce exactly what they say.
+func TestValidateAgreesWithEverySchema(t *testing.T) {
+	for _, s := range tools.Build(&fakeBackend{}, "s") {
+		schema := decoded(t, s.Schema)
+		props, _ := schema["properties"].(map[string]any)
+		var required []string
+		for _, r := range asList(schema["required"]) {
+			required = append(required, r.(string))
+		}
+		// args fills every required property with a valid value, then applies set.
+		args := func(set map[string]any, omit string) json.RawMessage {
+			m := map[string]any{}
+			for _, name := range required {
+				if name == omit {
+					continue
+				}
+				if props[name].(map[string]any)["type"] == "array" {
+					m[name] = []any{"d/t"}
+				} else {
+					m[name] = "d/t"
+				}
+			}
+			for k, v := range set {
+				m[k] = v
+			}
+			b, _ := json.Marshal(m)
+			return b
+		}
+		check := func(what string, raw json.RawMessage, pass bool) {
+			t.Helper()
+			if err := tools.Validate(s.Name, raw); (err == nil) != pass {
+				t.Errorf("%s %s %s: %v, want pass %v", s.Name, what, raw, err, pass)
+			}
+		}
+
+		check("all required", args(nil, ""), true)
+		for _, name := range required {
+			err := tools.Validate(s.Name, args(nil, name))
+			if err == nil || !strings.Contains(err.Error(), name+": required") {
+				t.Errorf("%s without %s: %v", s.Name, name, err)
+			}
+		}
+		for name, p := range props {
+			prop := p.(map[string]any)
+			if lo, ok := prop["minimum"].(float64); ok {
+				check(name+" minimum", args(map[string]any{name: lo}, ""), true)
+				check(name+" below minimum", args(map[string]any{name: lo - 1}, ""), false)
+			}
+			if hi, ok := prop["maximum"].(float64); ok {
+				check(name+" maximum", args(map[string]any{name: hi}, ""), true)
+				check(name+" above maximum", args(map[string]any{name: hi + 1}, ""), false)
+			}
+			list := func(n float64) []any {
+				out := make([]any, int(n))
+				for i := range out {
+					out[i] = fmt.Sprintf("d/t%d", i)
+				}
+				return out
+			}
+			if lo, ok := prop["minItems"].(float64); ok {
+				check(name+" minItems", args(map[string]any{name: list(lo)}, ""), true)
+				check(name+" below minItems", args(map[string]any{name: list(lo - 1)}, ""), false)
+			}
+			if hi, ok := prop["maxItems"].(float64); ok {
+				check(name+" maxItems", args(map[string]any{name: list(hi)}, ""), true)
+				check(name+" above maxItems", args(map[string]any{name: list(hi + 1)}, ""), false)
+			}
+			for _, v := range asList(prop["enum"]) {
+				check(name+" enum", args(map[string]any{name: v}, ""), true)
+			}
+			if prop["enum"] != nil {
+				check(name+" outside enum", args(map[string]any{name: "zzz"}, ""), false)
+			}
+		}
+	}
+}
+
+func asList(v any) []any {
+	l, _ := v.([]any)
+	return l
+}
+
+// 5.0 has no fractional part, so it is not int_from_float.
+func TestValidateNamesIntegralFloatsAsIntType(t *testing.T) {
+	for args, want := range map[string]string{`{"query":"x","limit":5.0}`: "int_type", `{"query":"x","limit":2.5}`: "int_from_float"} {
+		if p := problems(t, "search_model", args); p[0].Type != want {
+			t.Errorf("%s: %s, want %s", args, p[0].Type, want)
 		}
 	}
 }
