@@ -24,10 +24,13 @@ const DisclosureCanary = "harbour-lantern-kestrel"
 
 var fenceTagRE = regexp.MustCompile(`(?i)<(\s*/?\s*` + FenceTag + `)`)
 
+// attrEscaper makes source safe in an attribute; it can come from the model.
+var attrEscaper = strings.NewReplacer("&", "&amp;", `"`, "&quot;", "<", "&lt;", ">", "&gt;")
+
 // Fence wraps content as untrusted documentation from source.
 func Fence(content, source string) string {
 	escaped := fenceTagRE.ReplaceAllString(content, "&lt;$1")
-	return "<" + FenceTag + ` source="` + source + "\">\n" + escaped + "\n</" + FenceTag + ">"
+	return "<" + FenceTag + ` source="` + attrEscaper.Replace(source) + "\">\n" + escaped + "\n</" + FenceTag + ">"
 }
 
 // instructions is Python's _INSTRUCTIONS with its line continuations joined.
