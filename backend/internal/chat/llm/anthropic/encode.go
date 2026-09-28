@@ -118,13 +118,13 @@ func Decode(msg *anthropic.Message) (llm.Response, error) {
 	out.Text = text.String()
 	llm.FillIDs(out.ToolCalls)
 
-	if out.Text == "" && len(out.ToolCalls) == 0 {
-		if msg.StopReason == anthropic.StopReasonMaxTokens {
-			return llm.Response{}, errors.New("claude hit the output token limit before answering")
-		}
-		return llm.Response{}, fmt.Errorf("claude returned no text or tool calls (stop reason %s)", msg.StopReason)
-	}
 	in, outTokens := int(msg.Usage.InputTokens), int(msg.Usage.OutputTokens)
 	out.Usage = &llm.Usage{InputTokens: in, OutputTokens: outTokens, TotalTokens: in + outTokens}
+	if out.Text == "" && len(out.ToolCalls) == 0 {
+		if msg.StopReason == anthropic.StopReasonMaxTokens {
+			return out, fmt.Errorf("claude hit the output token limit before answering: %w", llm.ErrEmptyReply)
+		}
+		return out, fmt.Errorf("claude returned %w (stop reason %s)", llm.ErrEmptyReply, msg.StopReason)
+	}
 	return out, nil
 }
