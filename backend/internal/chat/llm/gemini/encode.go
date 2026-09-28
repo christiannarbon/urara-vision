@@ -35,7 +35,15 @@ func Encode(req llm.Request) ([]*genai.Content, *genai.GenerateContentConfig, er
 		cfg.Tools = []*genai.Tool{{FunctionDeclarations: decls}}
 	}
 	if req.ToolChoice == llm.ToolChoiceAny {
-		cfg.ToolConfig = &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{Mode: genai.FunctionCallingConfigModeAny}}
+		// Every name listed, as LangChain sends it: without the list, Gemini
+		// sometimes answered the forced first call with nothing (20.2).
+		names := make([]string, len(req.Tools))
+		for i, t := range req.Tools {
+			names[i] = t.Name
+		}
+		cfg.ToolConfig = &genai.ToolConfig{FunctionCallingConfig: &genai.FunctionCallingConfig{
+			Mode: genai.FunctionCallingConfigModeAny, AllowedFunctionNames: names,
+		}}
 	}
 	if req.Temperature != nil {
 		t := float32(*req.Temperature)
@@ -129,12 +137,6 @@ func Decode(resp *genai.GenerateContentResponse) (llm.Response, error) {
 		}
 	}
 	out.Text = text.String()
-	if out.Text == "" && len(out.ToolCalls) == 0 {
-		if cand.FinishReason == genai.FinishReasonMaxTokens {
-			return llm.Response{}, errors.New("gemini hit the output token limit before answering")
-		}
-		return llm.Response{}, fmt.Errorf("gemini returned no text or tool calls (finish reason %s)", cand.FinishReason)
-	}
 	llm.FillIDs(out.ToolCalls)
 
 	if u := resp.UsageMetadata; u != nil {
@@ -142,6 +144,12 @@ func Decode(resp *genai.GenerateContentResponse) (llm.Response, error) {
 		// Thinking is billed as output.
 		outTokens := int(u.CandidatesTokenCount + u.ThoughtsTokenCount)
 		out.Usage = &llm.Usage{InputTokens: in, OutputTokens: outTokens, TotalTokens: in + outTokens}
+	}
+	if out.Text == "" && len(out.ToolCalls) == 0 {
+		if cand.FinishReason == genai.FinishReasonMaxTokens {
+			return out, fmt.Errorf("gemini hit the output token limit before answering: %w", llm.ErrEmptyReply)
+		}
+		return out, fmt.Errorf("gemini returned %w (finish reason %s)", llm.ErrEmptyReply, cand.FinishReason)
 	}
 	return out, nil
 }
