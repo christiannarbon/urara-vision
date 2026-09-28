@@ -43,18 +43,24 @@ func toResponse(a agent.Answer) answerResponse {
 	return r
 }
 
-// debugAnswer is one stateless turn through the whole pipeline.
+// debugAnswer is one stateless turn through the whole pipeline, with no limiter.
 func (s *Server) debugAnswer(w http.ResponseWriter, r *http.Request) {
 	var body answerRequest
-	if !s.DecodeJSON(w, r, &body) {
-		return
+	if s.decodeAnswer(w, r, &body) {
+		s.answer(w, r, body)
 	}
-	sid := body.SnapshotID
-	if sid == "" {
-		sid = body.SnapshotIDSnake
+}
+
+// decodeAnswer checks the body's shape. On failure it has written the response.
+func (s *Server) decodeAnswer(w http.ResponseWriter, r *http.Request, body *answerRequest) bool {
+	if !s.DecodeJSON(w, r, body) {
+		return false
+	}
+	if body.SnapshotID == "" {
+		body.SnapshotID = body.SnapshotIDSnake
 	}
 	var missing []FieldProblem
-	if sid == "" {
+	if body.SnapshotID == "" {
 		missing = append(missing, Required("snapshotId"))
 	}
 	if body.Question == nil {
@@ -62,16 +68,20 @@ func (s *Server) debugAnswer(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(missing) > 0 {
 		FieldError(w, r, missing...)
-		return
+		return false
 	}
+	return true
+}
 
+// answer runs one turn for a decoded body, persisting nothing.
+func (s *Server) answer(w http.ResponseWriter, r *http.Request, body answerRequest) {
 	// Cleaned before resolving, so a bad question costs no backend call.
 	question, bad := cleanQuestion(*body.Question, s.settings.MaxQuestionChars)
 	if bad != nil {
 		bad.write(w, r)
 		return
 	}
-	snapshotID, err := s.tools.ResolveSnapshot(r.Context(), sid)
+	snapshotID, err := s.tools.ResolveSnapshot(r.Context(), body.SnapshotID)
 	if err != nil {
 		s.RenderBackendError(w, r, err)
 		return

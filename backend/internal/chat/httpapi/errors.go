@@ -8,6 +8,7 @@ import (
 	"maps"
 	"net/http"
 	"runtime/debug"
+	"strconv"
 
 	"urara-vision/backend/internal/chat/apiclient"
 	"urara-vision/backend/internal/chat/reqctx"
@@ -50,8 +51,17 @@ type ProviderError struct {
 
 func (e *ProviderError) Error() string { return "the language model did not answer: " + e.Reason }
 
-// RenderTurnError maps a failed turn: the provider's side is a 502, the rest as backend errors.
+// RenderTurnError maps a failed turn: busy is a 429, the provider's side a 502, the rest as backend errors.
 func (s *Server) RenderTurnError(w http.ResponseWriter, r *http.Request, err error) {
+	var busy ErrTurnsBusy
+	if errors.As(err, &busy) {
+		s.log.Warn("turn refused: all slots busy", "request_id", reqctx.RequestID(r.Context()), "limit", busy.Limit)
+		w.Header().Set("Retry-After", strconv.Itoa(RetryAfterSeconds))
+		WriteError(w, r, http.StatusTooManyRequests, map[string]any{
+			"detail": fmt.Sprintf("too many turns in flight; the limit is %d. Retry in %d seconds.", busy.Limit, RetryAfterSeconds),
+		})
+		return
+	}
 	var provErr *ProviderError
 	if errors.As(err, &provErr) {
 		s.log.Error("language model call failed", "request_id", reqctx.RequestID(r.Context()), "reason", provErr.Reason)

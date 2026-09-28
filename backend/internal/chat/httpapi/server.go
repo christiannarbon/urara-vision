@@ -46,12 +46,14 @@ type Server struct {
 	agent        Agent
 	probeTimeout time.Duration
 	gate         *FeatureGate // nil without a backend, so tests of the shell run ungated
+	limiter      *TurnLimiter
 }
 
 func New(deps Deps) *Server {
 	s := &Server{
 		settings: deps.Settings, log: deps.Log, backend: deps.Backend,
 		model: deps.Model, tools: deps.Tools, agent: deps.Agent, probeTimeout: deps.ProbeTimeout,
+		limiter: NewTurnLimiter(deps.Settings.MaxConcurrentTurns, deps.Settings.TurnAdmissionWait),
 	}
 	if s.probeTimeout == 0 {
 		s.probeTimeout = defaultProbeTimeout
@@ -87,6 +89,7 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/conversations", s.listConversations)
 		r.Get("/conversations/{cid}", s.getConversation)
 		r.Delete("/conversations/{cid}", s.deleteConversation)
+		r.Post("/answer", s.chatAnswer)
 	})
 	return s.Wrap(r)
 }
