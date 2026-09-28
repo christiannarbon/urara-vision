@@ -70,6 +70,9 @@ func stored(cid, title string) model.Conversation {
 }
 
 func (f *fakeBackend) convCall(ctx context.Context, record func()) error {
+	if err := ctx.Err(); err != nil {
+		return err // as the real client, whose requests carry ctx
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.convUsers = append(f.convUsers, reqctx.UserID(ctx))

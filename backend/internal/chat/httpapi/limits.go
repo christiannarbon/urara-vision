@@ -7,16 +7,16 @@ import (
 	"time"
 )
 
-// RetryAfterSeconds is what a refused caller is told to wait: roughly one turn.
-const RetryAfterSeconds = 5
+// retryAfterSeconds is what a refused caller is told to wait: roughly one turn.
+const retryAfterSeconds = 5
 
-// ErrTurnsBusy is every turn slot taken.
-type ErrTurnsBusy struct {
+// TurnsBusyError is every turn slot taken.
+type TurnsBusyError struct {
 	Limit int
 }
 
-func (e ErrTurnsBusy) Error() string {
-	return fmt.Sprintf("all %d turn slots are busy; retry in %ds", e.Limit, RetryAfterSeconds)
+func (e TurnsBusyError) Error() string {
+	return fmt.Sprintf("all %d turn slots are busy; retry in %ds", e.Limit, retryAfterSeconds)
 }
 
 // TurnLimiter caps how many turns run at once, across every conversation.
@@ -45,7 +45,7 @@ func (l *TurnLimiter) Acquire(ctx context.Context) (release func(), err error) {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-timer.C:
-		return nil, ErrTurnsBusy{Limit: l.limit}
+		return nil, TurnsBusyError{Limit: l.limit}
 	}
 }
 

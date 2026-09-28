@@ -23,9 +23,9 @@ func TestLimiterRefusesAfterTheWaitThenAdmits(t *testing.T) {
 	start := time.Now()
 	_, err = l.Acquire(context.Background())
 	waited := time.Since(start)
-	var busy httpapi.ErrTurnsBusy
+	var busy httpapi.TurnsBusyError
 	if !errors.As(err, &busy) || busy.Limit != 1 {
-		t.Fatalf("err %v, want ErrTurnsBusy{1}", err)
+		t.Fatalf("err %v, want TurnsBusyError{1}", err)
 	}
 	if waited < 50*time.Millisecond || waited > time.Second {
 		t.Errorf("refused after %v, want about 50ms", waited)

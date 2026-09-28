@@ -38,10 +38,12 @@ type turnCall struct {
 
 // turnAgent notes each run in the fake backend's steps, so the order is one log.
 type turnAgent struct {
-	backend *fakeBackend
-	answer  agent.Answer
-	err     error
-	hold    time.Duration
+	backend  *fakeBackend
+	answer   agent.Answer
+	err      error
+	hold     time.Duration
+	onAnswer func()
+	barrier  *sync.WaitGroup // each turn waits, up to 2s, until every turn has entered
 
 	mu     sync.Mutex
 	calls  []turnCall
@@ -55,9 +57,24 @@ func (a *turnAgent) Answer(_ context.Context, question, snapshotID string, histo
 	a.events = append(a.events, "enter:"+question)
 	a.mu.Unlock()
 	time.Sleep(a.hold)
+	if a.barrier != nil {
+		a.barrier.Done()
+		met := make(chan struct{})
+		go func() { a.barrier.Wait(); close(met) }()
+		select {
+		case <-met:
+		case <-time.After(2 * time.Second):
+			a.mu.Lock()
+			a.events = append(a.events, "timeout")
+			a.mu.Unlock()
+		}
+	}
 	a.mu.Lock()
 	a.events = append(a.events, "exit:"+question)
 	a.mu.Unlock()
+	if a.onAnswer != nil {
+		a.onAnswer()
+	}
 	return a.answer, a.err
 }
 
@@ -448,18 +465,42 @@ func TestTurnSameConversationRunsOneAtATime(t *testing.T) {
 
 func TestTurnDifferentConversationsOverlap(t *testing.T) {
 	e := newTurnEnv(t, nil, nil)
-	e.a.hold = 50 * time.Millisecond
+	// Both turns pass the barrier only if they run at once.
+	e.a.barrier = &sync.WaitGroup{}
+	e.a.barrier.Add(2)
 	var wg sync.WaitGroup
 	for _, cid := range []string{"conv-1", "conv-2"} {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			e.turn(cid, `{"question":"`+cid+`"}`)
+			if rec := e.turn(cid, `{"question":"`+cid+`"}`); rec.Code != http.StatusOK {
+				t.Errorf("%s: %d", cid, rec.Code)
+			}
 		}()
 	}
 	wg.Wait()
-	ev := e.a.events
-	if len(ev) != 4 || !strings.HasPrefix(ev[1], "enter:") {
-		t.Errorf("events %v: the second did not start while the first ran", ev)
+	if slices.Contains(e.a.events, "timeout") {
+		t.Errorf("events %v: the turns did not overlap", e.a.events)
+	}
+}
+
+func TestTurnAnswerIsStoredAfterTheCallerHangsUp(t *testing.T) {
+	e := newTurnEnv(t, &fakeBackend{title: new(string)}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	e.a.onAnswer = cancel // the caller goes while the model answers
+
+	req := httptest.NewRequest("POST", "/api/chat/conversations/conv-1/turn", strings.NewReader(`{"question":"q"}`)).WithContext(ctx)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-User-Id", "user-1")
+	serve(e.h, req)
+
+	if want := []string{"get", "append:user", "agent", "append:assistant", "patch"}; !reflect.DeepEqual(e.f.steps, want) {
+		t.Errorf("steps %v", e.f.steps)
+	}
+	for _, line := range e.log.lines(t) {
+		if line["msg"] == "the answer could not be stored" {
+			t.Error("the answer was lost")
+		}
 	}
 }

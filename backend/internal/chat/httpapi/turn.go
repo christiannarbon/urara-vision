@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"net/http"
@@ -101,6 +102,8 @@ func (s *Server) runConversationTurn(w http.ResponseWriter, r *http.Request, cid
 		return
 	}
 	answer = withEmptyLists(answer)
+	// Paid for: stored even if the caller has gone.
+	store := context.WithoutCancel(ctx)
 	record := turnRecord(ctx, answer, conv.SnapshotID, cid)
 	s.logTurn(record)
 
@@ -108,7 +111,7 @@ func (s *Server) runConversationTurn(w http.ResponseWriter, r *http.Request, cid
 	meta := maps.Clone(record)
 	meta["toolCalls"] = answer.ToolCalls
 	meta["usage"] = answer.Usage
-	assistantMsg, err := s.backend.AppendMessage(ctx, cid, model.RoleAssistant, answer.Text, answer.Citations, meta)
+	assistantMsg, err := s.backend.AppendMessage(store, cid, model.RoleAssistant, answer.Text, answer.Citations, meta)
 	if err != nil {
 		// Still a failure: the next fetch would contradict a success.
 		s.log.Error("the answer could not be stored", "request_id", reqctx.RequestID(ctx),
@@ -118,7 +121,7 @@ func (s *Server) runConversationTurn(w http.ResponseWriter, r *http.Request, cid
 	}
 
 	// After the answer is stored, so a title never exists for a turn that produced nothing.
-	s.setTitleOnce(r, conv, question)
+	s.setTitleOnce(store, conv, question)
 
 	writeJSON(w, http.StatusOK, turnResponse{
 		ConversationID:   cid,
@@ -132,7 +135,7 @@ func (s *Server) runConversationTurn(w http.ResponseWriter, r *http.Request, cid
 }
 
 // setTitleOnce titles an untitled thread from its first question. A failure is logged, not returned.
-func (s *Server) setTitleOnce(r *http.Request, conv model.Conversation, question string) {
+func (s *Server) setTitleOnce(ctx context.Context, conv model.Conversation, question string) {
 	if strings.TrimSpace(conv.Title) != "" {
 		return
 	}
@@ -140,8 +143,8 @@ func (s *Server) setTitleOnce(r *http.Request, conv model.Conversation, question
 	if title == "" {
 		return
 	}
-	if _, err := s.backend.SetConversationTitle(r.Context(), conv.ID, title); err != nil {
-		s.log.Warn("could not set the conversation title", "request_id", reqctx.RequestID(r.Context()),
+	if _, err := s.backend.SetConversationTitle(ctx, conv.ID, title); err != nil {
+		s.log.Warn("could not set the conversation title", "request_id", reqctx.RequestID(ctx),
 			"conversation_id", conv.ID, "error", err.Error())
 	}
 }

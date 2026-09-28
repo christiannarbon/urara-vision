@@ -212,7 +212,7 @@ services:
         VITE_API_BASE: "/api/v1"
     environment:
       # The /api/chat/ upstream, substituted into the nginx config at start.
-      CHAT_HOST: "chat"
+      CHAT_HOST: "${CHAT_HOST:-chat}"
       CHAT_PORT: "8090"
       # false serves a 503 at /api/chat/ instead of proxying to chat.
       CHAT_ENABLED: "${CHAT_ENABLED:-true}"
