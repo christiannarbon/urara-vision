@@ -65,12 +65,14 @@ func (s *Server) runTurn(ctx context.Context, question, snapshotID string, histo
 	// The type only: a provider message can quote the prompt back.
 	s.log.Warn("turn failed", "event", "turn", "outcome", "failed", "requestId", reqctx.RequestID(ctx),
 		"conversationId", nullable(conversationID), "snapshotId", snapshotID,
-		"error", fmt.Sprintf("%T", err), "latencyMs", time.Since(started).Milliseconds())
+		"error", errorKind(err), "latencyMs", time.Since(started).Milliseconds())
 
 	var apiErr *apiclient.Error
 	switch {
-	case ctx.Err() != nil:
+	case errors.Is(ctx.Err(), context.Canceled):
 		return agent.Answer{}, ctx.Err() // the caller hung up
+	case ctx.Err() != nil:
+		return agent.Answer{}, &ProviderError{Reason: "the request deadline passed"}
 	// Checked before backend errors: the deadline can fire inside a backend call.
 	case errors.Is(turnCtx.Err(), context.DeadlineExceeded):
 		return agent.Answer{}, &ProviderError{Reason: llm.Redact(err.Error(), question)}
@@ -78,6 +80,20 @@ func (s *Server) runTurn(ctx context.Context, question, snapshotID string, histo
 		return agent.Answer{}, err
 	}
 	return agent.Answer{}, &ProviderError{Reason: llm.Redact(err.Error(), question)}
+}
+
+// errorKind names the innermost error's type; adapters wrap every error.
+func errorKind(err error) string {
+	switch {
+	case errors.Is(err, context.DeadlineExceeded):
+		return "DeadlineExceeded"
+	case errors.Is(err, context.Canceled):
+		return "Canceled"
+	}
+	for inner := errors.Unwrap(err); inner != nil; inner = errors.Unwrap(err) {
+		err = inner
+	}
+	return fmt.Sprintf("%T", err)
 }
 
 func nullable(s string) any {
