@@ -39,8 +39,8 @@ func TestIdentityIsCheckedBeforeTheFeatureGate(t *testing.T) {
 }
 
 func TestAnIdentifiedCallerReachesTheRoute(t *testing.T) {
-	if code := asUser(gated(t, &fakeBackend{enabled: true}, newClock()), "user-1"); code != http.StatusNotImplemented {
-		t.Errorf("status %d, want the stub's 501", code)
+	if code := asUser(gated(t, &fakeBackend{enabled: true}, newClock()), "user-1"); code != http.StatusOK {
+		t.Errorf("status %d, want 200", code)
 	}
 }
 
