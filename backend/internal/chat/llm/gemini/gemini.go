@@ -74,7 +74,7 @@ func (m *model) Generate(ctx context.Context, req llm.Request) (llm.Response, er
 	}
 	out, err := Decode(resp)
 	if err != nil {
-		return llm.Response{}, fmt.Errorf("gemini: %w", err)
+		return out, fmt.Errorf("gemini: %w", err)
 	}
 	return out, nil
 }
