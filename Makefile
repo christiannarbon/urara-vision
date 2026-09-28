@@ -222,6 +222,7 @@ test-llm: ## Live smoke tests against each LLM provider (costs money; needs ADC 
 
 # Never add eval to test, test-all or any CI workflow: it calls a real model and costs money.
 # --init and exec let a SIGTERM reach the runner, so an interrupted run still deletes its snapshots.
+EVAL_CHAT_URL ?= http://chat:8090
 EVAL_ARGS := $(if $(SET),--set $(SET)) $(if $(CATEGORY),--category $(CATEGORY)) \
              $(if $(ID),--id $(ID)) $(if $(MODEL),--model $(MODEL)) \
              $(if $(REPEAT),--repeat $(REPEAT)) $(if $(CONCURRENCY),--concurrency $(CONCURRENCY))
@@ -234,7 +235,7 @@ eval: ## Score the agent over the demo sets (costs money; MODEL= checks, not set
 	  -v urara-vision-uv-cache:/root/.cache/uv \
 	  -e UV_PROJECT_ENVIRONMENT=/venv \
 	  -e UV_LINK_MODE=copy \
-	  -e EVAL_CHAT_URL="http://chat:8090" \
+	  -e EVAL_CHAT_URL="$(EVAL_CHAT_URL)" \
 	  -e EVAL_BACKEND_URL="http://backend:8080" \
 	  -e EVAL_API_TOKEN="relviz-dev-token-not-for-production" \
 	  -w /src $(UV_IMAGE) \
