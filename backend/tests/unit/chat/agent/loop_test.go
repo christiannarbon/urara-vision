@@ -511,6 +511,29 @@ func TestLoopTheAnswerIsNeverEmpty(t *testing.T) {
 	}
 }
 
+// An empty reply ends the turn as Python does, keeping any earlier text and the usage.
+func TestLoopAnEmptyReplyEndsTheTurn(t *testing.T) {
+	empty := llmtest.Step{
+		Response: llm.Response{Usage: &llm.Usage{InputTokens: 7, OutputTokens: 3, TotalTokens: 10}},
+		Err:      fmt.Errorf("gemini: gemini returned %w (finish reason STOP)", llm.ErrEmptyReply),
+	}
+	for _, c := range []struct {
+		name  string
+		steps []llmtest.Step
+		want  string
+	}{
+		{"first call", []llmtest.Step{empty}, agent.NoAnswerProduced},
+		{"after a tool round", []llmtest.Step{
+			{Response: llm.Response{Text: "a first thought", ToolCalls: []llm.ToolCall{call("1")}}}, empty,
+		}, "a first thought"},
+	} {
+		h := newHarness(t, agent.Options{}, c.steps...)
+		if a := h.answer(t, "q"); a.Text != c.want || a.Usage["total_tokens"] < 10 {
+			t.Errorf("%s: %q, usage %v", c.name, a.Text, a.Usage)
+		}
+	}
+}
+
 // A previous turn's answer is not this turn's.
 func TestLoopHistoryTextIsNotTheAnswer(t *testing.T) {
 	h := newHarness(t, agent.Options{}, says(""))
