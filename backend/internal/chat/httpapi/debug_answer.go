@@ -26,21 +26,25 @@ type answerResponse struct {
 }
 
 func toResponse(a agent.Answer) answerResponse {
-	r := answerResponse{
+	a = withEmptyLists(a)
+	return answerResponse{
 		Text: a.Text, Citations: a.Citations, ToolCalls: a.ToolCalls, Iterations: a.Iterations,
 		Truncated: a.Truncated, Model: a.Model, LatencyMS: a.LatencyMS, Usage: a.Usage,
 	}
-	// Never null: callers index into these.
-	if r.Citations == nil {
-		r.Citations = []string{}
+}
+
+// withEmptyLists never leaves citations, tool calls or usage null: callers index into them.
+func withEmptyLists(a agent.Answer) agent.Answer {
+	if a.Citations == nil {
+		a.Citations = []string{}
 	}
-	if r.ToolCalls == nil {
-		r.ToolCalls = []agent.CallRecord{}
+	if a.ToolCalls == nil {
+		a.ToolCalls = []agent.CallRecord{}
 	}
-	if r.Usage == nil {
-		r.Usage = map[string]int{}
+	if a.Usage == nil {
+		a.Usage = map[string]int{}
 	}
-	return r
+	return a
 }
 
 // debugAnswer is one stateless turn through the whole pipeline, with no limiter.
