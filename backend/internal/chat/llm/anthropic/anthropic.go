@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
@@ -19,29 +20,45 @@ import (
 const cloudPlatformScope = "https://www.googleapis.com/auth/cloud-platform"
 
 type model struct {
-	client      anthropic.Client
+	project     string
+	location    string
+	mu          sync.Mutex
+	client      *anthropic.Client // built on first use
 	name        string
 	timeout     time.Duration
 	temperature *float64
 	maxTokens   int
 }
 
-// New builds one Vertex client for the process, with no retries: the SDK
-// retries twice by default, and the Python service did not.
-func New(ctx context.Context, s config.Settings, _ *slog.Logger) (llm.Model, error) {
-	// Looked up here, as vertex.WithGoogleAuth panics without ADC.
-	creds, err := google.FindDefaultCredentials(ctx, cloudPlatformScope)
-	if err != nil {
-		return nil, fmt.Errorf("anthropic: %w", err)
-	}
-	client := anthropic.NewClient(
-		vertex.WithCredentials(ctx, s.VertexLocation, s.VertexProject, creds),
-		option.WithMaxRetries(0),
-	)
+// New configures one Vertex client for the process.
+func New(_ context.Context, s config.Settings, _ *slog.Logger) (llm.Model, error) {
 	return &model{
-		client: client, name: s.LLMModel, timeout: s.LLMTimeout,
+		project: s.VertexProject, location: s.VertexLocation,
+		name: s.LLMModel, timeout: s.LLMTimeout,
 		temperature: s.LLMTemperature, maxTokens: s.LLMMaxOutputTokens,
 	}, nil
+}
+
+// clientFor builds the client on first use, so the service starts without ADC
+// as Python does. Only success is kept, so a transient failure is retried.
+func (m *model) clientFor(ctx context.Context) (*anthropic.Client, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.client == nil {
+		ctx = context.WithoutCancel(ctx)
+		// Looked up ourselves, as vertex.WithGoogleAuth panics without ADC.
+		creds, err := google.FindDefaultCredentials(ctx, cloudPlatformScope)
+		if err != nil {
+			return nil, err
+		}
+		// No retries: the SDK retries twice by default, and the Python service did not.
+		client := anthropic.NewClient(
+			vertex.WithCredentials(ctx, m.location, m.project, creds),
+			option.WithMaxRetries(0),
+		)
+		m.client = &client
+	}
+	return m.client, nil
 }
 
 // Generate fills unset temperature and output limit from settings.
@@ -56,9 +73,13 @@ func (m *model) Generate(ctx context.Context, req llm.Request) (llm.Response, er
 	if err != nil {
 		return llm.Response{}, fmt.Errorf("anthropic: %w", err)
 	}
+	client, err := m.clientFor(ctx)
+	if err != nil {
+		return llm.Response{}, fmt.Errorf("anthropic: %w", err)
+	}
 	ctx, cancel := context.WithTimeout(ctx, m.timeout)
 	defer cancel()
-	msg, err := m.client.Messages.New(ctx, params)
+	msg, err := client.Messages.New(ctx, params)
 	if err != nil {
 		return llm.Response{}, fmt.Errorf("anthropic: %w", err)
 	}
