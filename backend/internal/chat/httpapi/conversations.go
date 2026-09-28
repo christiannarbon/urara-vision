@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -95,13 +96,7 @@ func (s *Server) createConversation(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	var problems []FieldProblem
-	switch snapshot, ok := q["snapshot"]; {
-	case !ok:
-		problems = append(problems, FieldProblem{Field: "snapshot", Location: "query", Reason: "Field required"})
-	case snapshot[0] == "":
-		problems = append(problems, FieldProblem{Field: "snapshot", Location: "query", Reason: "String should have at least 1 character"})
-	}
+	problems := snapshotProblems(q)
 	limit := 0 // 0: the backend's default
 	if raw, ok := q["limit"]; ok {
 		n, err := strconv.Atoi(raw[0])
@@ -129,6 +124,17 @@ func (s *Server) listConversations(w http.ResponseWriter, r *http.Request) {
 		out[i] = conversationJSON(c)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"conversations": out})
+}
+
+// snapshotProblems checks the required, non-empty snapshot query parameter.
+func snapshotProblems(q url.Values) []FieldProblem {
+	switch snapshot, ok := q["snapshot"]; {
+	case !ok:
+		return []FieldProblem{{Field: "snapshot", Location: "query", Reason: "Field required"}}
+	case snapshot[0] == "":
+		return []FieldProblem{{Field: "snapshot", Location: "query", Reason: "String should have at least 1 character"}}
+	}
+	return nil
 }
 
 func (s *Server) getConversation(w http.ResponseWriter, r *http.Request) {
