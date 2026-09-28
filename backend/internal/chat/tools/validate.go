@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 )
@@ -136,11 +137,14 @@ func (f field) check(raw json.RawMessage) []Problem {
 		var n int
 		// Unmarshal takes null into an int as a no-op, so it is refused here.
 		if err := json.Unmarshal(raw, &n); err != nil || isNull(raw) {
-			p := Problem{Type: "int_type", Msg: "Input should be a valid integer"}
-			if _, isNum := input.(float64); isNum {
-				p = Problem{Type: "int_from_float", Msg: "Input should be a valid integer, got a number with a fractional part"}
+			p := Problem{Type: "int_type", Msg: "Input should be a valid integer", Reason: f.name + ": must be a whole number"}
+			if v, isNum := input.(float64); isNum && v != math.Trunc(v) {
+				p.Type, p.Msg = "int_from_float", "Input should be a valid integer, got a number with a fractional part"
+			} else if isNum {
+				// 5.0 is whole but tools decode into int, so it is still refused.
+				p.Reason = fmt.Sprintf("%s: must be written as a whole number, e.g. %d", f.name, int64(v))
 			}
-			p.Loc, p.Input, p.Reason = []any{f.name}, input, f.name+": must be a whole number"
+			p.Loc, p.Input = []any{f.name}, input
 			return []Problem{p}
 		}
 		between := fmt.Sprintf("%s: must be between %d and %d, got %d", f.name, f.min, f.max, n)
