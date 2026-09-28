@@ -136,6 +136,17 @@ func (f *fakeBackend) SetConversationTitle(ctx context.Context, cid, title strin
 	return stored(cid, title), nil
 }
 
+// ResolveSnapshot turns "latest" into stored()'s snapshot; "nosuch" is unknown.
+func (f *fakeBackend) ResolveSnapshot(_ context.Context, sid string) (string, error) {
+	switch sid {
+	case "latest":
+		return "5b0c1a52-3d8e-4f7a-9c21-6e4d8b2f1a90", nil
+	case "nosuch":
+		return "", &apiclient.Error{Status: 404, Message: "snapshot not found"}
+	}
+	return sid, nil
+}
+
 // note records a step taken outside the backend, such as the agent running.
 func (f *fakeBackend) note(step string) {
 	f.mu.Lock()
