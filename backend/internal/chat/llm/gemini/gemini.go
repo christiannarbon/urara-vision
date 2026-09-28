@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"google.golang.org/genai"
@@ -14,28 +15,39 @@ import (
 )
 
 type model struct {
-	client      *genai.Client
+	cfg         genai.ClientConfig
+	mu          sync.Mutex
+	client      *genai.Client // built on first use
 	name        string
 	timeout     time.Duration
 	temperature *float64
 	maxTokens   int
 }
 
-// New builds one Vertex client for the process. RetryOptions stays nil: the
-// SDK then makes a single attempt, as the Python service did.
-func New(ctx context.Context, s config.Settings, _ *slog.Logger) (llm.Model, error) {
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		Backend:  genai.BackendVertexAI,
-		Project:  s.VertexProject,
-		Location: s.VertexLocation,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("gemini: %w", err)
-	}
+// New configures one Vertex client for the process. RetryOptions stays nil:
+// the SDK then makes a single attempt, as the Python service did.
+func New(_ context.Context, s config.Settings, _ *slog.Logger) (llm.Model, error) {
 	return &model{
-		client: client, name: s.LLMModel, timeout: s.LLMTimeout,
+		cfg:  genai.ClientConfig{Backend: genai.BackendVertexAI, Project: s.VertexProject, Location: s.VertexLocation},
+		name: s.LLMModel, timeout: s.LLMTimeout,
 		temperature: s.LLMTemperature, maxTokens: s.LLMMaxOutputTokens,
 	}, nil
+}
+
+// clientFor builds the client on first use, so the service starts without ADC
+// as Python does. Only success is kept, so a transient failure is retried.
+func (m *model) clientFor(ctx context.Context) (*genai.Client, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.client == nil {
+		cfg := m.cfg
+		client, err := genai.NewClient(context.WithoutCancel(ctx), &cfg)
+		if err != nil {
+			return nil, err
+		}
+		m.client = client
+	}
+	return m.client, nil
 }
 
 // Generate fills unset temperature and output limit from settings.
@@ -50,9 +62,13 @@ func (m *model) Generate(ctx context.Context, req llm.Request) (llm.Response, er
 	if err != nil {
 		return llm.Response{}, fmt.Errorf("gemini: %w", err)
 	}
+	client, err := m.clientFor(ctx)
+	if err != nil {
+		return llm.Response{}, fmt.Errorf("gemini: %w", err)
+	}
 	ctx, cancel := context.WithTimeout(ctx, m.timeout)
 	defer cancel()
-	resp, err := m.client.Models.GenerateContent(ctx, m.name, contents, cfg)
+	resp, err := client.Models.GenerateContent(ctx, m.name, contents, cfg)
 	if err != nil {
 		return llm.Response{}, fmt.Errorf("gemini: %w", err)
 	}
