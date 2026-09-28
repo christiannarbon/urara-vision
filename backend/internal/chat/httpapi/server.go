@@ -24,6 +24,8 @@ type Backend interface {
 	ListConversations(ctx context.Context, snapshotID string, limit int) ([]model.Conversation, error)
 	GetConversation(ctx context.Context, cid string) (model.Conversation, error)
 	DeleteConversation(ctx context.Context, cid string) error
+	AppendMessage(ctx context.Context, cid, role, content string, citations []string, meta map[string]any) (model.Message, error)
+	SetConversationTitle(ctx context.Context, cid, title string) (model.Conversation, error)
 }
 
 type Deps struct {
@@ -47,6 +49,7 @@ type Server struct {
 	probeTimeout time.Duration
 	gate         *FeatureGate // nil without a backend, so tests of the shell run ungated
 	limiter      *TurnLimiter
+	locks        *ConversationLocks
 }
 
 func New(deps Deps) *Server {
@@ -54,6 +57,7 @@ func New(deps Deps) *Server {
 		settings: deps.Settings, log: deps.Log, backend: deps.Backend,
 		model: deps.Model, tools: deps.Tools, agent: deps.Agent, probeTimeout: deps.ProbeTimeout,
 		limiter: NewTurnLimiter(deps.Settings.MaxConcurrentTurns, deps.Settings.TurnAdmissionWait),
+		locks:   NewConversationLocks(),
 	}
 	if s.probeTimeout == 0 {
 		s.probeTimeout = defaultProbeTimeout
@@ -89,6 +93,7 @@ func (s *Server) Handler() http.Handler {
 		r.Get("/conversations", s.listConversations)
 		r.Get("/conversations/{cid}", s.getConversation)
 		r.Delete("/conversations/{cid}", s.deleteConversation)
+		r.Post("/conversations/{cid}/turn", s.takeTurn)
 		r.Post("/answer", s.chatAnswer)
 	})
 	return s.Wrap(r)
