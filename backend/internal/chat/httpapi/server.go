@@ -26,6 +26,7 @@ type Backend interface {
 	DeleteConversation(ctx context.Context, cid string) error
 	AppendMessage(ctx context.Context, cid, role, content string, citations []string, meta map[string]any) (model.Message, error)
 	SetConversationTitle(ctx context.Context, cid, title string) (model.Conversation, error)
+	ResolveSnapshot(ctx context.Context, sid string) (string, error)
 }
 
 type Deps struct {
@@ -95,6 +96,7 @@ func (s *Server) Handler() http.Handler {
 		r.Delete("/conversations/{cid}", s.deleteConversation)
 		r.Post("/conversations/{cid}/turn", s.takeTurn)
 		r.Post("/answer", s.chatAnswer)
+		r.Get("/stats", s.stats)
 	})
 	return s.Wrap(r)
 }
