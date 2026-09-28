@@ -157,6 +157,32 @@ test-chat-integration: ## Chat service tests against the compose stack
 	  -w /src $(UV_IMAGE) \
 	  uv run --frozen pytest tests/integration -q -m integration
 
+# Not in test-integration until Phase 20's cutover. No model is called, so the
+# Vertex project is a placeholder that only has to satisfy start-up.
+.PHONY: test-chat-go-integration
+test-chat-go-integration: ## Go chat service integration tests against the compose stack
+	@echo "==> stack"
+	LLM_PROVIDER=vertex \
+	  VERTEX_PROJECT="$${VERTEX_PROJECT:-integration-tests-call-no-model}" \
+	  $(COMPOSE) --profile go-chat up -d --build postgres neo4j backend chat-go
+	@echo "==> waiting for the backend and chat-go"
+	@# Bounded: chat-go exits at start-up without ADC, and a bare loop would hang.
+	@docker run --rm --network $(COMPOSE_NET) $(GO_IMAGE) sh -c \
+	  'for url in http://backend:8080/healthz http://chat-go:8090/readyz; do \
+	     i=0; until wget -q -O /dev/null $$url; do \
+	       i=$$((i+1)); [ $$i -ge 120 ] && { echo "$$url not ready after 120s"; exit 1; }; sleep 1; \
+	     done; \
+	   done' || { $(COMPOSE) --profile go-chat logs --tail 20 chat-go; exit 1; }
+	@echo "==> tests"
+	docker run --rm --network $(COMPOSE_NET) \
+	  -v "$(PWD)/backend":/src \
+	  -v "$(PWD)/docs":/docs:ro \
+	  -e TEST_CHAT_URL="http://chat-go:8090" \
+	  -e TEST_CHAT_BACKEND_URL="http://backend:8080" \
+	  -e TEST_CHAT_API_TOKEN="relviz-dev-token-not-for-production" \
+	  -w /src $(GO_IMAGE) \
+	  go test -tags=integration -count=1 -v ./tests/integration/chat/...
+
 # Costs money: calls real models. Never part of test, test-all or CI.
 .PHONY: test-llm
 test-llm: ## Live smoke tests against each LLM provider (costs money; needs ADC and VERTEX_PROJECT)
