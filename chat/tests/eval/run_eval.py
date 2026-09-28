@@ -112,13 +112,31 @@ def select(questions: list[dict[str, Any]], args: argparse.Namespace) -> list[di
     ]
 
 
+def admin_id(backend_url: str) -> str:
+    """The bootstrap admin's ID: chat needs a user, and deleting a snapshot an acting admin."""
+    with httpx.Client(base_url=backend_url, headers={"X-Requested-With": "urara"}) as c:
+        c.post(
+            "/api/v1/auth/login",
+            json={
+                "username": os.getenv("EVAL_ADMIN_USERNAME", "admin"),
+                "password": os.getenv("EVAL_ADMIN_PASSWORD", "relviz-dev-admin-password"),
+            },
+        ).raise_for_status()
+        me = c.get("/api/v1/auth/me")
+        me.raise_for_status()
+        uid: str = me.json()["user"]["id"]
+        return uid
+
+
 class Snapshots:
     """Ingests each demo set once and deletes everything this run created."""
 
-    def __init__(self, http: httpx.Client, label: str) -> None:
+    def __init__(self, http: httpx.Client, label: str, acting_user: str) -> None:
         self.http = http
         self.label = label
+        self.acting_user = acting_user
         self.ids: dict[str, str] = {}
+        self.created: set[str] = set()
 
     def ingest(self, name: str) -> str:
         root = next((d / name for d in SET_DIRS if (d / name).is_dir()), None)
@@ -132,14 +150,22 @@ class Snapshots:
         ]
         body = {"name": name, "sourceLabel": self.label, "files": files}
         response = self.http.post("/api/v1/ingest", json=body)
-        response.raise_for_status()
-        sid: str = response.json()["snapshot"]["id"]
+        # A version ingests once. Reuse it, not rename: the project name is in the prompt.
+        if response.status_code == 409:
+            c = response.json()
+            existing = self.http.get(f"/api/v1/projects/{c['project']}/versions/{c['version']}")
+            existing.raise_for_status()
+            sid: str = existing.json()["id"]
+        else:
+            response.raise_for_status()
+            sid = response.json()["snapshot"]["id"]
+            self.created.add(sid)
         self.ids[name] = sid
         return sid
 
     def cleanup(self) -> list[str]:
         # Also swept by label, which catches an ingest that landed after an interrupt.
-        ids = set(self.ids.values())
+        ids = set(self.created)
         try:
             listed = self.http.get("/api/v1/snapshots").json().get("snapshots") or []
             ids |= {s["id"] for s in listed if s.get("sourceLabel") == self.label}
@@ -149,7 +175,9 @@ class Snapshots:
         failed = []
         for sid in ids:
             try:
-                status = self.http.delete(f"/api/v1/snapshots/{sid}").status_code
+                status = self.http.delete(
+                    f"/api/v1/snapshots/{sid}", headers={"X-Acting-User": self.acting_user}
+                ).status_code
                 if status not in (204, 404):
                     failed.append(f"{sid} ({status})")
             except httpx.HTTPError as exc:
@@ -202,10 +230,17 @@ async def ask(
 
 
 async def run_all(
-    args: argparse.Namespace, selected: list[dict[str, Any]], snapshot_ids: dict[str, str]
+    args: argparse.Namespace,
+    selected: list[dict[str, Any]],
+    snapshot_ids: dict[str, str],
+    user_id: str,
 ) -> list[Result]:
     gate = asyncio.Semaphore(args.concurrency)
-    async with httpx.AsyncClient(base_url=args.chat_url, timeout=ANSWER_TIMEOUT_SECONDS) as chat:
+    async with httpx.AsyncClient(
+        base_url=args.chat_url,
+        headers={"X-User-Id": user_id},
+        timeout=ANSWER_TIMEOUT_SECONDS,
+    ) as chat:
         ready = await chat.get("/readyz")
         if ready.status_code != 200:
             raise SystemExit(f"chat service is not ready: {ready.status_code} {ready.text[:200]}")
@@ -375,13 +410,14 @@ def main() -> int:
     started = time.perf_counter()
 
     with httpx.Client(base_url=args.backend_url, headers=headers, timeout=60.0) as http:
-        snapshots = Snapshots(http, label=f"eval-{stamp}-{os.getpid()}")
+        user_id = admin_id(args.backend_url)
+        snapshots = Snapshots(http, label=f"eval-{stamp}-{os.getpid()}", acting_user=user_id)
         try:
             for name in sorted({q["set"] for q in selected}):
                 print(f"ingesting {name}", flush=True)
                 snapshots.ingest(name)
             print(f"asking {len(selected)} question(s) x {args.repeat}", flush=True)
-            results = asyncio.run(run_all(args, selected, snapshots.ids))
+            results = asyncio.run(run_all(args, selected, snapshots.ids, user_id))
         finally:
             failed = snapshots.cleanup()
             if failed:
