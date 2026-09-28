@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -36,6 +37,19 @@ type fakeBackend struct {
 	listed    []listCall
 	fetched   []string
 	deleted   []string
+
+	title     *string // on a fetched conversation; nil: "golden"
+	appendErr error   // an assistant append fails with this
+	titleErr  error
+	steps     []string // turn steps in order: get, append:<role>, agent, patch
+	appended  []appendCall
+	titles    []string
+}
+
+type appendCall struct {
+	role, content string
+	citations     []string
+	meta          map[string]any
 }
 
 type createCall struct{ snapshotID, title string }
@@ -78,12 +92,55 @@ func (f *fakeBackend) ListConversations(ctx context.Context, snapshotID string, 
 }
 
 func (f *fakeBackend) GetConversation(ctx context.Context, cid string) (model.Conversation, error) {
-	if err := f.convCall(ctx, func() { f.fetched = append(f.fetched, cid) }); err != nil {
+	if err := f.convCall(ctx, func() { f.fetched = append(f.fetched, cid); f.steps = append(f.steps, "get") }); err != nil {
 		return model.Conversation{}, err
 	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	c := stored(cid, "golden")
-	c.Messages = f.messages
+	if f.title != nil {
+		c.Title = *f.title
+	}
+	c.Messages = slices.Clone(f.messages)
 	return c, nil
+}
+
+func (f *fakeBackend) AppendMessage(ctx context.Context, cid, role, content string, citations []string, meta map[string]any) (model.Message, error) {
+	if err := f.convCall(ctx, func() {
+		f.steps = append(f.steps, "append:"+role)
+		f.appended = append(f.appended, appendCall{role, content, citations, meta})
+	}); err != nil {
+		return model.Message{}, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if role == model.RoleAssistant && f.appendErr != nil {
+		return model.Message{}, f.appendErr
+	}
+	return model.Message{
+		Ordinal: len(f.messages) + len(f.appended) - 1, Role: role, Content: content,
+		Citations: citations, Meta: meta, CreatedAt: convCreated,
+	}, nil
+}
+
+func (f *fakeBackend) SetConversationTitle(ctx context.Context, cid, title string) (model.Conversation, error) {
+	if err := f.convCall(ctx, func() {
+		f.steps = append(f.steps, "patch")
+		f.titles = append(f.titles, title)
+	}); err != nil {
+		return model.Conversation{}, err
+	}
+	if f.titleErr != nil {
+		return model.Conversation{}, f.titleErr
+	}
+	return stored(cid, title), nil
+}
+
+// note records a step taken outside the backend, such as the agent running.
+func (f *fakeBackend) note(step string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.steps = append(f.steps, step)
 }
 
 func (f *fakeBackend) DeleteConversation(ctx context.Context, cid string) error {
