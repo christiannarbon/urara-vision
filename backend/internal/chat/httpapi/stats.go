@@ -58,6 +58,9 @@ func (s *Server) stats(w http.ResponseWriter, r *http.Request) {
 	g.SetLimit(statsFetchConcurrency)
 	for i, c := range listed {
 		g.Go(func() error {
+			if gctx.Err() != nil {
+				return nil // an earlier fetch failed; Wait returns its error
+			}
 			conv, err := s.backend.GetConversation(gctx, c.ID)
 			switch {
 			case errors.Is(err, apiclient.ErrNotFound):
