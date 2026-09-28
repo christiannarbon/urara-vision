@@ -183,6 +183,30 @@ test-chat-go-integration: ## Go chat service integration tests against the compo
 	  -w /src $(GO_IMAGE) \
 	  go test -tags=integration -count=1 -v ./tests/integration/chat/...
 
+# 20.1: Python and Go answer the same non-model requests. No model is called.
+.PHONY: test-chat-parity
+test-chat-parity: ## Compare the Python and Go chat services request by request
+	@echo "==> stack"
+	LLM_PROVIDER=vertex \
+	  VERTEX_PROJECT="$${VERTEX_PROJECT:-parity-tests-call-no-model}" \
+	  $(COMPOSE) --profile go-chat up -d --build postgres neo4j backend chat chat-go
+	@echo "==> waiting for the backend, chat and chat-go"
+	@docker run --rm --network $(COMPOSE_NET) $(GO_IMAGE) sh -c \
+	  'for url in http://backend:8080/healthz http://chat:8090/readyz http://chat-go:8090/readyz; do \
+	     i=0; until wget -q -O /dev/null $$url; do \
+	       i=$$((i+1)); [ $$i -ge 120 ] && { echo "$$url not ready after 120s"; exit 1; }; sleep 1; \
+	     done; \
+	   done' || { $(COMPOSE) --profile go-chat logs --tail 20 chat chat-go; exit 1; }
+	@echo "==> tests"
+	docker run --rm --network $(COMPOSE_NET) \
+	  -v "$(PWD)/backend":/src \
+	  -v "$(PWD)/docs":/docs:ro \
+	  -e PARITY_PY_URL="http://chat:8090" \
+	  -e PARITY_GO_URL="http://chat-go:8090" \
+	  -e PARITY_BACKEND_URL="http://backend:8080" \
+	  -w /src $(GO_IMAGE) \
+	  go test -tags=parity -count=1 -v ./tests/parity/...
+
 # Costs money: calls real models. Never part of test, test-all or CI.
 .PHONY: test-llm
 test-llm: ## Live smoke tests against each LLM provider (costs money; needs ADC and VERTEX_PROJECT)
