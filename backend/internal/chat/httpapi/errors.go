@@ -53,12 +53,12 @@ func (e *ProviderError) Error() string { return "the language model did not answ
 
 // RenderTurnError maps a failed turn: busy is a 429, the provider's side a 502, the rest as backend errors.
 func (s *Server) RenderTurnError(w http.ResponseWriter, r *http.Request, err error) {
-	var busy ErrTurnsBusy
+	var busy TurnsBusyError
 	if errors.As(err, &busy) {
 		s.log.Warn("turn refused: all slots busy", "request_id", reqctx.RequestID(r.Context()), "limit", busy.Limit)
-		w.Header().Set("Retry-After", strconv.Itoa(RetryAfterSeconds))
+		w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds))
 		WriteError(w, r, http.StatusTooManyRequests, map[string]any{
-			"detail": fmt.Sprintf("too many turns in flight; the limit is %d. Retry in %d seconds.", busy.Limit, RetryAfterSeconds),
+			"detail": fmt.Sprintf("too many turns in flight; the limit is %d. Retry in %d seconds.", busy.Limit, retryAfterSeconds),
 		})
 		return
 	}
