@@ -27,9 +27,11 @@ type statsBackend struct {
 	deleted map[string]bool
 	mine    map[string]bool // when set, only these are listed, as the backend lists per user
 	getErr  error
+	failing string // this fetch fails with a 500; every other waits for its context
 
-	mu     sync.Mutex
-	limits []int
+	mu      sync.Mutex
+	limits  []int
+	fetches int
 }
 
 func (b *statsBackend) ListConversations(_ context.Context, sid string, limit int) ([]model.Conversation, error) {
@@ -50,8 +52,16 @@ func (b *statsBackend) ListConversations(_ context.Context, sid string, limit in
 	return out, nil
 }
 
-func (b *statsBackend) GetConversation(_ context.Context, cid string) (model.Conversation, error) {
+func (b *statsBackend) GetConversation(ctx context.Context, cid string) (model.Conversation, error) {
+	b.mu.Lock()
+	b.fetches++
+	b.mu.Unlock()
 	switch {
+	case b.failing == cid:
+		return model.Conversation{}, &apiclient.Error{Status: 500, Message: "upstream"}
+	case b.failing != "":
+		<-ctx.Done()
+		return model.Conversation{}, ctx.Err()
 	case b.getErr != nil:
 		return model.Conversation{}, b.getErr
 	case b.deleted[cid]:
@@ -306,5 +316,20 @@ func TestStatsCountOnlyWhatTheBackendLists(t *testing.T) {
 	body := decoded(t, getStats(t, b, "?snapshot="+statsSnapshot))
 	if body["conversations"] != 1.0 || body["turns"] != 1.0 {
 		t.Errorf("%v", body)
+	}
+}
+
+func TestStatsStopsFetchingAfterAFailure(t *testing.T) {
+	convs := map[string][]model.Message{}
+	for i := range 50 {
+		convs[fmt.Sprintf("c%02d", i)] = nil
+	}
+	b := &statsBackend{convs: convs, failing: "c00"}
+	if rec := getStats(t, b, "?snapshot="+statsSnapshot); rec.Code != http.StatusBadGateway {
+		t.Errorf("status %d", rec.Code)
+	}
+	// At most the first batch: errgroup cancels before it frees a slot.
+	if b.fetches > 8 {
+		t.Errorf("%d fetches after the first failed", b.fetches)
 	}
 }
