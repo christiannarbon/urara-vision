@@ -13,12 +13,17 @@ import (
 	"urara-vision/backend/internal/chat/apiclient"
 	"urara-vision/backend/internal/chat/config"
 	"urara-vision/backend/internal/chat/llm"
+	"urara-vision/backend/internal/model"
 )
 
 // Backend is the part of apiclient.Client the handlers call.
 type Backend interface {
 	Health(ctx context.Context) bool
 	Features(ctx context.Context) (apiclient.Features, error)
+	CreateConversation(ctx context.Context, snapshotID, title string) (model.Conversation, error)
+	ListConversations(ctx context.Context, snapshotID string, limit int) ([]model.Conversation, error)
+	GetConversation(ctx context.Context, cid string) (model.Conversation, error)
+	DeleteConversation(ctx context.Context, cid string) error
 }
 
 type Deps struct {
@@ -78,9 +83,10 @@ func (s *Server) Handler() http.Handler {
 	// Identity first, so an anonymous caller cannot learn whether chat is on.
 	r.Route("/api/chat", func(r chi.Router) {
 		r.Use(s.identity, s.requireChat)
-		r.Get("/conversations", func(w http.ResponseWriter, r *http.Request) {
-			WriteError(w, r, http.StatusNotImplemented, map[string]any{"detail": "Not Implemented"}) // until 19.1
-		})
+		r.Post("/conversations", s.createConversation)
+		r.Get("/conversations", s.listConversations)
+		r.Get("/conversations/{cid}", s.getConversation)
+		r.Delete("/conversations/{cid}", s.deleteConversation)
 	})
 	return s.Wrap(r)
 }

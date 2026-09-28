@@ -15,10 +15,10 @@ import (
 	"urara-vision/backend/internal/chat/reqctx"
 )
 
-const stubOK = http.StatusNotImplemented // the stub route ran
+const routeOK = http.StatusOK // the list route ran
 
 func TestEnabledRunsTheRoute(t *testing.T) {
-	if code := asUser(gated(t, &fakeBackend{enabled: true}, newClock()), "u"); code != stubOK {
+	if code := asUser(gated(t, &fakeBackend{enabled: true}, newClock()), "u"); code != routeOK {
 		t.Errorf("status %d", code)
 	}
 }
@@ -50,11 +50,11 @@ func TestAChangeIsSeenAfterTheTTL(t *testing.T) {
 	f, c := &fakeBackend{enabled: true}, newClock()
 	h := gated(t, f, c)
 
-	if code := asUser(h, "u"); code != stubOK {
+	if code := asUser(h, "u"); code != routeOK {
 		t.Fatalf("status %d", code)
 	}
 	f.set(func(f *fakeBackend) { f.enabled = false })
-	if code := asUser(h, "u"); code != stubOK {
+	if code := asUser(h, "u"); code != routeOK {
 		t.Errorf("changed inside the TTL: %d", code)
 	}
 	c.advance(featuresTTL)
@@ -70,7 +70,7 @@ func TestABackendFailureBeforeAnyAnswerAllows(t *testing.T) {
 		"malformed":    errors.New("backend response: features.chat is missing"),
 	} {
 		f := &fakeBackend{featuresErr: err}
-		if code := asUser(gated(t, f, newClock()), "u"); code != stubOK {
+		if code := asUser(gated(t, f, newClock()), "u"); code != routeOK {
 			t.Errorf("%s: status %d, want allowed", name, code)
 		}
 	}
@@ -126,7 +126,7 @@ func TestConcurrentCallersOnAColdCacheRefreshOnce(t *testing.T) {
 	for range 2 {
 		go func() { codes <- asUser(h, "u") }()
 	}
-	if a, b := <-codes, <-codes; a != stubOK || b != stubOK {
+	if a, b := <-codes, <-codes; a != routeOK || b != routeOK {
 		t.Errorf("statuses %d, %d", a, b)
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"urara-vision/backend/internal/chat/config"
 	"urara-vision/backend/internal/chat/httpapi"
 	"urara-vision/backend/internal/chat/reqctx"
+	"urara-vision/backend/internal/model"
 )
 
 const featuresTTL = 15 * time.Second
@@ -27,6 +28,66 @@ type fakeBackend struct {
 	healthCalls  int
 	featureUsers []string // the user ID on each features call
 	cancelled    bool     // a features call arrived with a cancelled context
+
+	convErr   error           // every conversation call fails with this
+	messages  []model.Message // on a fetched conversation
+	convUsers []string        // the user ID on each conversation call
+	created   []createCall
+	listed    []listCall
+	fetched   []string
+	deleted   []string
+}
+
+type createCall struct{ snapshotID, title string }
+
+type listCall struct {
+	snapshotID string
+	limit      int
+}
+
+var convCreated = time.Date(2026, 9, 11, 12, 0, 0, 0, time.UTC)
+
+// stored is what the backend returns: a concrete snapshot ID, never "latest".
+func stored(cid, title string) model.Conversation {
+	return model.Conversation{
+		ID: cid, SnapshotID: "5b0c1a52-3d8e-4f7a-9c21-6e4d8b2f1a90", Title: title,
+		CreatedAt: convCreated, UpdatedAt: convCreated,
+	}
+}
+
+func (f *fakeBackend) convCall(ctx context.Context, record func()) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.convUsers = append(f.convUsers, reqctx.UserID(ctx))
+	record()
+	return f.convErr
+}
+
+func (f *fakeBackend) CreateConversation(ctx context.Context, snapshotID, title string) (model.Conversation, error) {
+	if err := f.convCall(ctx, func() { f.created = append(f.created, createCall{snapshotID, title}) }); err != nil {
+		return model.Conversation{}, err
+	}
+	return stored("0d3c5e6f-7a8b-4c9d-8e1f-2a3b4c5d6e7f", title), nil
+}
+
+func (f *fakeBackend) ListConversations(ctx context.Context, snapshotID string, limit int) ([]model.Conversation, error) {
+	if err := f.convCall(ctx, func() { f.listed = append(f.listed, listCall{snapshotID, limit}) }); err != nil {
+		return nil, err
+	}
+	return []model.Conversation{stored("0d3c5e6f-7a8b-4c9d-8e1f-2a3b4c5d6e7f", "golden")}, nil
+}
+
+func (f *fakeBackend) GetConversation(ctx context.Context, cid string) (model.Conversation, error) {
+	if err := f.convCall(ctx, func() { f.fetched = append(f.fetched, cid) }); err != nil {
+		return model.Conversation{}, err
+	}
+	c := stored(cid, "golden")
+	c.Messages = f.messages
+	return c, nil
+}
+
+func (f *fakeBackend) DeleteConversation(ctx context.Context, cid string) error {
+	return f.convCall(ctx, func() { f.deleted = append(f.deleted, cid) })
 }
 
 func (f *fakeBackend) Health(context.Context) bool {
@@ -110,7 +171,7 @@ func gated(t *testing.T, f *fakeBackend, c *clock) http.Handler {
 	}).Handler()
 }
 
-// asUser requests the stub chat route, with a user ID unless it is empty.
+// asUser requests the conversation list, with a user ID unless it is empty.
 func asUser(h http.Handler, user string) int {
 	req := httptest.NewRequest("GET", "/api/chat/conversations?snapshot=latest", nil)
 	if user != "" {
