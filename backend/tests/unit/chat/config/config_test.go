@@ -221,10 +221,24 @@ func TestProviderMustBeAllowed(t *testing.T) {
 }
 
 func TestCeilingsBelowOneAreRefused(t *testing.T) {
-	for _, name := range []string{"MAX_CONCURRENT_TURNS", "MAX_TURN_TOKENS", "MAX_CONVERSATION_TURNS"} {
+	for _, name := range []string{
+		"MAX_CONCURRENT_TURNS", "MAX_TURN_TOKENS", "MAX_CONVERSATION_TURNS", "MAX_TOOL_ITERATIONS", "MAX_QUESTION_CHARS",
+	} {
 		clean(t)
 		t.Setenv(name, "0")
 		refused(t, name+" must be at least 1, got 0")
+	}
+}
+
+// 0 is a legitimate "no history"; a negative limit is a typo.
+func TestANegativeHistoryLimitIsRefused(t *testing.T) {
+	clean(t)
+	t.Setenv("MAX_HISTORY_MESSAGES", "-1")
+	refused(t, "MAX_HISTORY_MESSAGES must not be negative, got -1")
+	clean(t)
+	t.Setenv("MAX_HISTORY_MESSAGES", "0")
+	if got := load(t).MaxHistoryMessages; got != 0 {
+		t.Errorf("MAX_HISTORY_MESSAGES 0 -> %d", got)
 	}
 }
 
