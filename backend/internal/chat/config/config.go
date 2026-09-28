@@ -186,10 +186,15 @@ func Load(allowedProviders []string) (*Settings, error) {
 		{"MAX_CONCURRENT_TURNS", s.MaxConcurrentTurns},
 		{"MAX_TURN_TOKENS", s.MaxTurnTokens},
 		{"MAX_CONVERSATION_TURNS", s.MaxConversationTurns},
+		{"MAX_TOOL_ITERATIONS", s.MaxToolIterations},
+		{"MAX_QUESTION_CHARS", s.MaxQuestionChars},
 	} {
 		if c.v < 1 && !l.bad[c.name] {
 			l.fail("%s must be at least 1, got %d", c.name, c.v)
 		}
+	}
+	if s.MaxHistoryMessages < 0 && !l.bad["MAX_HISTORY_MESSAGES"] {
+		l.fail("MAX_HISTORY_MESSAGES must not be negative, got %d", s.MaxHistoryMessages)
 	}
 
 	switch features := l.seconds("FEATURES_CACHE_SECONDS"); {

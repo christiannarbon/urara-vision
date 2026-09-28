@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -264,5 +265,43 @@ func TestAnswerACallerHangingUpIsNotAProviderFailure(t *testing.T) {
 	}
 	if slices.Contains(msgs, "language model call failed") || !slices.Contains(msgs, "request cancelled by the caller") {
 		t.Errorf("logs %v", msgs)
+	}
+}
+
+// The type names the failure; the message could quote the prompt.
+func TestAnswerTurnFailedNamesTheInnermostError(t *testing.T) {
+	for want, err := range map[string]error{
+		"DeadlineExceeded":    fmt.Errorf("gemini: %w", context.DeadlineExceeded),
+		"*apiclient.Error":    fmt.Errorf("anthropic: %w", &apiclient.Error{Status: 500, Message: "boom"}),
+		"*errors.errorString": errors.New("plain"),
+	} {
+		h, l := answerServer(t, &fakeAgent{err: err}, &toolStore{t: t}, time.Minute)
+		ask(t, h, answerBody("snap-1", "q"))
+		var got any
+		for _, line := range l.lines(t) {
+			if line["msg"] == "turn failed" {
+				got = line["error"]
+			}
+		}
+		if got != want {
+			t.Errorf("error = %v, want %s", got, want)
+		}
+	}
+}
+
+// A deadline on the request itself is the turn running out, not a bad backend response.
+func TestAnswerARequestDeadlineIsAProviderFailure(t *testing.T) {
+	h, l := answerServer(t, &fakeAgent{wait: true}, &toolStore{t: t}, time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Millisecond)
+	defer cancel()
+	req := httptest.NewRequest("POST", "/debug/answer", strings.NewReader(answerBody("snap-1", "q"))).WithContext(ctx)
+	rec := serve(h, req)
+	if e, _ := decode(t, rec)["error"].(string); rec.Code != 502 || e != "the language model did not answer" {
+		t.Errorf("%d %s", rec.Code, rec.Body)
+	}
+	for _, line := range l.lines(t) {
+		if m, _ := line["msg"].(string); strings.Contains(m, "did not match") {
+			t.Errorf("logged %q", m)
+		}
 	}
 }
