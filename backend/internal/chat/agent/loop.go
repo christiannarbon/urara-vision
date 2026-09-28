@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -81,7 +82,7 @@ func (a *Agent) run(ctx context.Context, sid, language string, messages []llm.Me
 			continue
 		}
 
-		out, err := runTools(ctx, guarded, names, reply.ToolCalls)
+		out, err := runTools(ctx, a.log, guarded, names, reply.ToolCalls)
 		if err != nil {
 			return Answer{}, err
 		}
@@ -144,7 +145,7 @@ func estimate(system string, messages []llm.Message) int {
 
 // runTools runs the calls in parallel, results by call index. The first error
 // cancels the rest and ends the turn.
-func runTools(ctx context.Context, guarded map[string]guardedTool, names []string, calls []llm.ToolCall) ([]any, error) {
+func runTools(ctx context.Context, log *slog.Logger, guarded map[string]guardedTool, names []string, calls []llm.ToolCall) ([]any, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	out := make([]any, len(calls))
@@ -157,7 +158,13 @@ func runTools(ctx context.Context, guarded map[string]guardedTool, names []strin
 		run, ok := guarded[c.Name]
 		if !ok {
 			// LangGraph's ToolNode wording for a tool that does not exist.
-			out[i] = "Error: " + c.Name + " is not a valid tool, try one of [" + strings.Join(names, ", ") + "]."
+			advice := "Error: " + c.Name + " is not a valid tool, try one of [" + strings.Join(names, ", ") + "]."
+			var args any = string(c.Args)
+			if json.Valid(c.Args) {
+				args = c.Args
+			}
+			log.Debug("tool call", "tool", c.Name, "tool_args", args, "duration_ms", 0, "returned_error", true, "error", advice)
+			out[i] = advice
 			continue
 		}
 		wg.Add(1)
