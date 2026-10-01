@@ -20,7 +20,7 @@ The dev overlay is self-contained — it generates its own credentials, so
 
 ```bash
 docker build -t urara-vision/backend:dev  ./backend
-docker build -t urara-vision/chat:dev     ./chat
+docker build -t urara-vision/chat:dev     --target chat ./backend
 docker build -t urara-vision/frontend:dev ./frontend
 
 # On kind: kind load docker-image urara-vision/backend:dev urara-vision/chat:dev urara-vision/frontend:dev
@@ -105,7 +105,8 @@ kubectl apply -k k8s/overlays/prod
 
 `base/chat.yaml` carries a Deployment, a ClusterIP Service on `8090`, the
 `relviz-chat-config` ConfigMap, a PodDisruptionBudget and a ServiceAccount of
-its own. Only the frontend reaches it, and it reaches the backend's API like
+its own. The image is the Go binary (`cmd/chat`) on distroless, built from
+`backend/` with `--target chat`. Only the frontend reaches it, and it reaches the backend's API like
 any other client.
 
 Set `VERTEX_PROJECT` before applying: `VERTEX_PROJECT=<project> make k8s-up`
@@ -245,10 +246,10 @@ enforce them as written.
 **HPAs are dropped in dev** along with the PDBs, since a single replica cannot
 satisfy `minAvailable: 1` during a rollout.
 
-**Chat's memory limit is 512Mi, from measurement.** Four concurrent turns
-against the pod peaked at 105Mi (`/sys/fs/cgroup/memory.peak`); the rest is
-headroom for a corpus larger than the demo sets. The dev overlay trims it
-to 384Mi.
+**Chat's memory limit is 128Mi, from measurement.** Four concurrent turns
+against the Go service peaked at 33Mi (`docker stats`); the rest is headroom
+for a corpus larger than the demo sets. It needs no writable `/tmp`: a turn
+under `docker run --read-only` wrote nothing.
 
 ## Verified on minikube
 
@@ -275,8 +276,8 @@ isolation claims below were taken on a separate `--cni=calico` profile
 (k8s v1.35.1), with ADC mounted from `relviz-adc`:
 
 - **The read-only root holds.** The pod runs as 65532 with
-  `readOnlyRootFilesystem`; `/app` refuses a write, `/tmp` accepts one, and the
-  ADC mount is read-only.
+  `readOnlyRootFilesystem`; `/app` refuses a write, and the ADC mount is
+  read-only.
 - **Chat cannot reach either datastore.** DNS resolves `neo4j` and `postgres`
   from the chat pod and the TCP connections then time out, while `backend:8080`
   answers 200 — so the drop is the policy, not broken networking. The control:
@@ -290,7 +291,7 @@ isolation claims below were taken on a separate `--cni=calico` profile
   the old pod serving through both misconfiguration tests below.
 - **A missing `VERTEX_PROJECT` crash-loops legibly**, logging
   `configuration is invalid, refusing to start: VERTEX_PROJECT must be set...`
-  before uvicorn's traceback. A missing `relviz-adc` never starts at all:
+  and exits. A missing `relviz-adc` never starts at all:
   `MountVolume.SetUp failed ... secret "relviz-adc" not found`.
 - **An unusable credential is not caught at start-up.** Pointed at a project it
   cannot use, the pod stays Ready — `/readyz` reports the configured provider
