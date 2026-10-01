@@ -75,118 +75,37 @@ services:
 
   chat:
     build:
-      context: ./chat
-      dockerfile: Dockerfile
-    environment:
-      # Every setting the service reads appears here, and all but one in the
-      # ${VAR:-default} form. Compose does not pass the host environment into a
-      # container -- it only substitutes variables this file names -- so a
-      # setting missing from this block cannot be changed without editing the
-      # file, and the attempt fails silently: the container starts happily on
-      # the default and the run looks like the feature is broken rather than
-      # like the setting never arrived. A test in the chat suite fails if a new
-      # setting is not listed here.
-      #
-      # The exception is APP_ADDR. The port below is mapped from :8090, so
-      # moving the address alone would leave the service listening where nothing
-      # is published.
-      APP_ADDR: ":8090"
-
-      BACKEND_BASE_URL: "${BACKEND_BASE_URL:-http://backend:8080}"
-      # The same committed dev token the backend checks. The chat service is
-      # an API client like any other.
-      BACKEND_API_TOKEN: "${BACKEND_API_TOKEN:-relviz-dev-token-not-for-production}"
-      BACKEND_TIMEOUT_SECONDS: "${BACKEND_TIMEOUT_SECONDS:-30}"
-      LOG_LEVEL: "${LOG_LEVEL:-info}"
-
-      # The limits. Lowering one for a single run is how the behaviour behind it
-      # is exercised at all: MAX_CONCURRENT_TURNS=1 makes a second simultaneous
-      # turn a 429 rather than something that needs four readers to reproduce.
-      MAX_CONCURRENT_TURNS: "${MAX_CONCURRENT_TURNS:-4}"
-      TURN_ADMISSION_WAIT_SECONDS: "${TURN_ADMISSION_WAIT_SECONDS:-0.5}"
-      MAX_QUESTION_CHARS: "${MAX_QUESTION_CHARS:-4000}"
-      MAX_REQUEST_BYTES: "${MAX_REQUEST_BYTES:-1048576}"
-      ANSWER_TIMEOUT_SECONDS: "${ANSWER_TIMEOUT_SECONDS:-120}"
-
-      # What a turn is allowed to spend before it must answer with what it has.
-      MAX_HISTORY_MESSAGES: "${MAX_HISTORY_MESSAGES:-20}"
-      MAX_TOOL_ITERATIONS: "${MAX_TOOL_ITERATIONS:-6}"
-      MAX_TURN_TOKENS: "${MAX_TURN_TOKENS:-32000}"
-      MAX_CONVERSATION_TURNS: "${MAX_CONVERSATION_TURNS:-50}"
-      CONTEXT_CACHE_TTL_SECONDS: "${CONTEXT_CACHE_TTL_SECONDS:-300}"
-      FEATURES_CACHE_SECONDS: "${FEATURES_CACHE_SECONDS:-15}"
-      # The only settings in this file that are not committed values. They come
-      # from the host environment or a .env file, because a model credential is
-      # the one thing here that must never be in the repository.
-      #
-      # No key has a default. The empty fallback is deliberate: the service
-      # refuses to start without the credential its provider needs, and naming
-      # the missing variable in the log beats starting misconfigured and failing
-      # every request.
-      #
-      # Vertex authenticates with Application Default Credentials rather than a
-      # key, which under compose means mounting the host's ADC file. That is not
-      # configured here -- see chat/README.md -- because it fails confusingly on
-      # a machine with no gcloud.
-      LLM_PROVIDER: "${LLM_PROVIDER:-gemini-studio}"
-      LLM_MODEL: "${LLM_MODEL:-gemini-2.5-flash}"
-      LLM_TEMPERATURE: "${LLM_TEMPERATURE:-0.2}"
-      LLM_MAX_OUTPUT_TOKENS: "${LLM_MAX_OUTPUT_TOKENS:-2048}"
-      LLM_TIMEOUT_SECONDS: "${LLM_TIMEOUT_SECONDS:-60}"
-      GOOGLE_API_KEY: "${GOOGLE_API_KEY:-}"
-      VERTEX_PROJECT: "${VERTEX_PROJECT:-}"
-      VERTEX_LOCATION: "${VERTEX_LOCATION:-us-central1}"
-    # Localhost only: chat trusts the identity headers nginx sets, so it must
-    # not be reachable except through the frontend.
-    ports:
-      - "127.0.0.1:8090:8090"
-    depends_on:
-      # service_started rather than service_healthy: the backend declares no
-      # compose healthcheck, and this service's own readiness probe already
-      # reports a backend that is not up yet.
-      backend:
-        condition: service_started
-    healthcheck:
-      # The final image is a slim Python base with neither curl nor wget, so the
-      # check is made with the interpreter that is definitely there.
-      test:
-        - CMD
-        - python
-        - -c
-        - import urllib.request;urllib.request.urlopen('http://localhost:8090/healthz')
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-    restart: unless-stopped
-
-  # The Go chat service, beside the Python one until Phase 20. Profile only, so
-  # `make up` is unchanged; `make up-go-chat` starts it. Vertex ADC comes from
-  # docker-compose.override.yml, as for chat.
-  chat-go:
-    profiles: ["go-chat"]
-    build:
       context: ./backend
+      dockerfile: Dockerfile
       target: chat
     environment:
-      # Must change together with chat's block above. GOOGLE_API_KEY is not
-      # ported, and LLM_PROVIDER defaults to vertex: Go has no gemini-studio.
+      # Every setting the service reads, as ${VAR:-default}: compose passes only
+      # the variables named here. backend/tests/unit/chat/config/manifests_test.go
+      # fails if one is missing. APP_ADDR is a literal because the port is mapped
+      # from :8090.
       APP_ADDR: ":8090"
+
       BACKEND_BASE_URL: "${BACKEND_BASE_URL:-http://backend:8080}"
+      # The committed dev token the backend checks.
       BACKEND_API_TOKEN: "${BACKEND_API_TOKEN:-relviz-dev-token-not-for-production}"
       BACKEND_TIMEOUT_SECONDS: "${BACKEND_TIMEOUT_SECONDS:-30}"
       LOG_LEVEL: "${LOG_LEVEL:-info}"
+
       MAX_CONCURRENT_TURNS: "${MAX_CONCURRENT_TURNS:-4}"
       TURN_ADMISSION_WAIT_SECONDS: "${TURN_ADMISSION_WAIT_SECONDS:-0.5}"
       MAX_QUESTION_CHARS: "${MAX_QUESTION_CHARS:-4000}"
       MAX_REQUEST_BYTES: "${MAX_REQUEST_BYTES:-1048576}"
       ANSWER_TIMEOUT_SECONDS: "${ANSWER_TIMEOUT_SECONDS:-120}"
+
       MAX_HISTORY_MESSAGES: "${MAX_HISTORY_MESSAGES:-20}"
       MAX_TOOL_ITERATIONS: "${MAX_TOOL_ITERATIONS:-6}"
       MAX_TURN_TOKENS: "${MAX_TURN_TOKENS:-32000}"
       MAX_CONVERSATION_TURNS: "${MAX_CONVERSATION_TURNS:-50}"
       CONTEXT_CACHE_TTL_SECONDS: "${CONTEXT_CACHE_TTL_SECONDS:-300}"
       FEATURES_CACHE_SECONDS: "${FEATURES_CACHE_SECONDS:-15}"
+
+      # Vertex authenticates with ADC, mounted by docker-compose.override.yml.
+      # VERTEX_PROJECT has no default: the service refuses to start without one.
       LLM_PROVIDER: "${LLM_PROVIDER:-vertex}"
       LLM_MODEL: "${LLM_MODEL:-gemini-2.5-flash}"
       LLM_TEMPERATURE: "${LLM_TEMPERATURE:-0.2}"
@@ -194,12 +113,14 @@ services:
       LLM_TIMEOUT_SECONDS: "${LLM_TIMEOUT_SECONDS:-60}"
       VERTEX_PROJECT: "${VERTEX_PROJECT:-}"
       VERTEX_LOCATION: "${VERTEX_LOCATION:-us-central1}"
-    # Localhost only, like chat: it trusts X-User-Id.
+    # Localhost only: chat trusts the identity headers nginx sets.
     ports:
-      - "127.0.0.1:8091:8090"
+      - "127.0.0.1:8090:8090"
     depends_on:
+      # The backend has no healthcheck; chat's /readyz reports it instead.
       backend:
         condition: service_started
+    # No healthcheck: the distroless image has no shell or client to run one.
     restart: unless-stopped
 
   frontend:

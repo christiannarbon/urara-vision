@@ -34,7 +34,6 @@ var (
 	}
 	composeDiffers = map[string]string{
 		"BACKEND_API_TOKEN": "the compose backend expects the committed dev token",
-		"LLM_PROVIDER":      "compose still runs the Python service, which defaults to gemini-studio",
 		"LLM_TEMPERATURE":   "the code leaves it to the provider",
 	}
 	// Published from :8090, so it is a committed literal.
@@ -184,23 +183,6 @@ func TestComposeDefaultsMatchTheCode(t *testing.T) {
 		}
 		if !agrees(m[1], config.Default(name)) {
 			t.Errorf("%s: compose says %q, code says %q", name, m[1], config.Default(name))
-		}
-	}
-}
-
-// chat-go copies chat's block; the two must not drift.
-func TestChatGoEnvironmentMatchesChat(t *testing.T) {
-	chat, goChat := composeEnv(t, "chat"), composeEnv(t, "chat-go")
-	if _, ok := goChat["GOOGLE_API_KEY"]; ok {
-		t.Error("chat-go declares GOOGLE_API_KEY, which Go does not read")
-	}
-	for _, name := range config.EnvNames() {
-		value, ok := goChat[name]
-		switch {
-		case !ok:
-			t.Errorf("%s is absent from chat-go's environment", name)
-		case name != "LLM_PROVIDER" && value != chat[name]:
-			t.Errorf("%s: chat-go says %q, chat says %q", name, value, chat[name])
 		}
 	}
 }
