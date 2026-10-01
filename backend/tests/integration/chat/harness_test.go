@@ -2,7 +2,7 @@
 
 // The Go chat service over HTTP, against the real backend. No model is called.
 //
-// Run with `make test-chat-go-integration`.
+// Run with `make test-chat-integration`.
 package chat_test
 
 import (
@@ -40,7 +40,7 @@ var (
 // skip, and this suite joins it only at Phase 20's cutover.
 func TestMain(m *testing.M) {
 	if chatURL == "" && backendURL == "" {
-		fmt.Println("chat integration: TEST_CHAT_URL and TEST_CHAT_BACKEND_URL unset; not run (make test-chat-go-integration)")
+		fmt.Println("chat integration: TEST_CHAT_URL and TEST_CHAT_BACKEND_URL unset; not run (make test-chat-integration)")
 		os.Exit(0)
 	}
 	if chatURL == "" || backendURL == "" {
