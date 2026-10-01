@@ -1,7 +1,7 @@
 # Architecture
 
 ```
-Browser ──pick folder──▶ Vue 3 app ─────ask─────▶ Python chat ──▶ Gemini
+Browser ──pick folder──▶ Vue 3 app ─────ask─────▶ Go chat ──▶ Gemini
                           │ reads .md client-side      │
                           ▼                            │ tool calls
                     POST /api/v1/ingest                │ over /api/v1
@@ -17,7 +17,9 @@ Browser ──pick folder──▶ Vue 3 app ─────ask─────�
               └──────────┘  └────────────────┘
 ```
 
-The chat service answers questions about a model by calling the same public API
+The chat service is a Go binary in the backend module (`cmd/chat`), built from
+the backend Dockerfile's `chat` target. It answers questions about a model by
+calling the same public API
 the frontend does — it holds no database credential and has no route to either
 store. That is what keeps the resolution rules in one place and keeps a
 question, however it is phrased, unable to reach a database session.
@@ -94,13 +96,14 @@ recent ingest.
 backend/
   cmd/server/        HTTP server
   cmd/uraractl/      CLI: parse a directory, print stats and diagnostics
+  cmd/chat/          chat service
   internal/parser/   markdown → structured documents
   internal/graph/    resolution, edge normalisation, drift detection
   internal/store/    postgres (record) + neo4j (graph)
   internal/api/      routes, ingest
+  internal/chat/     chat agent, LLM adapters, tools over the HTTP API
   tests/             unit, integration and fixtures, outside the packages
-chat/
-  src/urara_chat/    FastAPI service: LangGraph agent, tools over the HTTP API
+chat/                retired Python service; tests/eval/ still scores chat over HTTP
 frontend/
   src/api/           typed client and response shapes
   src/components/    GraphCanvas, TableDetail, FilterSidebar, Search, Diagnostics
