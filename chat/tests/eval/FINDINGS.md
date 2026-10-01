@@ -276,3 +276,22 @@ nine earlier Python and Go runs.
 - Empty replies still happen on `sakila-traversal-rental-film`, always on the forced first call,
   in 3 of 6 runs. Python had none in 195 turns. Sending the tool names did not remove them.
 - By the per-run rule, Python's "Final" runs pass 1 of 3. The three Go sets passed 0, 3 and 2 of 3, in order.
+
+### Gate revised (2026-10-01)
+
+The per-run rule fails Python's own "Final" runs 2 of 3, so it cannot separate the port from
+model noise. The gate now compares Go with Python over the same three runs:
+
+| | Python (Final) | Go (fixes 1 + 2) | |
+|---|---|---|---|
+| Mean recall, at most 0.03 below Python | 0.9932 | 0.9824 | pass |
+| Refusals, pooled, no fewer than Python | 23 / 24 | 23 / 24 | pass |
+| Fabricated answers | 0 | 0 | pass |
+| Unanswered | 1 | 0 | pass |
+
+A violation is read by hand when the answer refuses. The one Go violation
+(`sakila-refusal-category-table`) refuses and only names the missing table, so it is not a
+fabrication.
+
+**Gate: passed.** The revision is made after the runs; its reason is Python's baseline, not Go's
+scores. Empty first replies on `sakila-traversal-rental-film` stay open (suspect: tool schemas).
