@@ -57,7 +57,8 @@ curl -H "Authorization: Bearer $API_TOKEN" -H 'Content-Type: application/json' \
   -d @payload.json http://backend:8080/api/v1/ingest
 ```
 
-The chat service reads its own set:
+The chat service (`backend/cmd/chat`, image built with `--target chat`) reads
+its own set:
 
 | Variable | Default | Notes |
 |---|---|---|
@@ -66,7 +67,7 @@ The chat service reads its own set:
 | `BACKEND_API_TOKEN` | _(unset)_ | The same `relviz-api` token the backend checks |
 | `BACKEND_TIMEOUT_SECONDS` | `30` | Per request to the backend |
 | `LOG_LEVEL` | `info` | `debug` / `info` / `warn` / `error` |
-| `LLM_PROVIDER` | `gemini-studio` | `vertex` in the cluster |
+| `LLM_PROVIDER` | `vertex` | `vertex` or `vertex-anthropic` |
 | `LLM_MODEL` | `gemini-2.5-flash` | |
 | `LLM_TEMPERATURE` | `0.2` | |
 | `LLM_MAX_OUTPUT_TOKENS` | `2048` | |

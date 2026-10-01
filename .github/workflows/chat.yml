@@ -1,26 +1,34 @@
-# Lint, unit tests and integration tests for the Python chat service.
+# Lint, unit tests and integration tests for the Go chat service.
 #
-# Path-filtered so an unrelated Go change never starts a Python runner --
-# `backend/internal/api/**` is in the list because the integration job runs the
-# real backend and asserts against that surface. Runnable locally with
-# `make ci-chat`, which drives this file through nektos/act.
+# Runnable locally with `make ci-chat`, which drives this file through
+# nektos/act. The unit tests also run under backend.yml; this workflow adds the
+# triggers on the compose file and the chat manifest that those tests read.
 name: chat
 
 on:
   pull_request:
     paths:
-      - chat/**
-      - backend/internal/api/**
-      # The integration suite ingests these demo sets before it asks anything.
-      - docs/demo/**
+      - backend/cmd/chat/**
+      - backend/internal/chat/**
+      - backend/tests/unit/chat/**
+      - backend/tests/integration/chat/**
+      - backend/go.mod
+      - backend/go.sum
+      - k8s/base/chat.yaml
+      - docker-compose.yml
       - .github/workflows/chat.yml
   push:
     branches:
       - main
     paths:
-      - chat/**
-      - backend/internal/api/**
-      - docs/demo/**
+      - backend/cmd/chat/**
+      - backend/internal/chat/**
+      - backend/tests/unit/chat/**
+      - backend/tests/integration/chat/**
+      - backend/go.mod
+      - backend/go.sum
+      - k8s/base/chat.yaml
+      - docker-compose.yml
       - .github/workflows/chat.yml
   workflow_dispatch:
 
@@ -33,11 +41,11 @@ concurrency:
 
 defaults:
   run:
-    working-directory: chat
+    working-directory: backend
 
 jobs:
   lint:
-    name: ruff and mypy
+    name: go vet
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -47,22 +55,15 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          python-version: '3.12'
-          enable-cache: true
-          cache-dependency-glob: chat/uv.lock
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
 
-      - name: install
-        run: uv sync --frozen
-
-      - name: ruff
+      - name: go vet
         run: |
-          uv run --frozen ruff check .
-          uv run --frozen ruff format --check .
-
-      - name: mypy
-        run: uv run --frozen mypy src
+          go vet ./cmd/chat/... ./internal/chat/... ./tests/unit/chat/...
+          go vet -tags=integration ./tests/integration/chat/...
 
   test:
     name: unit tests
@@ -75,19 +76,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          python-version: '3.12'
-          enable-cache: true
-          cache-dependency-glob: chat/uv.lock
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
 
-      - name: install
-        run: uv sync --frozen
-
-      # No secret is available to this job, deliberately: the unit suite passing
-      # here is the proof it needs no provider.
+      # No secret is available to this job: the unit suite needs no provider.
       - name: unit tests
-        run: uv run --frozen pytest tests/unit -v -m "not llm"
+        run: go test -race -count=1 ./tests/unit/chat/...
 
   integration:
     name: integration tests
@@ -100,7 +96,6 @@ jobs:
       # 24+ characters, or the backend refuses it. Committed on purpose: it
       # authenticates nothing outside this job.
       API_TOKEN: chat-ci-token-not-for-production
-      # The conversation tests log in as this admin to get a user ID for X-User-Id.
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: chat-ci-admin-password
 
@@ -144,22 +139,13 @@ jobs:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
-        with:
-          python-version: '3.12'
-          enable-cache: true
-          cache-dependency-glob: chat/uv.lock
+      - name: build
+        run: |
+          go build -o /tmp/urara-server ./cmd/server
+          go build -o /tmp/urara-chat ./cmd/chat
 
-      - name: install
-        run: uv sync --frozen
-
-      - name: build the backend
-        working-directory: backend
-        run: go build -o /tmp/urara-server ./cmd/server
-
-      # Both services run for real: the conversation tests drive chat's HTTP
-      # surface, not just the backend's. LLM_PROVIDER and VERTEX_PROJECT only
-      # have to satisfy start-up validation -- nothing here reaches a model.
+      # Nothing here reaches a model: LLM_PROVIDER and VERTEX_PROJECT only have
+      # to satisfy start-up validation.
       - name: start the backend and the chat service
         env:
           POSTGRES_DSN: postgres://relviz:relviz@localhost:5432/relviz_test?sslmode=disable
@@ -178,8 +164,7 @@ jobs:
           set -euo pipefail
 
           APP_ADDR=":8080" /tmp/urara-server >/tmp/backend.log 2>&1 &
-          APP_ADDR=":8090" uv run --frozen uvicorn urara_chat.main:app \
-            --host 127.0.0.1 --port 8090 >/tmp/chat.log 2>&1 &
+          APP_ADDR="127.0.0.1:8090" /tmp/urara-chat >/tmp/chat.log 2>&1 &
 
           # Polled rather than slept: a cold Neo4j is slower here than locally.
           wait_for() {
@@ -195,41 +180,31 @@ jobs:
           }
 
           wait_for backend http://localhost:8080/healthz
-          wait_for chat http://localhost:8090/healthz
+          wait_for chat http://localhost:8090/readyz
 
-      # The `llm` tests call a real provider: they need a credential and cost
-      # money per run, so they are excluded here and run locally and in the
-      # Phase 08 evaluation instead.
       - name: integration tests
         env:
-          CHAT_TEST_BACKEND_URL: http://localhost:8080
-          CHAT_TEST_CHAT_URL: http://localhost:8090
-          CHAT_TEST_API_TOKEN: ${{ env.API_TOKEN }}
-          CHAT_TEST_ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
-          CHAT_TEST_ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
+          TEST_CHAT_URL: http://localhost:8090
+          TEST_CHAT_BACKEND_URL: http://localhost:8080
+          TEST_CHAT_API_TOKEN: ${{ env.API_TOKEN }}
+          TEST_CHAT_ADMIN_USERNAME: ${{ env.ADMIN_USERNAME }}
+          TEST_CHAT_ADMIN_PASSWORD: ${{ env.ADMIN_PASSWORD }}
         run: |
-          uv run --frozen pytest tests/integration -v \
-            -m "integration and not llm" --junitxml=report.xml
+          # act's default shell does not set pipefail; without it tee hides a failure.
+          set -o pipefail
+          go test -tags=integration -count=1 -v ./tests/integration/chat/... | tee integration.log
 
-      # A suite that quietly stops testing anything is worse than a red one, so
-      # both a skip and an empty run fail the job.
+      # A suite that quietly stops testing anything is worse than a red one.
       - name: fail if the suite skipped or ran nothing
         run: |
-          python3 - <<'PY'
-          import sys
-          import xml.etree.ElementTree as ET
-
-          # pytest nests the counts in <testsuite>; the root <testsuites> has none.
-          root = ET.parse("report.xml").getroot()
-          suites = root.findall("testsuite") or [root]
-          tests = sum(int(s.get("tests", 0)) for s in suites)
-          skipped = sum(int(s.get("skipped", 0)) for s in suites)
-          print(f"{tests} tests, {skipped} skipped")
-          if skipped:
-              sys.exit("integration tests skipped; CI treats that as a failure")
-          if not tests:
-              sys.exit("no integration tests ran")
-          PY
+          if grep -q -- "--- SKIP" integration.log; then
+            echo "::error::integration tests skipped"
+            exit 1
+          fi
+          if ! grep -q -- "--- PASS" integration.log; then
+            echo "::error::no integration tests ran"
+            exit 1
+          fi
 
       - name: service logs
         if: failure()
