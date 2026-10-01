@@ -19,19 +19,3 @@ spec:
               memory: 512Mi
             limits:
               memory: 1200Mi
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: chat
-spec:
-  template:
-    spec:
-      containers:
-        - name: chat
-          resources:
-            requests:
-              cpu: 50m
-              memory: 192Mi
-            limits:
-              memory: 384Mi
