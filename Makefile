@@ -37,10 +37,6 @@ up: ## Build and start the whole stack
 up-without-chat: ## Build and start the stack with chat left out
 	CHAT_ENABLED=false $(COMPOSE) up -d --build --scale chat=0
 
-.PHONY: up-go-chat
-up-go-chat: ## Build and start the stack plus the Go chat service on :8091
-	$(COMPOSE) --profile go-chat up -d --build
-
 .PHONY: down
 down: ## Stop the stack, keeping volumes
 	$(COMPOSE) down
@@ -74,26 +70,13 @@ COMPOSE_NET := urara-vision_default
 # locally. Neo4j Community allows only one database, so the graph suites share it
 # and isolate by snapshot ID instead.
 TEST_DB     := relviz_test
-# The chat suites run in a container for the same reason the Go ones do: a
-# contributor with no Python installed can still run them.
+# Only eval still runs Python, until Phase 21 ports it.
 UV_IMAGE    := ghcr.io/astral-sh/uv:python3.12-bookworm-slim
-# UV_PROJECT_ENVIRONMENT puts the virtualenv inside the container rather than in
-# the mounted checkout, where a Linux .venv would collide with the macOS one a
-# contributor is using locally. The cache volume is what keeps a rerun quick.
-CHAT_RUN    := docker run --rm \
-                 -v "$(PWD)/chat":/src \
-                 -v "$(PWD)/docker-compose.yml":/compose/docker-compose.yml:ro \
-                 -v "$(PWD)/k8s/base/chat.yaml":/manifests/chat.yaml:ro \
-                 -v urara-vision-uv-cache:/root/.cache/uv \
-                 -e UV_PROJECT_ENVIRONMENT=/venv \
-                 -e UV_LINK_MODE=copy \
-                 -w /src $(UV_IMAGE)
 
 .PHONY: test
 test: ## Run the fast suites: backend and chat unit tests, frontend typecheck + unit tests
 	$(GO_RUN) go test ./...
 	cd frontend && npm run typecheck && npm run test:run
-	$(MAKE) test-chat
 
 .PHONY: test-unit
 test-unit: ## Backend unit tests only (no databases needed)
@@ -124,88 +107,32 @@ test-all: test test-integration test-chat-integration ## Everything: unit, front
 
 .PHONY: test-chat
 test-chat: ## Chat service unit tests (no backend needed)
-	$(CHAT_RUN) uv run --frozen pytest tests/unit -q
+	$(GO_RUN) go test ./tests/unit/chat/...
 
+# No model is called, so the Vertex project is a placeholder that only has to satisfy start-up.
 .PHONY: test-chat-integration
-test-chat-integration: ## Chat service tests against the compose stack
-	@echo "==> stack"
-	@# chat is up here too: the conversation tests drive its HTTP surface, not
-	@# just the backend's. LLM_PROVIDER/VERTEX_PROJECT only have to satisfy
-	@# start-up validation -- every test this target runs is marked `integration`
-	@# and none of them calls a model, so no credential is needed and nothing is
-	@# billed. The `llm` tests are run by hand from a shell that has ADC.
-	LLM_PROVIDER=vertex \
-	  VERTEX_PROJECT="$${VERTEX_PROJECT:-integration-tests-call-no-model}" \
-	  $(COMPOSE) up -d postgres neo4j backend chat
-	@echo "==> waiting for the backend and the chat service"
-	@docker run --rm --network $(COMPOSE_NET) --entrypoint sh $(UV_IMAGE) -c \
-	  'until python -c "import urllib.request;urllib.request.urlopen(\"http://backend:8080/healthz\")" \
-	     >/dev/null 2>&1; do sleep 1; done'
-	@docker run --rm --network $(COMPOSE_NET) --entrypoint sh $(UV_IMAGE) -c \
-	  'until python -c "import urllib.request;urllib.request.urlopen(\"http://chat:8090/healthz\")" \
-	     >/dev/null 2>&1; do sleep 1; done'
-	@echo "==> tests"
-	@docker run --rm --network $(COMPOSE_NET) \
-	  -v "$(PWD)/chat":/src \
-	  -v "$(PWD)/docs":/docs:ro \
-	  -v urara-vision-uv-cache:/root/.cache/uv \
-	  -e UV_PROJECT_ENVIRONMENT=/venv \
-	  -e UV_LINK_MODE=copy \
-	  -e CHAT_TEST_BACKEND_URL="http://backend:8080" \
-	  -e CHAT_TEST_CHAT_URL="http://chat:8090" \
-	  -e CHAT_TEST_API_TOKEN="relviz-dev-token-not-for-production" \
-	  -w /src $(UV_IMAGE) \
-	  uv run --frozen pytest tests/integration -q -m integration
-
-# Not in test-integration until Phase 20's cutover. No model is called, so the
-# Vertex project is a placeholder that only has to satisfy start-up.
-.PHONY: test-chat-go-integration
-test-chat-go-integration: ## Go chat service integration tests against the compose stack
+test-chat-integration: ## Chat service integration tests against the compose stack
 	@echo "==> stack"
 	LLM_PROVIDER=vertex \
 	  VERTEX_PROJECT="$${VERTEX_PROJECT:-integration-tests-call-no-model}" \
-	  $(COMPOSE) --profile go-chat up -d --build postgres neo4j backend chat-go
-	@echo "==> waiting for the backend and chat-go"
-	@# Bounded: chat-go exits at start-up without ADC, and a bare loop would hang.
+	  $(COMPOSE) up -d --build postgres neo4j backend chat
+	@echo "==> waiting for the backend and chat"
+	@# Bounded: chat exits at start-up without ADC, and a bare loop would hang.
 	@docker run --rm --network $(COMPOSE_NET) $(GO_IMAGE) sh -c \
-	  'for url in http://backend:8080/healthz http://chat-go:8090/readyz; do \
+	  'for url in http://backend:8080/healthz http://chat:8090/readyz; do \
 	     i=0; until wget -q -O /dev/null $$url; do \
 	       i=$$((i+1)); [ $$i -ge 120 ] && { echo "$$url not ready after 120s"; exit 1; }; sleep 1; \
 	     done; \
-	   done' || { $(COMPOSE) --profile go-chat logs --tail 20 chat-go; exit 1; }
+	   done' || { $(COMPOSE) logs --tail 20 chat; exit 1; }
 	@echo "==> tests"
 	docker run --rm --network $(COMPOSE_NET) \
 	  -v "$(PWD)/backend":/src \
 	  -v "$(PWD)/docs":/docs:ro \
-	  -e TEST_CHAT_URL="http://chat-go:8090" \
+	  -e TEST_CHAT_URL="http://chat:8090" \
 	  -e TEST_CHAT_BACKEND_URL="http://backend:8080" \
 	  -e TEST_CHAT_API_TOKEN="relviz-dev-token-not-for-production" \
 	  -w /src $(GO_IMAGE) \
 	  go test -tags=integration -count=1 -v ./tests/integration/chat/...
-
-# 20.1: Python and Go answer the same non-model requests. No model is called.
-.PHONY: test-chat-parity
-test-chat-parity: ## Compare the Python and Go chat services request by request
-	@echo "==> stack"
-	LLM_PROVIDER=vertex \
-	  VERTEX_PROJECT="$${VERTEX_PROJECT:-parity-tests-call-no-model}" \
-	  $(COMPOSE) --profile go-chat up -d --build postgres neo4j backend chat chat-go
-	@echo "==> waiting for the backend, chat and chat-go"
-	@docker run --rm --network $(COMPOSE_NET) $(GO_IMAGE) sh -c \
-	  'for url in http://backend:8080/healthz http://chat:8090/readyz http://chat-go:8090/readyz; do \
-	     i=0; until wget -q -O /dev/null $$url; do \
-	       i=$$((i+1)); [ $$i -ge 120 ] && { echo "$$url not ready after 120s"; exit 1; }; sleep 1; \
-	     done; \
-	   done' || { $(COMPOSE) --profile go-chat logs --tail 20 chat chat-go; exit 1; }
-	@echo "==> tests"
-	docker run --rm --network $(COMPOSE_NET) \
-	  -v "$(PWD)/backend":/src \
-	  -v "$(PWD)/docs":/docs:ro \
-	  -e PARITY_PY_URL="http://chat:8090" \
-	  -e PARITY_GO_URL="http://chat-go:8090" \
-	  -e PARITY_BACKEND_URL="http://backend:8080" \
-	  -w /src $(GO_IMAGE) \
-	  go test -tags=parity -count=1 -v ./tests/parity/...
 
 # Costs money: calls real models. Never part of test, test-all or CI.
 .PHONY: test-llm
@@ -242,10 +169,8 @@ eval: ## Score the agent over the demo sets (costs money; MODEL= checks, not set
 	  uv run --frozen python tests/eval/run_eval.py $(EVAL_ARGS)
 
 .PHONY: lint-chat
-lint-chat: ## ruff and mypy over the chat service
-	$(CHAT_RUN) uv run --frozen ruff check .
-	$(CHAT_RUN) uv run --frozen ruff format --check .
-	$(CHAT_RUN) uv run --frozen mypy src
+lint-chat: ## go vet over the chat service
+	$(GO_RUN) go vet ./cmd/chat/... ./internal/chat/...
 
 .PHONY: test-cover
 test-cover: ## Backend unit test coverage over the packages under test
@@ -277,7 +202,7 @@ IMAGES         := $(BACKEND_IMAGE) $(CHAT_IMAGE) $(FRONTEND_IMAGE)
 .PHONY: images
 images: ## Build all three images tagged :dev for a local cluster
 	docker build -t $(BACKEND_IMAGE) ./backend
-	docker build -t $(CHAT_IMAGE) ./chat
+	docker build --target chat -t $(CHAT_IMAGE) ./backend
 	docker build -t $(FRONTEND_IMAGE) ./frontend
 
 .PHONY: k8s-load
