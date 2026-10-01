@@ -61,13 +61,6 @@ spec:
         runAsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
-      volumes:
-        # The root filesystem is read-only, and Python still wants somewhere to
-        # write. A local cluster has no metadata server, so the dev overlay adds
-        # an ADC file volume next to this one; prod must not, or the file
-        # shadows Workload Identity.
-        - name: tmp
-          emptyDir: {}
       containers:
         - name: chat
           image: urara-vision/chat:latest
@@ -79,8 +72,6 @@ spec:
             - configMapRef:
                 name: relviz-chat-config
           env:
-            - name: TMPDIR
-              value: /tmp
             # The same secret the backend reads as API_TOKEN, so there is one
             # token to rotate rather than two.
             - name: BACKEND_API_TOKEN
@@ -88,9 +79,6 @@ spec:
                 secretKeyRef:
                   name: relviz-api
                   key: token
-          volumeMounts:
-            - name: tmp
-              mountPath: /tmp
           # /readyz checks the backend, so a backend outage takes chat pods out
           # of service rather than leaving them accepting questions they cannot
           # answer. /healthz deliberately does not: kubelet must never restart a
@@ -117,12 +105,12 @@ spec:
             failureThreshold: 3
           resources:
             requests:
-              cpu: 100m
-              memory: 256Mi
+              cpu: 50m
+              memory: 64Mi
             limits:
-              # 105Mi measured peak at MAX_CONCURRENT_TURNS=4; the rest is
+              # 33Mi measured peak at four concurrent turns; the rest is
               # headroom for a larger corpus.
-              memory: 512Mi
+              memory: 128Mi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
