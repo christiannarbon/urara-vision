@@ -10,10 +10,8 @@ on:
       - backend/.dockerignore
       - backend/go.mod
       - backend/go.sum
-      - chat/Dockerfile
-      - chat/.dockerignore
-      - chat/pyproject.toml
-      - chat/uv.lock
+      - backend/cmd/chat/**
+      - backend/internal/chat/**
       - frontend/Dockerfile
       - frontend/nginx.conf
       - frontend/nginx-security-headers.conf
@@ -27,10 +25,8 @@ on:
       - backend/.dockerignore
       - backend/go.mod
       - backend/go.sum
-      - chat/Dockerfile
-      - chat/.dockerignore
-      - chat/pyproject.toml
-      - chat/uv.lock
+      - backend/cmd/chat/**
+      - backend/internal/chat/**
       - frontend/Dockerfile
       - frontend/nginx.conf
       - frontend/nginx-security-headers.conf
@@ -56,10 +52,15 @@ jobs:
       # One broken image should not hide the others' results.
       fail-fast: false
       matrix:
-        image:
-          - backend
-          - chat
-          - frontend
+        include:
+          - image: backend
+            context: ./backend
+          # The Go chat binary, from the backend Dockerfile's chat stage.
+          - image: chat
+            context: ./backend
+            target: chat
+          - image: frontend
+            context: ./frontend
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -69,7 +70,8 @@ jobs:
 
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          context: ./${{ matrix.image }}
+          context: ${{ matrix.context }}
+          target: ${{ matrix.target }}
           # Load into the local daemon so the checks below can run against it.
           # Never pushed: this workflow has no registry credentials.
           load: true
