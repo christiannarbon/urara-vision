@@ -3,6 +3,7 @@ package chateval_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"urara-vision/backend/internal/chateval"
@@ -70,5 +71,25 @@ func TestSelect(t *testing.T) {
 	}
 	if got := chateval.Select(qs, nil, nil, []string{"jaffle-grain-orders"}); len(got) != 1 {
 		t.Errorf("by id: %d", len(got))
+	}
+}
+
+func loadText(t *testing.T, text string) error {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "q.yaml")
+	_ = os.WriteFile(path, []byte(text), 0o600)
+	_, err := chateval.Load(path)
+	return err
+}
+
+func TestLoadRefusesUnknownKeys(t *testing.T) {
+	if err := loadText(t, "- id: q\n  expect_citation: [a/b]\n"); err == nil || !strings.Contains(err.Error(), "expect_citation") {
+		t.Errorf("err = %v", err)
+	}
+}
+
+func TestLoadRefusesDuplicateIDs(t *testing.T) {
+	if err := loadText(t, "- id: q\n- id: q\n"); err == nil || !strings.Contains(err.Error(), `"q"`) {
+		t.Errorf("err = %v", err)
 	}
 }

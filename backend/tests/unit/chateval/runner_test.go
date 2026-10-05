@@ -25,6 +25,9 @@ type fakeBackend struct {
 	deleted []string
 	// conflict answers ingest with 409 for these sets.
 	conflict map[string]bool
+	listed   []map[string]string
+	version  string   // in the 409 body; "1" when empty
+	paths    []string // escaped paths of GETs under /api/v1/projects/
 }
 
 func (b *fakeBackend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -34,15 +37,22 @@ func (b *fakeBackend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		if b.conflict[body.Name] {
 			w.WriteHeader(http.StatusConflict)
-			_ = json.NewEncoder(w).Encode(map[string]string{"project": body.Name, "version": "1"})
+			version := b.version
+			if version == "" {
+				version = "1"
+			}
+			_ = json.NewEncoder(w).Encode(map[string]string{"project": body.Name, "version": version})
 			return
 		}
 		w.WriteHeader(http.StatusCreated)
 		_ = json.NewEncoder(w).Encode(map[string]any{"snapshot": map[string]string{"id": "sid-" + body.Name}})
 	case r.Method == "GET" && strings.HasPrefix(r.URL.Path, "/api/v1/projects/"):
+		b.mu.Lock()
+		b.paths = append(b.paths, r.URL.EscapedPath())
+		b.mu.Unlock()
 		_ = json.NewEncoder(w).Encode(map[string]string{"id": "existing-" + strings.Split(r.URL.Path, "/")[4]})
 	case r.Method == "GET" && r.URL.Path == "/api/v1/snapshots":
-		_ = json.NewEncoder(w).Encode(map[string]any{"snapshots": []any{}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"snapshots": b.listed})
 	case r.Method == "DELETE":
 		b.mu.Lock()
 		b.deleted = append(b.deleted, strings.TrimPrefix(r.URL.Path, "/api/v1/snapshots/"))
@@ -65,9 +75,14 @@ func setDir(t *testing.T, names ...string) string {
 
 func ingester(t *testing.T, b *fakeBackend, names ...string) *chateval.Ingester {
 	t.Helper()
+	return ingesterTo(t, b, nil, names...)
+}
+
+func ingesterTo(t *testing.T, b *fakeBackend, out io.Writer, names ...string) *chateval.Ingester {
+	t.Helper()
 	srv := httptest.NewServer(b)
 	t.Cleanup(srv.Close)
-	in := &chateval.Ingester{BackendURL: srv.URL, Label: "eval-test", ActingUser: "admin", Dirs: []string{setDir(t, names...)}, Client: srv.Client()}
+	in := &chateval.Ingester{BackendURL: srv.URL, Label: "eval-test", ActingUser: "admin", Dirs: []string{setDir(t, names...)}, Client: srv.Client(), Out: out}
 	for _, n := range names {
 		if _, err := in.Ingest(context.Background(), n); err != nil {
 			t.Fatal(err)
@@ -172,9 +187,13 @@ func TestAnInterruptedRunStillCleansUp(t *testing.T) {
 
 func TestAReusedVersionIsNotDeleted(t *testing.T) {
 	b := &fakeBackend{conflict: map[string]bool{"old": true}}
-	in := ingester(t, b, "old", "new")
+	var out strings.Builder
+	in := ingesterTo(t, b, &out, "old", "new")
 	if in.IDs["old"] != "existing-old" {
 		t.Errorf("ids %v", in.IDs)
+	}
+	if got := out.String(); !strings.Contains(got, "old 1 already ingested") || strings.Contains(got, "new") {
+		t.Errorf("output %q", got)
 	}
 	_ = in.Cleanup(context.Background())
 	if !slices.Equal(b.deleted, []string{"sid-new"}) {
@@ -182,10 +201,38 @@ func TestAReusedVersionIsNotDeleted(t *testing.T) {
 	}
 }
 
+func TestAReusedVersionPathIsEscaped(t *testing.T) {
+	b := &fakeBackend{conflict: map[string]bool{"old": true}, version: "1.0/rc"}
+	ingester(t, b, "old")
+	if len(b.paths) != 1 || !strings.HasSuffix(b.paths[0], "/versions/1.0%2Frc") {
+		t.Errorf("paths %v", b.paths)
+	}
+}
+
+func TestCleanupSweepsTheRunLabel(t *testing.T) {
+	b := &fakeBackend{listed: []map[string]string{
+		{"id": "stray", "sourceLabel": "eval-test"},
+		{"id": "other", "sourceLabel": "someone-else"},
+	}}
+	in := ingester(t, b, "s")
+	if failed := in.Cleanup(context.Background()); len(failed) != 0 {
+		t.Errorf("failed %v", failed)
+	}
+	slices.Sort(b.deleted)
+	if want := []string{"sid-s", "stray"}; !slices.Equal(b.deleted, want) {
+		t.Errorf("deleted %v, want %v", b.deleted, want)
+	}
+}
+
 func TestConcurrencyIsCapped(t *testing.T) {
 	var inFlight, peak atomic.Int32
 	chat := chatServer(t, func(w http.ResponseWriter, _ *http.Request) {
 		n := inFlight.Add(1)
+		// Wait for a partner, so running one at a time cannot pass.
+		for deadline := time.Now().Add(2 * time.Second); inFlight.Load() < 2 && time.Now().Before(deadline); {
+			time.Sleep(time.Millisecond)
+		}
+		n = inFlight.Load()
 		for {
 			p := peak.Load()
 			if n <= p || peak.CompareAndSwap(p, n) {
@@ -197,7 +244,7 @@ func TestConcurrencyIsCapped(t *testing.T) {
 		ok(w)
 	})
 	results, err := run(t, context.Background(), chat, questions(6), 2)
-	if err != nil || len(results) != 6 || peak.Load() > 2 {
+	if err != nil || len(results) != 6 || peak.Load() != 2 {
 		t.Errorf("results %d, err %v, peak %d", len(results), err, peak.Load())
 	}
 	for i, r := range results {

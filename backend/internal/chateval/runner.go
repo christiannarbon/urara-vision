@@ -11,6 +11,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -64,6 +65,7 @@ type Ingester struct {
 	BackendURL, Token, Label, ActingUser string
 	Dirs                                 []string // searched in order for a set
 	Client                               *http.Client
+	Out                                  io.Writer // nil is silent
 
 	IDs     map[string]string
 	created []string
@@ -88,7 +90,7 @@ func (in *Ingester) Ingest(ctx context.Context, name string) (string, error) {
 		if err := json.NewDecoder(res.Body).Decode(&c); err != nil {
 			return "", fmt.Errorf("ingest %s: 409: %w", name, err)
 		}
-		existing, err := checked(in.do(ctx, "GET", "/api/v1/projects/"+c.Project+"/versions/"+c.Version, nil, nil))
+		existing, err := checked(in.do(ctx, "GET", "/api/v1/projects/"+url.PathEscape(c.Project)+"/versions/"+url.PathEscape(c.Version), nil, nil))
 		if err != nil {
 			return "", fmt.Errorf("ingest %s: existing version: %w", name, err)
 		}
@@ -98,6 +100,9 @@ func (in *Ingester) Ingest(ctx context.Context, name string) (string, error) {
 			return "", fmt.Errorf("ingest %s: existing version: %w", name, err)
 		}
 		sid = v.ID
+		if in.Out != nil {
+			fmt.Fprintf(in.Out, "  %s %s already ingested; scoring that snapshot\n", c.Project, c.Version)
+		}
 	} else {
 		if _, err := checked(res, nil); err != nil {
 			return "", fmt.Errorf("ingest %s: %w", name, err)
@@ -159,7 +164,9 @@ func (in *Ingester) Cleanup(ctx context.Context) []string {
 		var listed struct {
 			Snapshots []struct{ ID, SourceLabel string }
 		}
-		_ = json.NewDecoder(res.Body).Decode(&listed)
+		if err := json.NewDecoder(res.Body).Decode(&listed); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not read snapshots for cleanup: %v\n", err)
+		}
 		_ = res.Body.Close()
 		for _, s := range listed.Snapshots {
 			if s.SourceLabel == in.Label {

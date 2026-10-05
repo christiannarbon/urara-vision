@@ -4,8 +4,10 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/signal"
@@ -60,6 +62,9 @@ func run() int {
 		return fail("--repeat and --concurrency must be at least 1")
 	}
 	qs, err := chateval.Load(filepath.Join(evalDir, "questions.yaml"))
+	if errors.Is(err, fs.ErrNotExist) {
+		return fail("%v (run from backend/, as make eval does)", err)
+	}
 	if err != nil {
 		return fail("%v", err)
 	}
@@ -87,6 +92,7 @@ func run() int {
 		Label:  fmt.Sprintf("eval-%s-%d", startedAt.Format("20060102T150405Z"), os.Getpid()),
 		Dirs:   []string{envOr("EVAL_DEMO_DIR", filepath.Join("..", "docs", "demo")), filepath.Join(evalDir, "fixtures")},
 		Client: &http.Client{Timeout: 60 * time.Second},
+		Out:    os.Stdout,
 	}
 
 	results, runErr := ask(ctx, ingester, selected, chateval.RunOptions{
@@ -102,7 +108,8 @@ func run() int {
 	if failed := ingester.Cleanup(cleanupCtx); len(failed) > 0 {
 		fmt.Fprintf(os.Stderr, "warning: snapshots not deleted: %s\n", strings.Join(failed, ", "))
 	}
-	if ctx.Err() != nil {
+	// From the run, not ctx: a signal during cleanup must not drop a finished run.
+	if errors.Is(runErr, context.Canceled) {
 		fmt.Fprintln(os.Stderr, "\ninterrupted")
 		return 130
 	}
