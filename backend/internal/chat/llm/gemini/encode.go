@@ -101,6 +101,15 @@ func isToolResults(c *genai.Content) bool {
 	return c.Role == "user" && len(c.Parts) > 0 && c.Parts[0].FunctionResponse != nil
 }
 
+// A blocked reply is a failure, not an empty answer.
+var blocked = map[genai.FinishReason]bool{
+	genai.FinishReasonSafety:            true,
+	genai.FinishReasonRecitation:        true,
+	genai.FinishReasonBlocklist:         true,
+	genai.FinishReasonProhibitedContent: true,
+	genai.FinishReasonSPII:              true,
+}
+
 // Decode turns the first candidate into a neutral response. Pure.
 func Decode(resp *genai.GenerateContentResponse) (llm.Response, error) {
 	if resp == nil || len(resp.Candidates) == 0 {
@@ -146,6 +155,9 @@ func Decode(resp *genai.GenerateContentResponse) (llm.Response, error) {
 		out.Usage = &llm.Usage{InputTokens: in, OutputTokens: outTokens, TotalTokens: in + outTokens}
 	}
 	if out.Text == "" && len(out.ToolCalls) == 0 {
+		if blocked[cand.FinishReason] {
+			return out, fmt.Errorf("gemini blocked the reply (finish reason %s)", cand.FinishReason)
+		}
 		if cand.FinishReason == genai.FinishReasonMaxTokens {
 			return out, fmt.Errorf("gemini hit the output token limit before answering: %w", llm.ErrEmptyReply)
 		}
