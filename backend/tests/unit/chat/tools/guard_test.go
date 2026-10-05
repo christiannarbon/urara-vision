@@ -1,4 +1,4 @@
-// Ported from chat/tests/unit/test_langchain_tools.py.
+// Ported from the Python tool-wrapper tests.
 package tools_test
 
 import (
