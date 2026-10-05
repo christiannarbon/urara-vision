@@ -72,7 +72,7 @@ its own set:
 | `LLM_TEMPERATURE` | `0.2` | |
 | `LLM_MAX_OUTPUT_TOKENS` | `2048` | |
 | `LLM_TIMEOUT_SECONDS` | `60` | Per model call, not per turn |
-| `VERTEX_PROJECT` | — | Required under `vertex`; the pod refuses to start without it |
+| `VERTEX_PROJECT` | — | Required under `vertex` and `vertex-anthropic`; the pod refuses to start without it |
 | `VERTEX_LOCATION` | `us-central1` | |
 | `GOOGLE_APPLICATION_CREDENTIALS` | _(unset)_ | Only where ADC arrives as a file; unset under Workload Identity |
 | `MAX_TOOL_ITERATIONS` | `6` | Tool rounds before the model must answer with what it has |
@@ -85,6 +85,7 @@ its own set:
 | `TURN_ADMISSION_WAIT_SECONDS` | `0.5` | How long a turn waits for a free slot before it is refused |
 | `ANSWER_TIMEOUT_SECONDS` | `120` | The whole turn. Bounded by the pod's `terminationGracePeriodSeconds` |
 | `CONTEXT_CACHE_TTL_SECONDS` | `300` | A snapshot is immutable, so its context card keeps |
+| `FEATURES_CACHE_SECONDS` | `15` | How long the admin's chat on/off switch is cached |
 
 Under Vertex the credential is ADC, never a key: `gcloud auth
 application-default login` locally, Workload Identity in the cluster.
