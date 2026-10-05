@@ -58,6 +58,16 @@ deleting a project deletes all of its versions, which is why both ask first.
 Those credentials are development credentials, committed on purpose so the
 stack works with no setup. They are safe only because that is all they are.
 
+### Chat
+
+The chat panel needs a Google Cloud project with Vertex AI. Without
+`VERTEX_PROJECT` the chat service refuses to start and questions fail;
+everything else works. To set it up, run `gcloud auth
+application-default login`, set `VERTEX_PROJECT` in `.env` (see
+`.env.example`), and mount the credentials as
+[deployment](../tech/architecture/deployment.md#configuration) describes. To run
+without chat at all, use `make up-without-chat`.
+
 ## Try it without your own documentation
 
 Seven complete sample sets ship under [`docs/demo/`](../demo/README.md), each a
