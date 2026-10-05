@@ -70,8 +70,6 @@ COMPOSE_NET := urara-vision_default
 # locally. Neo4j Community allows only one database, so the graph suites share it
 # and isolate by snapshot ID instead.
 TEST_DB     := relviz_test
-# Only eval still runs Python, until Phase 21 ports it.
-UV_IMAGE    := ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 .PHONY: test
 test: ## Run the fast suites: backend and chat unit tests, frontend typecheck + unit tests
@@ -149,6 +147,7 @@ test-llm: ## Live smoke tests against each LLM provider (costs money; needs ADC 
 
 # Never add eval to test, test-all or any CI workflow: it calls a real model and costs money.
 # --init and exec let a SIGTERM reach the runner, so an interrupted run still deletes its snapshots.
+# Built then exec'd, not `go run`: go run does not pass SIGTERM on to the program.
 EVAL_CHAT_URL ?= http://chat:8090
 EVAL_ARGS := $(if $(SET),--set $(SET)) $(if $(CATEGORY),--category $(CATEGORY)) \
              $(if $(ID),--id $(ID)) $(if $(MODEL),--model $(MODEL)) \
@@ -157,16 +156,14 @@ EVAL_ARGS := $(if $(SET),--set $(SET)) $(if $(CATEGORY),--category $(CATEGORY)) 
 .PHONY: eval
 eval: ## Score the agent over the demo sets (costs money; MODEL= checks, not sets, LLM_MODEL)
 	exec docker run --rm --init --network $(COMPOSE_NET) \
-	  -v "$(PWD)/chat":/src \
+	  -v "$(PWD)/backend":/src \
 	  -v "$(PWD)/docs":/docs:ro \
-	  -v urara-vision-uv-cache:/root/.cache/uv \
-	  -e UV_PROJECT_ENVIRONMENT=/venv \
-	  -e UV_LINK_MODE=copy \
 	  -e EVAL_CHAT_URL="$(EVAL_CHAT_URL)" \
 	  -e EVAL_BACKEND_URL="http://backend:8080" \
 	  -e EVAL_API_TOKEN="relviz-dev-token-not-for-production" \
-	  -w /src $(UV_IMAGE) \
-	  uv run --frozen python tests/eval/run_eval.py $(EVAL_ARGS)
+	  -e EVAL_DEMO_DIR=/docs/demo \
+	  -w /src $(GO_IMAGE) \
+	  sh -c 'go build -o /tmp/chateval ./cmd/chateval && exec /tmp/chateval "$$@"' chateval $(EVAL_ARGS)
 
 .PHONY: lint-chat
 lint-chat: ## go vet over the chat service and its tests

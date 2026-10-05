@@ -30,7 +30,7 @@ type Result struct {
 	Usage     map[string]int `json:"usage"`
 	LatencyMS int            `json:"latency_ms"`
 	WallMS    int            `json:"wall_ms"`
-	Error     string         `json:"error,omitempty"`
+	Error     string         `json:"error"`
 	Scores    *Scores        `json:"scores"`
 }
 
