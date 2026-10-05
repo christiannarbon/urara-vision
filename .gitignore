@@ -68,8 +68,8 @@ dev_notes/
 chat/report.xml
 
 # Eval results: large, numerous, and diffed locally rather than committed.
-chat/tests/eval/results/*
-!chat/tests/eval/results/.gitkeep
+backend/tests/eval/results/*
+!backend/tests/eval/results/.gitkeep
 
 # The requirements file the security workflow exports for pip-audit.
 chat/requirements.txt
