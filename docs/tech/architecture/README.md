@@ -7,6 +7,7 @@ How the pieces fit and why there are two of them.
 | [Overview](overview.md) | The pipeline, why two stores, snapshots, repository layout |
 | [The two stores](data-model.md) | The Postgres schema and search index, the Neo4j graph model |
 | [HTTP API](api.md) | Every route, the ingest body, the error mapping |
+| [Chat service](chat.md) | Packages, the turn, providers, limits, eval, the fences |
 | [Authentication](auth.md) | Principals, sessions, the bootstrap admin, chat identity, permissions |
 | [Deployment and configuration](deployment.md) | Environment variables, compose, Kubernetes, the overlays |
 
