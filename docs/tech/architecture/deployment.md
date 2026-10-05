@@ -57,8 +57,8 @@ curl -H "Authorization: Bearer $API_TOKEN" -H 'Content-Type: application/json' \
   -d @payload.json http://backend:8080/api/v1/ingest
 ```
 
-The chat service (`backend/cmd/chat`, image built with `--target chat`) reads
-its own set:
+The [chat service](chat.md) (`backend/cmd/chat`, image built with
+`--target chat`) reads its own set:
 
 | Variable | Default | Notes |
 |---|---|---|
