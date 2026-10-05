@@ -226,10 +226,10 @@ func TestDecode(t *testing.T) {
 			t.Errorf("err = %v", err)
 		}
 	})
-	t.Run("no parts", func(t *testing.T) {
+	t.Run("a safety stop with no parts is not an empty reply", func(t *testing.T) {
 		resp := candidate()
 		resp.Candidates[0].FinishReason = genai.FinishReasonSafety
-		if _, err := gemini.Decode(resp); !errors.Is(err, llm.ErrEmptyReply) || !strings.Contains(err.Error(), "SAFETY") {
+		if _, err := gemini.Decode(resp); err == nil || errors.Is(err, llm.ErrEmptyReply) || !strings.Contains(err.Error(), "SAFETY") {
 			t.Errorf("err = %v", err)
 		}
 	})
