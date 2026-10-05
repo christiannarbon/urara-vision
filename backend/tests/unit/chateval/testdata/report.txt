@@ -1,0 +1,21 @@
+
+category         n   recall  precision   tools  substr  violations
+lookup           2     0.75       0.83    0.50    0.50           0
+refusal          2       --         --      --      --           1
+traversal        2     1.00       1.00    1.00      --           0
+overall          6     0.83       0.89    0.67    0.50           1
+
+refusal accuracy: 0.50
+
+VIOLATIONS
+  jaffle-refusal (run 1): fabricated
+
+ERRORS
+  jaffle-traversal (run 1): HTTPStatusError: 502 the language model did not answer
+
+question                                      passes   recall  spread
+jaffle-lookup                                  1/2       0.75    0.25
+jaffle-refusal                                 1/2         --    0.00
+jaffle-traversal                               1/2       1.00    0.00
+
+tokens: 1,236,167 in / 1,050 out    wall: 1m02s    mean 2.0s/question
