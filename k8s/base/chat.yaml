@@ -79,6 +79,12 @@ spec:
                 secretKeyRef:
                   name: relviz-api
                   key: token
+            # A soft heap limit, so the GC tightens before the cgroup kills the pod.
+            - name: GOMEMLIMIT
+              valueFrom:
+                resourceFieldRef:
+                  containerName: chat
+                  resource: limits.memory
           # /readyz checks the backend, so a backend outage takes chat pods out
           # of service rather than leaving them accepting questions they cannot
           # answer. /healthz deliberately does not: kubelet must never restart a

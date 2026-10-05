@@ -10,6 +10,7 @@ on:
     paths:
       - backend/cmd/chat/**
       - backend/internal/chat/**
+      - backend/internal/model/**
       - backend/tests/unit/chat/**
       - backend/tests/integration/chat/**
       - backend/go.mod
@@ -23,6 +24,7 @@ on:
     paths:
       - backend/cmd/chat/**
       - backend/internal/chat/**
+      - backend/internal/model/**
       - backend/tests/unit/chat/**
       - backend/tests/integration/chat/**
       - backend/go.mod

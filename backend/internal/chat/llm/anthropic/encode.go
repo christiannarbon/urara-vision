@@ -121,6 +121,10 @@ func Decode(msg *anthropic.Message) (llm.Response, error) {
 	in, outTokens := int(msg.Usage.InputTokens), int(msg.Usage.OutputTokens)
 	out.Usage = &llm.Usage{InputTokens: in, OutputTokens: outTokens, TotalTokens: in + outTokens}
 	if out.Text == "" && len(out.ToolCalls) == 0 {
+		// A refusal is a failure, not an empty answer.
+		if msg.StopReason == anthropic.StopReasonRefusal {
+			return out, errors.New("claude refused (stop reason refusal)")
+		}
 		if msg.StopReason == anthropic.StopReasonMaxTokens {
 			return out, fmt.Errorf("claude hit the output token limit before answering: %w", llm.ErrEmptyReply)
 		}

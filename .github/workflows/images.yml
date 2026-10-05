@@ -10,8 +10,6 @@ on:
       - backend/.dockerignore
       - backend/go.mod
       - backend/go.sum
-      - backend/cmd/chat/**
-      - backend/internal/chat/**
       - frontend/Dockerfile
       - frontend/nginx.conf
       - frontend/nginx-security-headers.conf
@@ -25,8 +23,6 @@ on:
       - backend/.dockerignore
       - backend/go.mod
       - backend/go.sum
-      - backend/cmd/chat/**
-      - backend/internal/chat/**
       - frontend/Dockerfile
       - frontend/nginx.conf
       - frontend/nginx-security-headers.conf

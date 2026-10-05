@@ -37,7 +37,7 @@ var (
 )
 
 // Not t.Skip: the backend CI job runs ./tests/integration/... and fails on a
-// skip, and this suite joins it only at Phase 20's cutover.
+// skip; chat.yml runs this suite.
 func TestMain(m *testing.M) {
 	if chatURL == "" && backendURL == "" {
 		fmt.Println("chat integration: TEST_CHAT_URL and TEST_CHAT_BACKEND_URL unset; not run (make test-chat-integration)")
@@ -135,9 +135,9 @@ func backendDo(t *testing.T, method, path string, body any, asAdmin bool) *http.
 // t.Cleanup, and returns the snapshot ID.
 func fixture(t *testing.T) string {
 	t.Helper()
-	name := "chat-go-it-" + uuid.NewString()[:12]
+	name := "chat-it-" + uuid.NewString()[:12]
 	files := demoFiles(t, name)
-	res := backendDo(t, "POST", "/api/v1/ingest", map[string]any{"name": name, "sourceLabel": "chat-go-it", "files": files}, false)
+	res := backendDo(t, "POST", "/api/v1/ingest", map[string]any{"name": name, "sourceLabel": "chat-it", "files": files}, false)
 	defer func() { _ = res.Body.Close() }()
 	var out struct {
 		Snapshot struct {
@@ -207,7 +207,7 @@ func (r response) json(t *testing.T) map[string]any {
 	return body
 }
 
-// chatDo calls chat-go as nginx would, with X-User-Id unless user is empty.
+// chatDo calls chat as nginx would, with X-User-Id unless user is empty.
 func chatDo(t *testing.T, method, path, user string, body any) response {
 	t.Helper()
 	var r io.Reader
