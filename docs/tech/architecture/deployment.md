@@ -90,6 +90,22 @@ its own set:
 Under Vertex the credential is ADC, never a key: `gcloud auth
 application-default login` locally, Workload Identity in the cluster.
 
+Compose cannot see the host's ADC file, so mount it with a gitignored
+`docker-compose.override.yml` in the repository root:
+
+```yaml
+services:
+  chat:
+    volumes:
+      - ${HOME}/.config/gcloud/application_default_credentials.json:/gcloud/adc.json:ro
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /gcloud/adc.json
+```
+
+It is not the default because, on a machine that has never run `gcloud`, the
+missing mount source fails compose with an error about a path rather than about
+credentials.
+
 The frontend needs no runtime configuration beyond the upstreams it proxies to
 — `BACKEND_HOST` / `BACKEND_PORT` for `/api` and `CHAT_HOST` / `CHAT_PORT` for
 `/api/chat` — so the browser only ever talks to one origin. `VITE_API_BASE` (a

@@ -163,7 +163,7 @@ func fixture(t *testing.T) string {
 
 var manifestName = regexp.MustCompile(`(?m)^name\s*=\s*".*"$`)
 
-// demoFiles reads the set as capture.sh does, renamed so the project is new.
+// demoFiles reads the set as the golden capture did, renamed so the project is new.
 func demoFiles(t *testing.T, name string) []map[string]string {
 	t.Helper()
 	var files []map[string]string
@@ -246,7 +246,7 @@ func chatDelete(t *testing.T, path string) response {
 	return chatDo(t, "DELETE", path, userID(t), nil)
 }
 
-// Copied from tests/unit/chat/httpapi/golden_test.go: capture.sh's placeholders.
+// Copied from tests/unit/chat/httpapi/golden_test.go: the golden files' placeholders.
 var (
 	uuidPattern    = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
 	timePattern    = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}`)

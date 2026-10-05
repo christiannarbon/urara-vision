@@ -57,8 +57,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (!res.ok) {
-    // Both spellings: the service writes `error` from its own handlers and
-    // `detail` where FastAPI wrote the response, and the 429 uses `detail`.
+    // Both spellings: the service writes `error` for most failures and
+    // `detail` for request errors, the 409 and the 429.
     let detail = res.statusText
     try {
       const body = await res.json()

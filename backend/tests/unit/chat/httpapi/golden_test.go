@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// The same placeholders capture.sh writes.
+// The placeholders the golden files use.
 var (
 	uuidPattern    = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
 	timePattern    = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}`)
@@ -61,7 +61,7 @@ type golden struct {
 }
 
 // assertGolden compares a response with testdata/golden/<name>, as decoded
-// JSON after capture.sh's normalisation.
+// JSON after the golden files' normalisation.
 func assertGolden(t *testing.T, name string, rec *httptest.ResponseRecorder) {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join("..", "testdata", "golden", name))

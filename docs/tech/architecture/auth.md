@@ -110,7 +110,7 @@ checked in the handler, because it depends on the note:
 Notes never reach the agent. They are user-written text, so putting them in the
 prompt would let anyone who can write a note inject instructions. The chat
 backend client has no notes method and no tool mentions notes
-(`chat/tests/unit/test_notes_isolation.py`), and `/context` and
+(`backend/tests/unit/chat/fence/notes_test.go`), and `/context` and
 `/tables/detail` never carry a note body
 (`backend/tests/unit/api/context_no_notes_test.go`).
 
