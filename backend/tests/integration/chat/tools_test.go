@@ -21,7 +21,7 @@ const (
 	dimCustomers     = "customer_identity/dim_customers"
 )
 
-// One call per tool, with capture.sh's arguments so the golden files apply.
+// One call per tool, with the golden capture's arguments so the golden files apply.
 var liveCalls = []struct {
 	golden, tool string
 	args         map[string]any
