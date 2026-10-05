@@ -4,16 +4,16 @@ go 1.27.0
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/anthropics/anthropic-sdk-go v1.75.0
+	github.com/anthropics/anthropic-sdk-go v1.78.0
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/go-chi/cors v1.2.2
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.10.0
-	github.com/neo4j/neo4j-go-driver/v5 v5.28.4
+	github.com/jackc/pgx/v5 v5.11.0
+	github.com/neo4j/neo4j-go-driver/v5 v5.28.5
 	golang.org/x/crypto v0.57.0
-	golang.org/x/oauth2 v0.36.0
+	golang.org/x/oauth2 v0.37.0
 	golang.org/x/sync v0.23.0
-	google.golang.org/genai v1.71.0
+	google.golang.org/genai v1.72.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
