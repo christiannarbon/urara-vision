@@ -117,7 +117,7 @@ test-chat-integration: ## Chat service integration tests against the compose sta
 	  VERTEX_PROJECT="$${VERTEX_PROJECT:-integration-tests-call-no-model}" \
 	  $(COMPOSE) up -d --build postgres neo4j backend chat
 	@echo "==> waiting for the backend and chat"
-	@# Bounded: chat exits at start-up without ADC, and a bare loop would hang.
+	@# Bounded: a chat that fails to start would hang a bare loop.
 	@docker run --rm --network $(COMPOSE_NET) $(GO_IMAGE) sh -c \
 	  'for url in http://backend:8080/healthz http://chat:8090/readyz; do \
 	     i=0; until wget -q -O /dev/null $$url; do \
@@ -169,8 +169,9 @@ eval: ## Score the agent over the demo sets (costs money; MODEL= checks, not set
 	  uv run --frozen python tests/eval/run_eval.py $(EVAL_ARGS)
 
 .PHONY: lint-chat
-lint-chat: ## go vet over the chat service
-	$(GO_RUN) go vet ./cmd/chat/... ./internal/chat/...
+lint-chat: ## go vet over the chat service and its tests
+	$(GO_RUN) go vet ./cmd/chat/... ./internal/chat/... ./tests/unit/chat/...
+	$(GO_RUN) go vet -tags=integration ./tests/integration/chat/...
 
 .PHONY: test-cover
 test-cover: ## Backend unit test coverage over the packages under test
