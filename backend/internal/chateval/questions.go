@@ -2,6 +2,7 @@
 package chateval
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"slices"
@@ -30,8 +31,17 @@ func Load(path string) ([]Question, error) {
 		return nil, err
 	}
 	var qs []Question
-	if err := yaml.Unmarshal(raw, &qs); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(raw))
+	dec.KnownFields(true)
+	if err := dec.Decode(&qs); err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
+	}
+	seen := map[string]bool{}
+	for _, q := range qs {
+		if seen[q.ID] {
+			return nil, fmt.Errorf("%s: question id %q appears twice", path, q.ID)
+		}
+		seen[q.ID] = true
 	}
 	return qs, nil
 }
