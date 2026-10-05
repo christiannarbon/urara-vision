@@ -17,12 +17,11 @@ Browser ──pick folder──▶ Vue 3 app ─────ask─────�
               └──────────┘  └────────────────┘
 ```
 
-The chat service is a Go binary in the backend module (`cmd/chat`), built from
-the backend Dockerfile's `chat` target. It answers questions about a model by
-calling the same public API
-the frontend does — it holds no database credential and has no route to either
-store. That is what keeps the resolution rules in one place and keeps a
-question, however it is phrased, unable to reach a database session.
+The chat service answers questions about a model by calling the same public
+API the frontend does — it holds no database credential and has no route to
+either store. That is what keeps the resolution rules in one place and keeps a
+question, however it is phrased, unable to reach a database session. See
+[chat](chat.md).
 
 ## The pipeline
 
@@ -97,13 +96,14 @@ backend/
   cmd/server/        HTTP server
   cmd/uraractl/      CLI: parse a directory, print stats and diagnostics
   cmd/chat/          chat service
+  cmd/chateval/      chat eval runner (costs money)
   internal/parser/   markdown → structured documents
   internal/graph/    resolution, edge normalisation, drift detection
   internal/store/    postgres (record) + neo4j (graph)
   internal/api/      routes, ingest
   internal/chat/     chat agent, LLM adapters, tools over the HTTP API
-  tests/             unit, integration and fixtures, outside the packages
-chat/                retired Python service; tests/eval/ still scores chat over HTTP
+  internal/chateval/ eval questions, scoring, report
+  tests/             unit, integration, fixtures and eval data, outside the packages
 frontend/
   src/api/           typed client and response shapes
   src/components/    GraphCanvas, TableDetail, FilterSidebar, Search, Diagnostics
