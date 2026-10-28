@@ -1,19 +1,19 @@
 module urara-vision/backend
 
-go 1.27.0
+go 1.27.3
 
 require (
 	github.com/BurntSushi/toml v1.6.0
-	github.com/anthropics/anthropic-sdk-go v1.75.0
-	github.com/go-chi/chi/v5 v5.3.2
+	github.com/anthropics/anthropic-sdk-go v1.84.0
+	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-chi/cors v1.2.2
 	github.com/google/uuid v1.6.0
-	github.com/jackc/pgx/v5 v5.10.0
-	github.com/neo4j/neo4j-go-driver/v5 v5.28.4
-	golang.org/x/crypto v0.57.0
-	golang.org/x/oauth2 v0.36.0
-	golang.org/x/sync v0.23.0
-	google.golang.org/genai v1.71.0
+	github.com/jackc/pgx/v5 v5.11.0
+	github.com/neo4j/neo4j-go-driver/v5 v5.28.6
+	golang.org/x/crypto v0.58.0
+	golang.org/x/oauth2 v0.37.0
+	golang.org/x/sync v0.24.0
+	google.golang.org/genai v1.76.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -51,9 +51,9 @@ require (
 	go.opentelemetry.io/otel/metric v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
-	golang.org/x/net v0.58.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/api v0.278.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260706201446-f0a921348800 // indirect
