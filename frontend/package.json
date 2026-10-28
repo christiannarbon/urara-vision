@@ -26,12 +26,12 @@
     "@types/cytoscape": "^3.31.0",
     "@types/node": "^24.13.3",
     "@vitejs/plugin-vue": "^5.2.1",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^4.1.12",
     "@vue/test-utils": "^2.5.0",
     "jsdom": "^25.0.1",
     "typescript": "^5.7.2",
-    "vite": "^6.0.5",
-    "vitest": "^4.1.11",
+    "vite": "^6.4.5",
+    "vitest": "^4.1.12",
     "vue-tsc": "^3.3.11"
   }
 }
